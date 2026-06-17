@@ -1276,6 +1276,7 @@ async function addClass() {
   if (!name) return showToast('Enter a class name.');
   classes.push({ id: 'class_' + Date.now(), name, startTime, graceMins });
   await saveClasses();
+  syncClassesToSupabase();
   input.value = '';
   renderClasses(); populateDropdowns();
   showToast('Class saved.');
@@ -1361,6 +1362,7 @@ async function addStudent() {
   students.push({ id: 'student_' + Date.now(), classId, name, lrn, guardian });
   students.sort((a, b) => a.name.localeCompare(b.name));
   await saveStudents();
+  syncStudentsToSupabase();
 
   ['student-name-input','student-lrn-input','student-guardian-input'].forEach(id => {
     document.getElementById(id).value = '';
@@ -1850,8 +1852,9 @@ let isOnline = navigator.onLine;
 window.addEventListener('online', () => { 
   isOnline = true; 
   syncOfflineOutbox(); 
-  updateCloudUI(true);
-  showToast('☁️ Back online. Syncing...'); 
+  syncClassesToSupabase();   // <-- ADD THIS
+  syncStudentsToSupabase();  // <-- ADD THIS
+  showToast('☁️ Back online. Syncing all data...'); 
 });
 window.addEventListener('offline', () => { 
   isOnline = false; 
@@ -1921,6 +1924,40 @@ async function saveToOfflineOutbox(log) {
   let outbox = await dbGetSetting('offline_outbox') || [];
   outbox.push(log);
   await dbSetSetting('offline_outbox', outbox);
+}
+
+// Sync Classes to Supabase
+async function syncClassesToSupabase() {
+  if (!isOnline || classes.length === 0) return;
+  try {
+    await sb.from('classes').upsert(
+      classes.map(c => ({ 
+        id: c.id, 
+        name: c.name, 
+        start_time: c.startTime, 
+        grace_mins: c.graceMins, 
+        is_archived: false 
+      })),
+      { onConflict: 'id' }
+    );
+  } catch (e) { console.error('Class sync error', e); }
+}
+
+// Sync Students to Supabase
+async function syncStudentsToSupabase() {
+  if (!isOnline || students.length === 0) return;
+  try {
+    await sb.from('students').upsert(
+      students.map(s => ({ 
+        id: s.id, 
+        class_id: s.classId, 
+        name: s.name, 
+        lrn: s.lrn, 
+        guardian: s.guardian 
+      })),
+      { onConflict: 'id' }
+    );
+  } catch (e) { console.error('Student sync error', e); }
 }
 
 async function syncOfflineOutbox() {
