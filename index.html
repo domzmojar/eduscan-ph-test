@@ -1754,43 +1754,65 @@ function closeEditClassModalDirect() { document.getElementById('edit-class-modal
 
 // ── EDIT LOG MODAL ────────────────────────────────────────────────────────
 function openEditLogModal(logId) {
-  const log = logs.find(l => l.id === logId);
-  if (!log) return showToast('Record not found.');
-  const ts = new Date(log.timestamp);
-  document.getElementById('edit-log-id').value                = logId;
-  document.getElementById('edit-log-original-timestamp').value = log.timestamp;
-  document.getElementById('edit-log-student-name').textContent = log.studentName + (log.studentLrn ? ` · LRN ${log.studentLrn}` : '');
-  document.getElementById('edit-log-type').value    = log.type || 'arrival';
-  document.getElementById('edit-log-time').value    = ts.toTimeString().slice(0,5);
-  document.getElementById('edit-log-date').value    = ts.toISOString().slice(0,10);
-  document.getElementById('edit-log-is-late').checked = !!log.isLate;
-  document.getElementById('edit-log-modal').classList.add('open');
-  document.body.style.overflow = 'hidden';
+    const log = logs.find(l => l.id === logId);
+    if (!log) return showToast('Record not found.');
+    const ts = new Date(log.timestamp);
+    
+    // FIX: Extract Date and Time using LOCAL time methods, not UTC
+    const localDate = ts.getFullYear() + '-' + 
+                      String(ts.getMonth() + 1).padStart(2, '0') + '-' + 
+                      String(ts.getDate()).padStart(2, '0');
+                      
+    const localTime = String(ts.getHours()).padStart(2, '0') + ':' + 
+                      String(ts.getMinutes()).padStart(2, '0');
+
+    document.getElementById('edit-log-id').value                = logId;
+    document.getElementById('edit-log-original-timestamp').value = log.timestamp;
+    document.getElementById('edit-log-student-name').textContent = log.studentName + (log.studentLrn ? ` · LRN ${log.studentLrn}` : '');
+    document.getElementById('edit-log-type').value    = log.type || 'arrival';
+    
+    // Use the local variables instead of toISOString()
+    document.getElementById('edit-log-time').value    = localTime;
+    document.getElementById('edit-log-date').value    = localDate;
+    
+    document.getElementById('edit-log-is-late').checked = !!log.isLate;
+    document.getElementById('edit-log-modal').classList.add('open');
+    document.body.style.overflow = 'hidden';
 }
 
 async function saveEditLog() {
-  const logId      = parseInt(document.getElementById('edit-log-id').value);
-  const originalTs = document.getElementById('edit-log-original-timestamp').value;
-  const type       = document.getElementById('edit-log-type').value;
-  const timeVal    = document.getElementById('edit-log-time').value;
-  const dateVal    = document.getElementById('edit-log-date').value;
-  const isLate     = document.getElementById('edit-log-is-late').checked;
+    const logId      = parseInt(document.getElementById('edit-log-id').value);
+    const originalTs = document.getElementById('edit-log-original-timestamp').value;
+    const type       = document.getElementById('edit-log-type').value;
+    const timeVal    = document.getElementById('edit-log-time').value;
+    const dateVal    = document.getElementById('edit-log-date').value;
+    const isLate     = document.getElementById('edit-log-is-late').checked;
 
-  if (!timeVal || !dateVal) return showToast('Date and time are required.');
-  const log = logs.find(l => l.id === logId);
-  if (!log) return;
+    if (!timeVal || !dateVal) return showToast('Date and time are required.');
+    const log = logs.find(l => l.id === logId);
+    if (!log) return;
 
-  log.timestamp = new Date(`${dateVal}T${timeVal}:00`).toISOString();
-  log.type  = type;
-  log.isLate = isLate;
+    // FIX: Parse the date and time strictly as LOCAL time to prevent UTC drift
+    const [y, mo, d] = dateVal.split('-').map(Number);
+    const [h, mi] = timeVal.split(':').map(Number);
+    const localDateObj = new Date(y, mo - 1, d, h, mi, 0);
+    
+    log.timestamp = localDateObj.toISOString();
+    log.type  = type;
+    log.isLate = isLate;
+    
+    // Flag for the v7 GAS script to update the row instead of duplicating
+    log.needsSync = true;
+    log._originalTimestamp = originalTs;
 
-  await dbPutAll('logs', [log]);
-  closeEditLogModalDirect();
-  renderLog(); renderTodayList();
-  if (document.getElementById('page-summary').classList.contains('active')) renderSummary();
-  if (document.getElementById('terms-modal-backdrop').classList.contains('open')) renderTermsModalBody();
-  syncSingleLog(log, originalTs);
-  showToast('Record updated.');
+    await dbPutAll('logs', [log]);
+    closeEditLogModalDirect();
+    renderLog(); renderTodayList();
+    if (document.getElementById('page-summary').classList.contains('active')) renderSummary();
+    if (document.getElementById('terms-modal-backdrop').classList.contains('open')) renderTermsModalBody();
+    
+    syncSingleLog(log, originalTs);
+    showToast('Record updated.');
 }
 
 async function deleteLogEntry() {
