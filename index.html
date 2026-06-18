@@ -12,8 +12,6 @@
   <meta name="apple-mobile-web-app-title" content="EduScan PH">
   <link rel="apple-touch-icon" href="/icon-192-any.png">
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
   <style>
     :root {
       --primary: #1d4ed8;
@@ -616,31 +614,48 @@
     </div>
   </div>
 
-  <!-- SYNC PAGE (Now EduScan Cloud Status) -->
-<div id="page-sync" class="page">
-  <div class="card" style="text-align:center; padding: 2rem 1.5rem;">
-    <div style="width:64px; height:64px; border-radius:50%; background:var(--success-bg); color:var(--success); display:flex; align-items:center; justify-content:center; margin:0 auto 1rem; font-size:2rem;">
-      ☁️
-    </div>
-    <h2 style="margin-bottom:0.5rem;">EduScan Cloud</h2>
-    <p style="font-size:0.9rem; color:var(--text-muted); margin-bottom:1.5rem;">
-      Your data is automatically backed up to the secure EduScan Cloud database.
-    </p>
-    
-    <div id="cloud-connection-status" style="padding: 1rem; border-radius: 10px; background: var(--success-bg); border: 1px solid var(--success-border); color: var(--success); font-weight: 600; margin-bottom: 1rem;">
-      ✅ Connected & Auto-Syncing
-    </div>
-
-    <div style="text-align:left; background: var(--bg); padding: 1rem; border-radius: 8px; border: 1px solid var(--border);">
-      <p style="font-size: 0.85rem; font-weight: 700; margin-bottom: 0.5rem;">How it works:</p>
-      <ul style="font-size: 0.82rem; color: var(--text-muted); line-height: 1.6; padding-left: 1.2rem;">
-        <li>Every time you scan a student, it is instantly saved to your phone <strong>and</strong> the cloud.</li>
-        <li>If you lose internet, scans are saved locally and automatically sync when you reconnect.</li>
-        <li>Edits and deletions are also synced instantly.</li>
-      </ul>
+  <!-- SYNC PAGE -->
+  <div id="page-sync" class="page">
+    <div class="card">
+      <h2>Sync to Google Sheets</h2>
+      <div id="autosync-bar" style="display:none; align-items:center; justify-content:space-between; background:var(--success-bg); border:1px solid var(--success-border); border-radius:8px; padding:0.6rem 0.85rem; margin-bottom:1rem; gap:0.5rem; flex-wrap:wrap;">
+        <span style="font-size:0.82rem; color:var(--success); font-weight:600;">🔄 Auto-sync active</span>
+        <span id="autosync-last" style="font-size:0.75rem; color:var(--text-muted);"></span>
+        <button class="btn danger sm" onclick="disableAutoSync()">Disable</button>
+      </div>
+      <div class="instruction-block">
+        <p style="font-size:0.87rem; font-weight:600; margin-bottom:0.6rem;">One-time setup:</p>
+        <ol>
+          <li>Open <strong>Google Sheets</strong> → create a new spreadsheet.</li>
+          <li>Copy the <strong>Spreadsheet ID</strong> from the URL — it's the long string between <code>/d/</code> and <code>/edit</code>:<br>
+            <code style="font-size:0.72rem; word-break:break-all; display:block; margin-top:4px;">docs.google.com/spreadsheets/d/<strong style="color:var(--primary);">15KHWKGQ_qH3sxC…</strong>/edit</code>
+          </li>
+          <li>Click <strong>Extensions → Apps Script</strong>. Delete all existing code. Paste the script below and <strong>Save (Ctrl+S)</strong>.</li>
+          <li>Click <strong>Deploy → New deployment</strong>. Type: <em>Web app</em>. Execute as: <em>Me</em>. Who has access: <em>Anyone</em>. Click Deploy → authorize when prompted.</li>
+          <li>Copy the <strong>Web App URL</strong> (ends in <code>/exec</code>).</li>
+          <li>Paste both the Spreadsheet ID and Web App URL below → tap <strong>Save &amp; enable auto-sync</strong>.</li>
+        </ol>
+      </div>
+      <div class="form-group">
+        <label>Spreadsheet ID</label>
+        <input type="text" id="sync-sheet-id" placeholder="e.g. 15KHWKGQ_qH3sxC_GGPfbduB5HWdXHD6YGtbX1pPgu3Y">
+      </div>
+      <div class="form-group">
+        <label>Web App URL</label>
+        <input type="url" id="sync-url-input" placeholder="https://script.google.com/macros/s/.../exec">
+      </div>
+      <div style="display:flex; gap:0.5rem; margin-bottom:0.75rem; flex-wrap:wrap;">
+        <button class="btn full" onclick="saveSyncUrl()">💾 Save &amp; enable auto-sync</button>
+        <button class="btn full success" id="sync-btn" onclick="syncToSheets()">⬆ Push unsynced logs</button>
+      </div>
+      <div id="sync-status-msg"></div>
+      <details style="margin-top:1rem;">
+        <summary>Show Apps Script to paste</summary>
+        <textarea id="gas-code" rows="22" readonly style="margin-top:0.6rem; font-size:0.77rem;"></textarea>
+        <button class="btn sm" style="margin-top:0.5rem;" onclick="copyScript()">Copy script</button>
+      </details>
     </div>
   </div>
-</div>
 
   <!-- TERMS PAGE -->
   <div id="page-terms" class="page">
@@ -1188,7 +1203,6 @@ async function handleQRScan(rawData) {
     }
 
     const logEntry = {
-      client_id:   crypto.randomUUID(), // Supabase unique identifier
       timestamp:   new Date().toISOString(),
       classId:     currentClassId,
       className:   (classes.find(c => c.id === currentClassId) || {}).name || '',
@@ -1216,7 +1230,7 @@ async function handleQRScan(rawData) {
     logs.unshift(logEntry);
 
     if (navigator.vibrate) navigator.vibrate([80, 40, 80]);
-    pushLogToSupabase(logEntry); // Instant Supabase push
+    scheduleAutoSync();
     checkAutoExport('scan');
 
     const isArrival = scanMode === 'arrival';
@@ -1276,7 +1290,6 @@ async function addClass() {
   if (!name) return showToast('Enter a class name.');
   classes.push({ id: 'class_' + Date.now(), name, startTime, graceMins });
   await saveClasses();
-  syncClassesToSupabase();
   input.value = '';
   renderClasses(); populateDropdowns();
   showToast('Class saved.');
@@ -1362,7 +1375,6 @@ async function addStudent() {
   students.push({ id: 'student_' + Date.now(), classId, name, lrn, guardian });
   students.sort((a, b) => a.name.localeCompare(b.name));
   await saveStudents();
-  syncStudentsToSupabase();
 
   ['student-name-input','student-lrn-input','student-guardian-input'].forEach(id => {
     document.getElementById(id).value = '';
@@ -1394,22 +1406,14 @@ function renderStudents() {
   }
   container.innerHTML = list.map(s => {
     const cls    = (classes.find(c => c.id === s.classId) || {}).name || 'Unknown';
-    const qrData = JSON.stringify({ eduscan: true, id: s.id });
-
-    // Generate QR locally (Works 100% offline!)
-    const qr = qrcode(0, 'M'); 
-    qr.addData(qrData);
-    qr.make();
-    const svgHtml = qr.createSvgTag({ cellSize: 4, margin: 2 });
-
+    const qrData = encodeURIComponent(JSON.stringify({ eduscan: true, id: s.id }));
+    const qrUrl  = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${qrData}`;
     return `
-    <div class="qr-card">
-    <span class="qr-class">${cls}</span>
-    <span class="qr-name">${s.name}</span>
-    ${s.lrn ? `<span class="qr-lrn">LRN: ${s.lrn}</span>` : ''}
-    <div style="width:120px; height:120px; background:#fff; padding:5px; border:1px solid #eee; border-radius:4px; display:flex; align-items:center; justify-content:center;">
-      ${svgHtml}
-    </div>
+      <div class="qr-card">
+        <span class="qr-class">${cls}</span>
+        <span class="qr-name">${s.name}</span>
+        ${s.lrn ? `<span class="qr-lrn">LRN: ${s.lrn}</span>` : ''}
+        <img src="${qrUrl}" alt="QR for ${s.name}" style="width:100%;max-width:120px;height:auto;border:1px solid #eee;padding:3px;background:#fff;border-radius:4px;">
         ${s.guardian ? `<span class="qr-meta" style="margin-top:0.3rem;">👤 ${s.guardian}</span>` : ''}
         <button class="btn danger sm" style="margin-top:0.5rem;" onclick="deleteStudent('${s.id}')">Remove</button>
       </div>`;
@@ -1793,21 +1797,15 @@ async function saveEditLog() {
   renderLog(); renderTodayList();
   if (document.getElementById('page-summary').classList.contains('active')) renderSummary();
   if (document.getElementById('terms-modal-backdrop').classList.contains('open')) renderTermsModalBody();
-  updateLogInSupabase(log); // Instant Supabase update
+  syncSingleLog(log, originalTs);
   showToast('Record updated.');
 }
 
 async function deleteLogEntry() {
   const logId = parseInt(document.getElementById('edit-log-id').value);
   if (!confirm('Delete this attendance record?')) return;
-  
-  const logToDelete = logs.find(l => l.id === logId);
-  const clientId = logToDelete ? logToDelete.client_id : null;
-
   logs = logs.filter(l => l.id !== logId);
   await dbDelete('logs', logId);
-  
-  if (clientId) deleteLogInSupabase(clientId); // Instant Supabase delete
   closeEditLogModalDirect();
   renderLog(); renderTodayList();
   if (document.getElementById('page-summary').classList.contains('active')) renderSummary();
@@ -1842,150 +1840,345 @@ function populateDropdowns() {
   if (currentClassId) document.getElementById('scanner-class-select').value = currentClassId;
 }
 
-// ── SUPABASE SYNC ENGINE ──────────────────────────────────────────────────
-// ⚠️ IMPORTANT: Paste your actual Supabase URL and Anon Key here!
-const SUPABASE_URL = 'https://ozsgyqmrwangpftkdgea.supabase.co'; 
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im96c2d5cW1yd2FuZ3BmdGtkZ2VhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE2ODEwNTksImV4cCI6MjA5NzI1NzA1OX0.Nkw8bQF4QQqCAs9SVDoOEYFHM9zPP8lFOqrYZSYJ04M';
-const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// ── SYNC ──────────────────────────────────────────────────────────────────
+const GAS_SCRIPT = `// EduScan PH — Google Apps Script v4
+// Paste into Extensions → Apps Script → Code.js → Save → Deploy as new deployment.
 
-let isOnline = navigator.onLine;
-window.addEventListener('online', () => { 
-  isOnline = true; 
-  syncOfflineOutbox(); 
-  syncClassesToSupabase();   // <-- ADD THIS
-  syncStudentsToSupabase();  // <-- ADD THIS
-  showToast('☁️ Back online. Syncing all data...'); 
-});
-window.addEventListener('offline', () => { 
-  isOnline = false; 
-  updateCloudUI(false);
-  showToast('📴 Offline mode. Scans saved locally.'); 
-});
+const SPREADSHEET_ID = ''; // Leave blank to use the bound spreadsheet
 
-function updateCloudUI(online) {
-  const el = document.getElementById('cloud-connection-status');
-  if(!el) return;
-  if(online) {
-    el.style.background = 'var(--success-bg)'; el.style.color = 'var(--success)'; el.style.borderColor = 'var(--success-border)';
-    el.textContent = '✅ Connected & Auto-Syncing';
-  } else {
-    el.style.background = 'var(--danger-bg)'; el.style.color = 'var(--danger)'; el.style.borderColor = 'var(--danger-border)';
-    el.textContent = '📴 Offline Mode (Data saved locally)';
+function getSpreadsheet() {
+  return SPREADSHEET_ID
+    ? SpreadsheetApp.openById(SPREADSHEET_ID)
+    : SpreadsheetApp.getActiveSpreadsheet();
+}
+
+const TERMS = [
+  { label: 'Term 1', months: [6, 7, 8, 9]  },
+  { label: 'Term 2', months: [10, 11, 12]   },
+  { label: 'Term 3', months: [1, 2, 3]      },
+];
+
+function getTermLabel(dateObj) {
+  const m = dateObj.getMonth() + 1;
+  const t = TERMS.find(t => t.months.includes(m));
+  return t ? t.label : 'Other';
+}
+
+const SKIP_TABS      = ['Summary', 'Attendance', 'Attendance (migrated)'];
+const ARCHIVE_SUFFIX = ' (archived)';
+
+function isArchived(name)  { return name.endsWith(ARCHIVE_SUFFIX); }
+function archiveName(name) { return name + ARCHIVE_SUFFIX; }
+function activeName(name)  { return name.replace(ARCHIVE_SUFFIX, ''); }
+
+function getOrCreateSheet(ss, name, headers) {
+  let sheet = ss.getSheetByName(name);
+  if (!sheet) {
+    sheet = ss.insertSheet(name);
+    applyActiveHeader(sheet, headers);
+  }
+  return sheet;
+}
+
+function applyActiveHeader(sheet, headers) {
+  const r = sheet.getRange(1, 1, 1, headers.length);
+  r.setValues([headers]);
+  r.setFontWeight('bold');
+  r.setBackground('#1d4ed8');
+  r.setFontColor('#ffffff');
+  sheet.setFrozenRows(1);
+}
+
+function applyArchivedHeader(sheet) {
+  const lastCol = sheet.getLastColumn() || 1;
+  const r = sheet.getRange(1, 1, 1, lastCol);
+  r.setBackground('#94a3b8');
+  r.setFontColor('#ffffff');
+  r.setFontWeight('bold');
+}
+
+function archiveDeletedClasses(ss, activeClasses) {
+  if (!activeClasses || !activeClasses.length) return;
+  const activeSet = new Set(activeClasses);
+  ss.getSheets().forEach(sheet => {
+    const name = sheet.getName();
+    if (SKIP_TABS.includes(name)) return;
+    if (isArchived(name)) return;
+    if (!activeSet.has(name)) {
+      sheet.setName(archiveName(name));
+      applyArchivedHeader(sheet);
+      sheet.getRange(1, 1).setNote('This class was deleted in EduScan PH. Data preserved for records.');
+    }
+  });
+  ss.getSheets().forEach(sheet => {
+    const name = sheet.getName();
+    if (!isArchived(name)) return;
+    const original = activeName(name);
+    if (activeSet.has(original)) {
+      sheet.setName(original);
+      const lastCol = sheet.getLastColumn() || 1;
+      const r = sheet.getRange(1, 1, 1, lastCol);
+      r.setBackground('#1d4ed8');
+      r.setFontColor('#ffffff');
+      sheet.getRange(1, 1).clearNote();
+    }
+  });
+}
+
+function migrateAttendanceTab(ss) {
+  const old = ss.getSheetByName('Attendance');
+  if (!old || old.getLastRow() < 2) return;
+  const rows    = old.getRange(2, 1, old.getLastRow() - 1, 8).getValues();
+  const byClass = {};
+  rows.forEach(r => {
+    const cls = r[5] || 'Unknown Class';
+    if (!byClass[cls]) byClass[cls] = [];
+    byClass[cls].push(r);
+  });
+  const CLASS_HEADERS = ['Timestamp','Date','Time','Type','Late','Class','Student Name','LRN','Term'];
+  Object.entries(byClass).forEach(([className, classRows]) => {
+    const sheet    = getOrCreateSheet(ss, className, CLASS_HEADERS);
+    const existing = getExistingTimestamps(sheet);
+    const toAdd    = classRows.filter(r => !existing.has(r[0])).map(r => [...r, getTermLabel(new Date(r[0]))]);
+    if (toAdd.length)
+      sheet.getRange(sheet.getLastRow() + 1, 1, toAdd.length, CLASS_HEADERS.length).setValues(toAdd);
+  });
+  old.setName('Attendance (migrated)');
+}
+
+function getExistingTimestamps(sheet) {
+  const last = sheet.getLastRow();
+  if (last < 2) return new Set();
+  return new Set(sheet.getRange(2, 1, last - 1, 1).getValues().map(r => r[0]).filter(Boolean));
+}
+
+function getTimestampRowMap(sheet) {
+  const last = sheet.getLastRow();
+  const map  = {};
+  if (last < 2) return map;
+  sheet.getRange(2, 1, last - 1, 1).getValues().forEach((r, i) => { if (r[0]) map[r[0]] = i + 2; });
+  return map;
+}
+
+function rebuildSummary(ss) {
+  let summary = ss.getSheetByName('Summary');
+  if (!summary) { summary = ss.insertSheet('Summary', 0); } else { summary.clearContents(); summary.clearFormats(); }
+  const headers = ['Class','Student Name','LRN','T1 Present','T1 Complete','T1 Half-day','T1 Late','T1 Absent','T2 Present','T2 Complete','T2 Half-day','T2 Late','T2 Absent','T3 Present','T3 Complete','T3 Half-day','T3 Late','T3 Absent','Total Present','Total Complete','Total Half-day','Total Late','Total Absent'];
+  const hRange  = summary.getRange(1, 1, 1, headers.length);
+  hRange.setValues([headers]); hRange.setFontWeight('bold'); hRange.setBackground('#1d4ed8'); hRange.setFontColor('#ffffff');
+  summary.setFrozenRows(1);
+  const classSheets = ss.getSheets().filter(s => !SKIP_TABS.includes(s.getName()) && !isArchived(s.getName()));
+  const allRows = [];
+  classSheets.forEach(sheet => {
+    const last = sheet.getLastRow();
+    if (last < 2) return;
+    const data = sheet.getRange(2, 1, last - 1, 9).getValues();
+    const schoolDaysByTerm = {};
+    TERMS.forEach(t => {
+      schoolDaysByTerm[t.label] = new Set(data.filter(r => { const m = new Date(r[0]).getMonth() + 1; return r[3] === 'Arrival' && t.months.includes(m); }).map(r => r[1]));
+    });
+    const studentsMap = {};
+    data.forEach(r => {
+      const key = r[7] || r[6];
+      if (!studentsMap[key]) studentsMap[key] = { name: r[6], lrn: r[7], cls: r[5], logs: [] };
+      studentsMap[key].logs.push(r);
+    });
+    Object.values(studentsMap).forEach(({ name, lrn, cls, logs }) => {
+      const row = [cls, name, lrn];
+      let totPresent = 0, totComplete = 0, totHalf = 0, totLate = 0, totAbsent = 0;
+      TERMS.forEach(t => {
+        const termLogs   = logs.filter(r => r[8] === t.label);
+        const arrivals   = termLogs.filter(r => r[3] === 'Arrival');
+        const departures = termLogs.filter(r => r[3] === 'Departure');
+        const arrivedDays  = new Set(arrivals.map(r => r[1]));
+        const departedDays = new Set(departures.map(r => r[1]));
+        const presentDays  = arrivedDays.size;
+        const completeDays = [...arrivedDays].filter(d => departedDays.has(d)).length;
+        const halfDays     = presentDays - completeDays;
+        const lateCount    = arrivals.filter(r => r[4] === 'Yes').length;
+        const absentDays   = [...schoolDaysByTerm[t.label]].filter(d => !arrivedDays.has(d)).length;
+        row.push(presentDays, completeDays, halfDays, lateCount, absentDays);
+        totPresent += presentDays; totComplete += completeDays; totHalf += halfDays; totLate += lateCount; totAbsent += absentDays;
+      });
+      row.push(totPresent, totComplete, totHalf, totLate, totAbsent);
+      allRows.push(row);
+    });
+  });
+  if (allRows.length) {
+    allRows.sort((a, b) => a[0].localeCompare(b[0]) || a[1].localeCompare(b[1]));
+    summary.getRange(2, 1, allRows.length, headers.length).setValues(allRows);
+    const n = allRows.length;
+    [4,9,14,19].forEach(c  => summary.getRange(2,c,n,1).setBackground('#f0fdf4'));
+    [5,10,15,20].forEach(c => summary.getRange(2,c,n,1).setBackground('#dcfce7'));
+    [6,11,16,21].forEach(c => summary.getRange(2,c,n,1).setBackground('#fefce8'));
+    [7,12,17,22].forEach(c => summary.getRange(2,c,n,1).setBackground('#fff7ed'));
+    [8,13,18,23].forEach(c => summary.getRange(2,c,n,1).setBackground('#fef2f2'));
+    summary.autoResizeColumns(1, headers.length);
   }
 }
 
-// Helper to calculate DepEd Terms
-function getTermLabel(isoString) {
-  const m = new Date(isoString).getMonth() + 1;
-  if ([6,7,8,9].includes(m)) return 'Term 1';
-  if ([10,11,12].includes(m)) return 'Term 2';
-  if ([1,2,3].includes(m)) return 'Term 3';
-  return 'Other';
+function doPost(e) {
+  try {
+    const data = JSON.parse(e.postData.contents);
+    const ss   = getSpreadsheet();
+    if (data.action === 'ping') {
+      return ContentService.createTextOutput(JSON.stringify({ success: true, pong: true })).setMimeType(ContentService.MimeType.JSON);
+    }
+    migrateAttendanceTab(ss);
+    archiveDeletedClasses(ss, data.activeClasses);
+    const CLASS_HEADERS = ['Timestamp','Date','Time','Type','Late','Class','Student Name','LRN','Term'];
+    let added = 0, updated = 0;
+    const byClass = {};
+    for (const l of (data.logs || [])) {
+      const cls = l.className || 'Unknown Class';
+      if (!byClass[cls]) byClass[cls] = [];
+      byClass[cls].push(l);
+    }
+    Object.entries(byClass).forEach(([className, classLogs]) => {
+      const sheet    = getOrCreateSheet(ss, className, CLASS_HEADERS);
+      const tsRowMap = getTimestampRowMap(sheet);
+      classLogs.forEach(l => {
+        const d       = new Date(l.timestamp);
+        const rowData = [l.timestamp, Utilities.formatDate(d, Session.getScriptTimeZone(), 'yyyy-MM-dd'), Utilities.formatDate(d, Session.getScriptTimeZone(), 'HH:mm:ss'), l.type === 'departure' ? 'Departure' : 'Arrival', (l.type === 'arrival' && l.isLate) ? 'Yes' : '', l.className || '', l.studentName || '', l.studentLrn || '', getTermLabel(d)];
+        const lookupKey = l._originalTimestamp || l.timestamp;
+        if (tsRowMap[lookupKey]) {
+          sheet.getRange(tsRowMap[lookupKey], 1, 1, CLASS_HEADERS.length).setValues([rowData]);
+          tsRowMap[l.timestamp] = tsRowMap[lookupKey];
+          updated++;
+        } else {
+          sheet.getRange(sheet.getLastRow() + 1, 1, 1, CLASS_HEADERS.length).setValues([rowData]);
+          tsRowMap[l.timestamp] = sheet.getLastRow();
+          added++;
+        }
+      });
+    });
+    rebuildSummary(ss);
+    return ContentService.createTextOutput(JSON.stringify({ success: true, added, updated })).setMimeType(ContentService.MimeType.JSON);
+  } catch (error) {
+    return ContentService.createTextOutput(JSON.stringify({ success: false, error: error.message })).setMimeType(ContentService.MimeType.JSON);
+  }
+}`;
+
+let autoSyncEnabled = false;
+let autoSyncTimer   = null;
+const AUTO_SYNC_DELAY = 8000;
+
+async function renderSyncPage() {
+  const savedUrl     = await dbGetSetting('sync_url')      || '';
+  const savedSheetId = await dbGetSetting('sync_sheet_id') || '';
+  const autoSync     = await dbGetSetting('auto_sync');
+  document.getElementById('sync-url-input').value = savedUrl;
+  document.getElementById('sync-sheet-id').value  = savedSheetId;
+  document.getElementById('gas-code').value = GAS_SCRIPT;
+  autoSyncEnabled = !!autoSync;
+  updateAutoSyncBar();
 }
 
-// 1. INSTANT PUSH (Triggered immediately after a scan)
-async function pushLogToSupabase(log) {
-  if (!isOnline) { await saveToOfflineOutbox(log); return; }
+function updateAutoSyncBar() {
+  const bar = document.getElementById('autosync-bar');
+  if (autoSyncEnabled) { bar.style.display = 'flex'; updateAutoSyncLastLabel(); }
+  else                 { bar.style.display = 'none'; }
+}
+
+async function updateAutoSyncLastLabel() {
+  const last = await dbGetSetting('last_sync_time');
+  const el   = document.getElementById('autosync-last');
+  if (el) el.textContent = last
+    ? `Last synced: ${new Date(last).toLocaleString([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}`
+    : 'Not synced yet';
+}
+
+async function saveSyncUrl() {
+  const url     = document.getElementById('sync-url-input').value.trim();
+  const sheetId = document.getElementById('sync-sheet-id').value.trim();
+  const msg     = document.getElementById('sync-status-msg');
+  if (!url) return showToast('Paste the Web App URL first.');
+  if (!url.includes('script.google.com')) {
+    msg.innerHTML = `<div class="sync-status err">That doesn't look like a Web App URL. It should contain script.google.com and end in /exec.</div>`;
+    return;
+  }
+  await dbSetSetting('sync_url',      url);
+  await dbSetSetting('sync_sheet_id', sheetId);
+  await dbSetSetting('auto_sync',     true);
+  autoSyncEnabled = true;
+  updateAutoSyncBar();
+  msg.innerHTML = `<div class="sync-status info">Testing connection…</div>`;
   try {
-    const { error } = await sb.from('attendance_logs').upsert([{
-      client_id: log.client_id, class_id: log.classId, student_id: log.studentId,
-      student_name: log.studentName, student_lrn: log.studentLrn,
-      type: log.type, is_late: log.isLate, timestamp: log.timestamp,
-      term_label: getTermLabel(log.timestamp)
-    }], { onConflict: 'client_id' });
-    if (error) throw error;
-  } catch (e) {
-    console.error('Instant push failed, saving to offline outbox', e);
-    await saveToOfflineOutbox(log);
+    const resp   = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'ping' }) });
+    const result = await resp.json();
+    if (result.pong || result.success) {
+      msg.innerHTML = `<div class="sync-status ok">✅ Connected! Auto-sync enabled.</div>`;
+      showToast('Connected to Google Sheets ✓');
+    } else {
+      msg.innerHTML = `<div class="sync-status err">Script error: ${result.error || 'Unknown error'}</div>`;
+    }
+  } catch(e) {
+    msg.innerHTML = `<div class="sync-status err">Could not reach the script. Check the URL ends in /exec and access is set to Anyone.</div>`;
   }
 }
 
-// 2. INSTANT UPDATE (Triggered when a teacher edits a log)
-async function updateLogInSupabase(log) {
-  if (!isOnline) return; 
-  try {
-    await sb.from('attendance_logs').update({
-      type: log.type, is_late: log.isLate, timestamp: log.timestamp,
-      term_label: getTermLabel(log.timestamp)
-    }).eq('client_id', log.client_id);
-  } catch (e) { console.error('Cloud update failed', e); }
+async function disableAutoSync() {
+  await dbSetSetting('auto_sync', false);
+  autoSyncEnabled = false;
+  clearTimeout(autoSyncTimer);
+  updateAutoSyncBar();
+  showToast('Auto-sync disabled.');
 }
 
-// 3. INSTANT DELETE (Triggered when a teacher deletes a log)
-async function deleteLogInSupabase(clientId) {
-  if (!isOnline) return;
+async function syncSingleLog(log, originalTimestamp) {
+  if (!autoSyncEnabled) return;
+  const url = await dbGetSetting('sync_url');
+  if (!url) return;
   try {
-    await sb.from('attendance_logs').delete().eq('client_id', clientId);
-  } catch (e) { console.error('Cloud delete failed', e); }
+    const payload = { ...log, _originalTimestamp: originalTimestamp || log.timestamp };
+    await fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ logs: [payload], activeClasses: classes.map(c => c.name) }) });
+  } catch(e) {}
 }
 
-// 4. OFFLINE OUTBOX HELPERS
-async function saveToOfflineOutbox(log) {
-  let outbox = await dbGetSetting('offline_outbox') || [];
-  outbox.push(log);
-  await dbSetSetting('offline_outbox', outbox);
+function scheduleAutoSync() {
+  if (!autoSyncEnabled) return;
+  clearTimeout(autoSyncTimer);
+  autoSyncTimer = setTimeout(() => syncToSheets(true), AUTO_SYNC_DELAY);
 }
 
-// Sync Classes to Supabase
-async function syncClassesToSupabase() {
-  if (!isOnline || classes.length === 0) return;
-  try {
-    await sb.from('classes').upsert(
-      classes.map(c => ({ 
-        id: c.id, 
-        name: c.name, 
-        start_time: c.startTime, 
-        grace_mins: c.graceMins, 
-        is_archived: false 
-      })),
-      { onConflict: 'id' }
-    );
-  } catch (e) { console.error('Class sync error', e); }
-}
+async function syncToSheets(silent = false) {
+  const url = await dbGetSetting('sync_url');
+  const msg = document.getElementById('sync-status-msg');
+  if (!url)       { if (!silent) msg.innerHTML = `<div class="sync-status err">No URL saved. Complete setup above first.</div>`; return; }
+  if (!logs.length) { if (!silent) msg.innerHTML = `<div class="sync-status info">No logs to sync yet.</div>`; return; }
 
-// Sync Students to Supabase
-async function syncStudentsToSupabase() {
-  if (!isOnline || students.length === 0) return;
-  try {
-    await sb.from('students').upsert(
-      students.map(s => ({ 
-        id: s.id, 
-        class_id: s.classId, 
-        name: s.name, 
-        lrn: s.lrn, 
-        guardian: s.guardian 
-      })),
-      { onConflict: 'id' }
-    );
-  } catch (e) { console.error('Student sync error', e); }
-}
+  const lastSync = await dbGetSetting('last_sync_time');
+  const toSync   = lastSync ? logs.filter(l => l.timestamp > lastSync) : [...logs];
+  if (!toSync.length) { if (!silent) msg.innerHTML = `<div class="sync-status ok">✅ All logs already synced.</div>`; return; }
 
-async function syncOfflineOutbox() {
-  let outbox = await dbGetSetting('offline_outbox') || [];
-  if (outbox.length === 0) return;
-  showToast(`🔄 Syncing ${outbox.length} offline records...`);
+  const btn = document.getElementById('sync-btn');
+  if (btn && !silent) { btn.disabled = true; btn.textContent = `Pushing ${toSync.length} records…`; }
+  if (!silent) msg.innerHTML = `<div class="sync-status info">Pushing ${toSync.length} records…</div>`;
+
   try {
-    const { error } = await sb.from('attendance_logs').upsert(
-      outbox.map(log => ({
-        client_id: log.client_id, class_id: log.classId, student_id: log.studentId,
-        student_name: log.studentName, student_lrn: log.studentLrn,
-        type: log.type, is_late: log.isLate, timestamp: log.timestamp,
-        term_label: getTermLabel(log.timestamp)
-      })),
-      { onConflict: 'client_id' }
-    );
-    if (!error) {
-      await dbSetSetting('offline_outbox', []); 
-      showToast(`✅ Synced ${outbox.length} records to cloud!`);
-    } else { throw error; }
-  } catch (e) {
-    console.error('Outbox sync failed', e);
-    showToast('⚠️ Sync failed. Data is safe locally.');
+    const resp   = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ logs: toSync, activeClasses: classes.map(c => c.name) }) });
+    const result = await resp.json();
+    if (result.success) {
+      await dbSetSetting('last_sync_time', new Date().toISOString());
+      updateAutoSyncLastLabel();
+      if (!silent) msg.innerHTML = `<div class="sync-status ok">✅ ${result.added} record${result.added !== 1 ? 's' : ''} added to Google Sheets.</div>`;
+      if (silent && result.added > 0) showToast(`☁ ${result.added} record${result.added !== 1 ? 's' : ''} synced`);
+    } else {
+      if (!silent) msg.innerHTML = `<div class="sync-status err">Script error: ${result.error}</div>`;
+      if (silent) showToast('⚠ Sync failed — check the Sync tab.');
+    }
+  } catch(e) {
+    if (!silent) msg.innerHTML = `<div class="sync-status err">Network error. Check your connection and URL.</div>`;
+    if (silent) showToast('⚠ Sync — network error.');
   }
+  if (btn && !silent) { btn.disabled = false; btn.textContent = '⬆ Push unsynced logs'; }
 }
 
-// Legacy function kept to prevent errors if called elsewhere
-function renderSyncPage() { updateCloudUI(isOnline); }
+function copyScript() {
+  const ta = document.getElementById('gas-code');
+  ta.select(); document.execCommand('copy');
+  showToast('Script copied.');
+}
 
 // ── PWA INSTALL ───────────────────────────────────────────────────────────
 let pwaInstallPrompt = null;
