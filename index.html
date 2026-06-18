@@ -2141,37 +2141,125 @@ function scheduleAutoSync() {
   autoSyncTimer = setTimeout(() => syncToSheets(true), AUTO_SYNC_DELAY);
 }
 
+// ── SYNC HELPERS ──────────────────────────────────────────────────────────
+function getActiveClasses() {
+    return classes.map(c => c.name);
+}
+
+async function getPendingLogs() {
+    const lastSync = await dbGetSetting('last_sync_time');
+    // Filter logs that haven't crossed the sync watermark yet
+    let pending = lastSync ? logs.filter(l => l.timestamp > lastSync) : [...logs];
+    // CRITICAL: Sort chronologically so chunking processes oldest logs first
+    return pending.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+}
+
+// In our watermark architecture, we don't delete logs; we advance the watermark.
+async function advanceSyncWatermark(timestamp) {
+    await dbSetSetting('last_sync_time', timestamp);
+    updateAutoSyncLastLabel();
+}
+
+// ── OPTIMIZED SYNC FUNCTION (Chunking + Retry) ────────────────────────────
 async function syncToSheets(silent = false) {
-  const url = await dbGetSetting('sync_url');
-  const msg = document.getElementById('sync-status-msg');
-  if (!url)       { if (!silent) msg.innerHTML = `<div class="sync-status err">No URL saved. Complete setup above first.</div>`; return; }
-  if (!logs.length) { if (!silent) msg.innerHTML = `<div class="sync-status info">No logs to sync yet.</div>`; return; }
+    const url = await dbGetSetting('sync_url');
+    const msg = document.getElementById('sync-status-msg');
+    const btn = document.getElementById('sync-btn');
 
-  const lastSync = await dbGetSetting('last_sync_time');
-  const toSync   = lastSync ? logs.filter(l => l.timestamp > lastSync) : [...logs];
-  if (!toSync.length) { if (!silent) msg.innerHTML = `<div class="sync-status ok">✅ All logs already synced.</div>`; return; }
-
-  const btn = document.getElementById('sync-btn');
-  if (btn && !silent) { btn.disabled = true; btn.textContent = `Pushing ${toSync.length} records…`; }
-  if (!silent) msg.innerHTML = `<div class="sync-status info">Pushing ${toSync.length} records…</div>`;
-
-  try {
-    const resp   = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ logs: toSync, activeClasses: classes.map(c => c.name) }) });
-    const result = await resp.json();
-    if (result.success) {
-      await dbSetSetting('last_sync_time', new Date().toISOString());
-      updateAutoSyncLastLabel();
-      if (!silent) msg.innerHTML = `<div class="sync-status ok">✅ ${result.added} record${result.added !== 1 ? 's' : ''} added to Google Sheets.</div>`;
-      if (silent && result.added > 0) showToast(`☁ ${result.added} record${result.added !== 1 ? 's' : ''} synced`);
-    } else {
-      if (!silent) msg.innerHTML = `<div class="sync-status err">Script error: ${result.error}</div>`;
-      if (silent) showToast('⚠ Sync failed — check the Sync tab.');
+    if (!url) { 
+        if (!silent && msg) msg.innerHTML = `<div class="sync-status err">No URL saved. Complete setup above first.</div>`; 
+        return; 
     }
-  } catch(e) {
-    if (!silent) msg.innerHTML = `<div class="sync-status err">Network error. Check your connection and URL.</div>`;
-    if (silent) showToast('⚠ Sync — network error.');
-  }
-  if (btn && !silent) { btn.disabled = false; btn.textContent = '⬆ Push unsynced logs'; }
+
+    const pendingLogs = await getPendingLogs();
+    if (!pendingLogs.length) { 
+        if (!silent && msg) msg.innerHTML = `<div class="sync-status ok">✅ All logs already synced.</div>`; 
+        return; 
+    }
+
+    const CHUNK_SIZE = 50; // Safe limit to prevent GAS 6-min timeout
+    const chunks = [];
+    for (let i = 0; i < pendingLogs.length; i += CHUNK_SIZE) {
+        chunks.push(pendingLogs.slice(i, i + CHUNK_SIZE));
+    }
+
+    if (!silent) {
+        if (msg) msg.innerHTML = `<div class="sync-status info">Pushing ${pendingLogs.length} records in ${chunks.length} batch(es)…</div>`;
+        if (btn) { btn.disabled = true; btn.textContent = `Pushing 0/${chunks.length} batches…`; }
+    }
+
+    let totalAdded = 0;
+    let totalUpdated = 0;
+    let lastSuccessfulTimestamp = await dbGetSetting('last_sync_time');
+
+    // Process chunks sequentially
+    for (let i = 0; i < chunks.length; i++) {
+        const chunk = chunks[i];
+        if (!silent && btn) btn.textContent = `Pushing ${i + 1}/${chunks.length} batches…`;
+
+        let success = false;
+        let retries = 0;
+        const MAX_RETRIES = 3;
+
+        // Retry loop with Exponential Backoff
+        while (!success && retries <= MAX_RETRIES) {
+            try {
+                const payload = {
+                    action: 'sync', // Matches GAS v7 requirement
+                    logs: chunk,
+                    activeClasses: getActiveClasses()
+                };
+
+                const resp = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+
+                const result = await resp.json();
+
+                if (result.success) {
+                    totalAdded += result.added || 0;
+                    totalUpdated += result.updated || 0;
+                    // Advance watermark to the last log in this successful chunk
+                    lastSuccessfulTimestamp = chunk[chunk.length - 1].timestamp;
+                    success = true; 
+                } else {
+                    throw new Error(result.error || 'Unknown script error');
+                }
+            } catch (e) {
+                retries++;
+                if (retries > MAX_RETRIES) {
+                    // Failed after all retries: Stop processing, keep remaining logs in queue
+                    const errMsg = `Failed at batch ${i + 1}/${chunks.length}: ${e.message}. Remaining logs kept in queue.`;
+                    if (!silent) {
+                        if (msg) msg.innerHTML = `<div class="sync-status err">⚠️ ${errMsg}</div>`;
+                        if (btn) { btn.disabled = false; btn.textContent = '⬆ Push unsynced logs'; }
+                    } else {
+                        showToast('⚠ Sync paused. Check Sync tab.');
+                    }
+                    return; // Abort further chunks
+                }
+                // Exponential backoff: 2s, 4s, 8s
+                const delay = Math.pow(2, retries) * 1000;
+                await new Promise(resolve => setTimeout(resolve, delay));
+            }
+        }
+    }
+
+    // All chunks successful: Commit the final watermark
+    if (lastSuccessfulTimestamp) {
+        await advanceSyncWatermark(lastSuccessfulTimestamp);
+    }
+
+    if (!silent) {
+        if (msg) msg.innerHTML = `<div class="sync-status ok">✅ Synced! ${totalAdded} added, ${totalUpdated} updated.</div>`;
+        if (btn) { btn.disabled = false; btn.textContent = '⬆ Push unsynced logs'; }
+    } else if (totalAdded > 0 || totalUpdated > 0) {
+        showToast(`☁ Synced ${totalAdded + totalUpdated} records`);
+    }
 }
 
 function copyScript() {
