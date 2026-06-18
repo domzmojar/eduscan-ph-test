@@ -2222,10 +2222,9 @@ async function exportData(type = 'all') {
   const stamp = now.toISOString().slice(0,10);
   let payload = {}, filename = '';
 
-  if (type === 'all') {
-    const syncUrl     = await dbGetSetting('sync_url')      || '';
-    const syncSheetId = await dbGetSetting('sync_sheet_id') || '';
-    payload  = { exportedAt: now.toISOString(), version: 'eduscan-ph-v1', classes, students, logs, settings: { syncUrl, syncSheetId } };
+    if (type === 'all') {
+    const syncUrl = await dbGetSetting('sync_url') || '';
+    payload  = { exportedAt: now.toISOString(), version: 'eduscan-ph-v2', classes, students, logs, settings: { syncUrl } };
     filename = `eduscan-backup-${stamp}.json`;
   } else if (type === 'logs') {
     payload  = { exportedAt: now.toISOString(), logs };
@@ -2313,8 +2312,7 @@ async function importData(event) {
       logs.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
       importedLogs = newLogs.length;
     }
-    if (payload.settings?.syncUrl)     await dbSetSetting('sync_url',      payload.settings.syncUrl);
-    if (payload.settings?.syncSheetId) await dbSetSetting('sync_sheet_id', payload.settings.syncSheetId);
+    if (payload.settings?.syncUrl) await dbSetSetting('sync_url', payload.settings.syncUrl);
     populateDropdowns();
     msg.innerHTML = `<div class="sync-status ok">✅ Import complete: ${importedClasses} classes · ${importedStudents} students · ${importedLogs} logs added</div>`;
     showToast('Import complete ✓');
