@@ -988,6 +988,7 @@ function dbSetSetting(key, value) {
 let classes  = [];
 let students = [];
 let logs     = [];
+let schoolYearStart = '';
 
 let currentClassId  = null;
 let cameraStream    = null;
@@ -1573,6 +1574,16 @@ function renderSummary() {
   if (!classes.length) { box.innerHTML = `<p class="empty">No classes configured yet.</p>`; return; }
   const range = getActiveDateRange();
   if (!range)  { box.innerHTML = `<p class="empty">Select a date range to view data.</p>`; return; }
+
+  // NEW: Check if the selected range is entirely before the school year started
+  if (schoolYearStart && range.to < schoolYearStart) {
+    const startDate = new Date(schoolYearStart + 'T00:00:00').toLocaleDateString([], { month: 'long', day: 'numeric', year: 'numeric' });
+    box.innerHTML = `<div class="instruction-block" style="text-align:center; border-color:var(--primary-light); background:var(--primary-bg);">
+      <p style="font-size:0.9rem; font-weight:700; color:var(--primary); margin-bottom:0.3rem;">🏫 School year has not started yet</p>
+      <p style="font-size:0.82rem; color:var(--text);">Classes officially begin on <strong>${startDate}</strong>. No attendance data or absences are recorded prior to this date.</p>
+    </div>`;
+    return;
+  }
 
   const logsInRange = logs.filter(l => {
     const d = l.timestamp.slice(0, 10);
@@ -2456,6 +2467,7 @@ function calculateTerms(startDateStr) {
 async function saveSchoolYearStart() {
   const val = document.getElementById('school-year-start').value;
   await dbSetSetting('school_year_start', val);
+  schoolYearStart = val; // ADD THIS
   calculateTerms(val);
   renderTermsStudentList();
   showToast('School year calendar updated ✓');
@@ -2656,6 +2668,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   students.sort((a, b) => a.name.localeCompare(b.name));
 
   autoSyncEnabled = !!(await dbGetSetting('auto_sync'));
+  schoolYearStart = await dbGetSetting('school_year_start') || '';
 
   populateDropdowns();
   initSummaryPeriod();
