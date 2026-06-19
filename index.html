@@ -1744,6 +1744,7 @@ function destroyCharts() {
 
 // Render premium charts
 // Render optimized, accurate charts
+// Render optimized, accurate charts
 function renderPremiumCharts(range, logsInRange) {
   // Safety check
   if (!document.getElementById('chart-class')) return;
@@ -1786,8 +1787,11 @@ function renderPremiumCharts(range, logsInRange) {
         backgroundColor: 'rgba(29, 78, 216, 0.8)',
         borderColor: '#1d4ed8',
         borderWidth: 0,
-        borderRadius: 6,
-        borderSkipped: false,
+        // FIX: Round ONLY the top corners for a professional "column" look
+        borderRadius: { topLeft: 6, topRight: 6, bottomLeft: 0, bottomRight: 0 },
+        // FIX: Distribute bars evenly across the chart width
+        barPercentage: 0.6,    
+        categoryPercentage: 0.8 
       }]
     },
     options: {
@@ -1796,6 +1800,9 @@ function renderPremiumCharts(range, logsInRange) {
       plugins: {
         legend: { display: false }
       },
+      layout: {
+        padding: { right: 10 } // Prevents labels from getting cut off
+      },
       scales: {
         y: {
           beginAtZero: true,
@@ -1803,8 +1810,14 @@ function renderPremiumCharts(range, logsInRange) {
           grid: { color: 'rgba(0,0,0,0.05)' }
         },
         x: {
-          ticks: { color: '#64748b', font: { weight: '600' } },
-          grid: { display: false }
+          ticks: { 
+            color: '#64748b', 
+            font: { weight: '600', size: 10 }, // Smaller font for mobile
+            maxRotation: 45, 
+            minRotation: 45 
+          },
+          grid: { display: false },
+          offset: true // FIX: Ensures bars are centered in their category
         }
       }
     }
