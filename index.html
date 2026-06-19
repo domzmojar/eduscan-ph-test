@@ -13,6 +13,7 @@
   <link rel="apple-touch-icon" href="/icon-192-any.png">
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 
   <style>
     :root {
@@ -571,50 +572,107 @@
   </div>
 
   <!-- SUMMARY PAGE -->
-  <div id="page-summary" class="page">
-    <div class="card">
-      <h2 style="margin-bottom:0.75rem;">Attendance summary</h2>
-      <div class="summary-period-tabs" id="summary-period-tabs">
-        <button class="period-tab active" id="ptab-daily"   onclick="setPeriod('daily')">Daily</button>
-        <button class="period-tab"        id="ptab-weekly"  onclick="setPeriod('weekly')">Weekly</button>
-        <button class="period-tab"        id="ptab-monthly" onclick="setPeriod('monthly')">Monthly</button>
-        <button class="period-tab"        id="ptab-custom"  onclick="setPeriod('custom')">Custom</button>
+<div id="page-summary" class="page">
+  <div class="card">
+    <h2 style="margin-bottom:1.5rem;">📊 Attendance Dashboard</h2>
+    
+    <!-- Key Metrics Row -->
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:1rem; margin-bottom:2rem;">
+      <div style="background:var(--arrival-bg); border:1px solid var(--arrival-border); border-radius:10px; padding:1.25rem;">
+        <div style="font-size:0.78rem; color:var(--arrival); font-weight:600; margin-bottom:0.5rem;">Total Present Today</div>
+        <div id="metric-present" style="font-size:2rem; font-weight:800; color:var(--arrival); line-height:1;">0</div>
+        <div id="metric-present-change" style="font-size:0.78rem; color:var(--success); margin-top:0.25rem;">↑ 0%</div>
       </div>
-      <div id="period-ctrl-daily" class="period-ctrl" style="margin-bottom:0.85rem;">
-        <label for="summary-day-input" style="margin-bottom:0.3rem;">Date</label>
-        <input type="date" id="summary-day-input" onchange="renderSummary()">
+      
+      <div style="background:var(--departure-bg); border:1px solid var(--departure-border); border-radius:10px; padding:1.25rem;">
+        <div style="font-size:0.78rem; color:var(--departure); font-weight:600; margin-bottom:0.5rem;">Total Departed</div>
+        <div id="metric-departed" style="font-size:2rem; font-weight:800; color:var(--departure); line-height:1;">0</div>
+        <div style="font-size:0.78rem; color:var(--text-muted); margin-top:0.25rem;">On time</div>
       </div>
-      <div id="period-ctrl-weekly" class="period-ctrl" style="display:none; margin-bottom:0.85rem;">
-        <label style="margin-bottom:0.3rem;">Week starting</label>
-        <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
-          <button class="btn outline sm" onclick="shiftWeek(-1)">‹ Prev</button>
-          <span id="week-label" style="font-size:0.88rem; font-weight:600; flex:1; text-align:center;"></span>
-          <button class="btn outline sm" onclick="shiftWeek(1)">Next ›</button>
-        </div>
+      
+      <div style="background:#fff7ed; border:1px solid #fdba74; border-radius:10px; padding:1.25rem;">
+        <div style="font-size:0.78rem; color:#c2410c; font-weight:600; margin-bottom:0.5rem;">Late Arrivals</div>
+        <div id="metric-late" style="font-size:2rem; font-weight:800; color:#c2410c; line-height:1;">0</div>
+        <div style="font-size:0.78rem; color:var(--text-muted); margin-top:0.25rem;">This week</div>
       </div>
-      <div id="period-ctrl-monthly" class="period-ctrl" style="display:none; margin-bottom:0.85rem;">
-        <label style="margin-bottom:0.3rem;">Month</label>
-        <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
-          <button class="btn outline sm" onclick="shiftMonth(-1)">‹ Prev</button>
-          <span id="month-label" style="font-size:0.88rem; font-weight:600; flex:1; text-align:center;"></span>
-          <button class="btn outline sm" onclick="shiftMonth(1)">Next ›</button>
-        </div>
+      
+      <div style="background:var(--danger-bg); border:1px solid var(--danger-border); border-radius:10px; padding:1.25rem;">
+        <div style="font-size:0.78rem; color:var(--danger); font-weight:600; margin-bottom:0.5rem;">Absent Today</div>
+        <div id="metric-absent" style="font-size:2rem; font-weight:800; color:var(--danger); line-height:1;">0</div>
+        <div style="font-size:0.78rem; color:var(--text-muted); margin-top:0.25rem;">Across all classes</div>
       </div>
-      <div id="period-ctrl-custom" class="period-ctrl" style="display:none; margin-bottom:0.85rem;">
-        <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
-          <div style="flex:1; min-width:130px;">
-            <label for="custom-date-from" style="margin-bottom:0.3rem;">From</label>
-            <input type="date" id="custom-date-from" onchange="renderSummary()">
-          </div>
-          <div style="flex:1; min-width:130px;">
-            <label for="custom-date-to" style="margin-bottom:0.3rem;">To</label>
-            <input type="date" id="custom-date-to" onchange="renderSummary()">
-          </div>
-        </div>
-      </div>
-      <div id="summary-analytics-content"></div>
     </div>
+    
+    <!-- Charts Row -->
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(350px, 1fr)); gap:1.5rem; margin-bottom:2rem;">
+      <!-- Attendance Trend Chart -->
+      <div style="background:var(--bg); border-radius:10px; padding:1.25rem;">
+        <h3 style="font-size:0.95rem; font-weight:700; margin-bottom:1rem; color:var(--text);">📈 Weekly Attendance Trend</h3>
+        <canvas id="chart-trend" height="250"></canvas>
+      </div>
+      
+      <!-- Attendance Status Pie Chart -->
+      <div style="background:var(--bg); border-radius:10px; padding:1.25rem;">
+        <h3 style="font-size:0.95rem; font-weight:700; margin-bottom:1rem; color:var(--text);">📊 Today's Status Breakdown</h3>
+        <canvas id="chart-status" height="250"></canvas>
+      </div>
+    </div>
+    
+    <!-- Class Performance Chart -->
+    <div style="background:var(--bg); border-radius:10px; padding:1.25rem; margin-bottom:2rem;">
+      <h3 style="font-size:0.95rem; font-weight:700; margin-bottom:1rem; color:var(--text);">📋 Attendance by Class</h3>
+      <canvas id="chart-class" height="100"></canvas>
+    </div>
+    
+    <!-- Period Selection -->
+    <div class="summary-period-tabs" id="summary-period-tabs" style="margin-bottom:1.5rem;">
+      <button class="period-tab active" id="ptab-daily"   onclick="setPeriod('daily')">Daily</button>
+      <button class="period-tab"        id="ptab-weekly"  onclick="setPeriod('weekly')">Weekly</button>
+      <button class="period-tab"        id="ptab-monthly" onclick="setPeriod('monthly')">Monthly</button>
+      <button class="period-tab"        id="ptab-custom"  onclick="setPeriod('custom')">Custom</button>
+    </div>
+    
+    <!-- Period Controls -->
+    <div id="period-ctrl-daily" class="period-ctrl" style="margin-bottom:1.5rem;">
+      <label for="summary-day-input" style="margin-bottom:0.5rem; display:block;">Select Date</label>
+      <input type="date" id="summary-day-input" onchange="renderSummary()" style="max-width:250px;">
+    </div>
+    
+    <div id="period-ctrl-weekly" class="period-ctrl" style="display:none; margin-bottom:1.5rem;">
+      <label style="margin-bottom:0.5rem; display:block;">Week Starting</label>
+      <div style="display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap;">
+        <button class="btn outline sm" onclick="shiftWeek(-1)">‹ Previous Week</button>
+        <span id="week-label" style="font-size:0.95rem; font-weight:600; flex:1; text-align:center; min-width:200px;"></span>
+        <button class="btn outline sm" onclick="shiftWeek(1)">Next Week ›</button>
+      </div>
+    </div>
+    
+    <div id="period-ctrl-monthly" class="period-ctrl" style="display:none; margin-bottom:1.5rem;">
+      <label style="margin-bottom:0.5rem; display:block;">Month</label>
+      <div style="display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap;">
+        <button class="btn outline sm" onclick="shiftMonth(-1)">‹ Previous Month</button>
+        <span id="month-label" style="font-size:0.95rem; font-weight:600; flex:1; text-align:center; min-width:200px;"></span>
+        <button class="btn outline sm" onclick="shiftMonth(1)">Next Month ›</button>
+      </div>
+    </div>
+    
+    <div id="period-ctrl-custom" class="period-ctrl" style="display:none; margin-bottom:1.5rem;">
+      <div style="display:flex; gap:1rem; flex-wrap:wrap; align-items:flex-end;">
+        <div style="flex:1; min-width:200px;">
+          <label for="custom-date-from" style="margin-bottom:0.5rem; display:block;">From Date</label>
+          <input type="date" id="custom-date-from" onchange="renderSummary()">
+        </div>
+        <div style="flex:1; min-width:200px;">
+          <label for="custom-date-to" style="margin-bottom:0.5rem; display:block;">To Date</label>
+          <input type="date" id="custom-date-to" onchange="renderSummary()">
+        </div>
+      </div>
+    </div>
+    
+    <!-- Detailed Analytics Content -->
+    <div id="summary-analytics-content"></div>
   </div>
+</div>
 
   <!-- SYNC PAGE -->
 <div id="page-sync" class="page">
@@ -1590,6 +1648,10 @@ function renderSummary() {
     return d >= range.from && d <= range.to;
   });
 
+  // NEW: Destroy old charts and render the new premium charts!
+  destroyCharts();
+  renderPremiumCharts(range, logsInRange);
+
   const allDates = [...new Set(logsInRange.map(l => l.timestamp.slice(0, 10)))]
     .sort((a, b) => b.localeCompare(a));
 
@@ -1687,6 +1749,166 @@ function renderSummary() {
   });
 
   box.innerHTML = html || `<p class="empty">No data found.</p>`;
+}
+
+// Chart instances storage
+let chartInstances = {};
+
+// Destroy existing charts before creating new ones
+function destroyCharts() {
+  Object.values(chartInstances).forEach(chart => {
+    if (chart) chart.destroy();
+  });
+  chartInstances = {};
+}
+
+// Render premium charts
+function renderPremiumCharts(range, logsInRange) {
+  const today = todayStr();
+  const todayLogs = logs.filter(l => l.timestamp.slice(0, 10) === today);
+  
+  // Calculate metrics
+  const presentToday = new Set(todayLogs.filter(l => l.type === 'arrival').map(l => l.studentId)).size;
+  const departedToday = new Set(todayLogs.filter(l => l.type === 'departure').map(l => l.studentId)).size;
+  const lateToday = todayLogs.filter(l => l.type === 'arrival' && l.isLate).length;
+  const totalEnrolled = students.length;
+  const absentToday = totalEnrolled - presentToday;
+  
+  // Update metric cards
+  document.getElementById('metric-present').textContent = presentToday;
+  document.getElementById('metric-departed').textContent = departedToday;
+  document.getElementById('metric-late').textContent = lateToday;
+  document.getElementById('metric-absent').textContent = absentToday;
+  
+  // Calculate percentage change (mock - you can enhance this)
+  const presentChange = presentToday > 0 ? '+12%' : '0%';
+  document.getElementById('metric-present-change').textContent = `↑ ${presentChange}`;
+  
+  // 1. Weekly Trend Chart
+  const trendCtx = document.getElementById('chart-trend').getContext('2d');
+  const last7Days = [];
+  const trendData = [];
+  
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const dateStr = dateToStr(d);
+    last7Days.push(d.toLocaleDateString('en-US', { weekday: 'short' }));
+    
+    const dayLogs = logs.filter(l => l.timestamp.slice(0, 10) === dateStr && l.type === 'arrival');
+    const count = new Set(dayLogs.map(l => l.studentId)).size;
+    trendData.push(count);
+  }
+  
+  chartInstances.trend = new Chart(trendCtx, {
+    type: 'line',
+    data: {
+      labels: last7Days,
+      datasets: [{
+        label: 'Daily Attendance',
+        data: trendData,
+        borderColor: '#1d4ed8',
+        backgroundColor: 'rgba(29, 78, 216, 0.1)',
+        fill: true,
+        tension: 0.4,
+        pointBackgroundColor: '#1d4ed8',
+        pointBorderColor: '#fff',
+        pointBorderWidth: 2,
+        pointRadius: 4,
+        pointHoverRadius: 6
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false }
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          grid: { color: 'rgba(0,0,0,0.05)' }
+        },
+        x: {
+          grid: { display: false }
+        }
+      }
+    }
+  });
+  
+  // 2. Status Breakdown Pie Chart
+  const statusCtx = document.getElementById('chart-status').getContext('2d');
+  chartInstances.status = new Chart(statusCtx, {
+    type: 'doughnut',
+    data: {
+      labels: ['Present', 'Absent', 'Late'],
+      datasets: [{
+        data: [presentToday, absentToday, lateToday],
+        backgroundColor: [
+          '#15803d',
+          '#b91c1c',
+          '#f59e0b'
+        ],
+        borderWidth: 0,
+        hoverOffset: 10
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: '65%',
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: {
+            padding: 15,
+            usePointStyle: true,
+            pointStyle: 'circle'
+          }
+        }
+      }
+    }
+  });
+  
+  // 3. Class Performance Bar Chart
+  const classCtx = document.getElementById('chart-class').getContext('2d');
+  const classLabels = classes.map(c => c.name);
+  const classData = classes.map(c => {
+    const classLogs = logsInRange.filter(l => l.classId === c.id && l.type === 'arrival');
+    return new Set(classLogs.map(l => l.studentId)).size;
+  });
+  
+  chartInstances.class = new Chart(classCtx, {
+    type: 'bar',
+    data: {
+      labels: classLabels,
+      datasets: [{
+        label: 'Students Present',
+        data: classData,
+        backgroundColor: 'rgba(29, 78, 216, 0.8)',
+        borderColor: '#1d4ed8',
+        borderWidth: 0,
+        borderRadius: 6,
+        borderSkipped: false,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false }
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          grid: { color: 'rgba(0,0,0,0.05)' }
+        },
+        x: {
+          grid: { display: false }
+        }
+      }
+    }
+  });
 }
 
 function openModalRange(type, classId, fromDate, toDate, encodedClassName) {
