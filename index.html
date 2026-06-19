@@ -1299,6 +1299,17 @@ function formatDate(dateStr) {
   return d.toLocaleDateString([], { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 }
 
+// ── UNIVERSAL LOG DATE HELPER ─────────────────────────────────────────────
+function getLogDate(l) {
+    // 1. Use the localDate we saved during the scan (Philippine Time)
+    if (l.localDate) return l.localDate;
+    
+    // 2. Fallback: Calculate it from timestamp for older logs without localDate
+    const d = new Date(l.timestamp);
+    const ph = new Date(d.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+    return ph.getFullYear() + '-' + String(ph.getMonth() + 1).padStart(2, '0') + '-' + String(ph.getDate()).padStart(2, '0');
+}
+
 // ── QR SCAN HANDLER ───────────────────────────────────────────────────────
 async function handleQRScan(rawData) {
   try {
@@ -1699,7 +1710,7 @@ function renderSummary() {
 
   // 1. Filter Logs based on Range
   const logsInRange = logs.filter(l => {
-    const d = l.timestamp.slice(0, 10);
+    const d = getLogDate(l);
     return d >= range.from && d <= range.to;
   });
 
@@ -1716,11 +1727,11 @@ function printSummaryReport() {
   if (!range) return showToast('Select a date range first.');
 
   const logsInRange = logs.filter(l => {
-    const d = l.timestamp.slice(0, 10);
+    const d = getLogDate(l);
     return d >= range.from && d <= range.to;
   });
 
-  const schoolDays = new Set(logsInRange.map(l => l.timestamp.slice(0, 10))).size;
+  const schoolDays = new Set(logsInRange.map(l => getLogDate(l))).size;
   const totalEnrolled = students.length;
   const arrivalLogs = logsInRange.filter(l => l.type === 'arrival');
   const uniquePresent = new Set(arrivalLogs.map(l => l.studentId)).size;
@@ -1865,8 +1876,8 @@ function renderActionableList(logsInRange) {
       const lates = arrivals.filter(l => l.isLate);
       
       const classLogs = logsInRange.filter(l => l.classId === s.classId);
-      const activeDays = new Set(classLogs.map(l => l.localDate || l.timestamp.slice(0, 10))).size;
-      const presentDays = new Set(arrivals.map(l => l.localDate || l.timestamp.slice(0, 10))).size;
+      const activeDays = new Set(classLogs.map(l => l.localDate || getLogDate(l))).size;
+      const presentDays = new Set(arrivals.map(l => l.localDate || getLogDate(l))).size;
       const absences = Math.max(0, activeDays - presentDays);
       
       if (absences >= 3 || lates.length >= 3) {
@@ -1926,7 +1937,7 @@ function renderPremiumCharts(range, logsInRange) {
   const totalEnrolled = students.length;
 
   // Calculate School Days in range
-  const schoolDays = new Set(logsInRange.map(l => l.timestamp.slice(0, 10))).size;
+  const schoolDays = new Set(logsInRange.map(l => getLogDate(l))).size;
 
   // Calculate Core Metrics
   const arrivalLogs = logsInRange.filter(l => l.type === 'arrival');
@@ -1944,9 +1955,9 @@ function renderPremiumCharts(range, logsInRange) {
     // For weekly/monthly: average daily attendance rate
     if (schoolDays > 0 && totalEnrolled > 0) {
       const dailyRates = [];
-      const allDates = [...new Set(logsInRange.map(l => l.timestamp.slice(0, 10)))];
+      const allDates = [...new Set(logsInRange.map(l => getLogDate(l)))];
       allDates.forEach(dateStr => {
-        const dayArrivals = new Set(logsInRange.filter(l => l.timestamp.slice(0, 10) === dateStr && l.type === 'arrival').map(l => l.studentId)).size;
+        const dayArrivals = new Set(logsInRange.filter(l => getLogDate(l) === dateStr && l.type === 'arrival').map(l => l.studentId)).size;
         dailyRates.push(dayArrivals / totalEnrolled);
       });
       attendanceRate = Math.round((dailyRates.reduce((a, b) => a + b, 0) / dailyRates.length) * 100);
@@ -1989,7 +2000,7 @@ function renderPremiumCharts(range, logsInRange) {
       return Math.round((present / classStudents) * 100);
     } else {
       const classArrivals = logsInRange.filter(l => l.classId === c.id && l.type === 'arrival').length;
-      const classDays = new Set(logsInRange.filter(l => l.classId === c.id).map(l => l.timestamp.slice(0, 10))).size;
+      const classDays = new Set(logsInRange.filter(l => l.classId === c.id).map(l => getLogDate(l))).size;
       return classDays > 0 ? Math.round((classArrivals / (classStudents * classDays)) * 100) : 0;
     }
   });
@@ -2026,8 +2037,8 @@ function openModalRange(type, classId, fromDate, toDate, encodedClassName) {
   const classStudents = students.filter(s => s.classId === classId);
   const rangeLogs     = logs.filter(l =>
     l.classId === classId &&
-    l.timestamp.slice(0,10) >= fromDate &&
-    l.timestamp.slice(0,10) <= toDate
+    getLogDate(l) >= fromDate &&
+    getLogDate(l) <= toDate
   );
 
   const arrivedIds  = new Set(rangeLogs.filter(l => l.type === 'arrival').map(l => l.studentId));
@@ -2068,7 +2079,7 @@ function openModalRange(type, classId, fromDate, toDate, encodedClassName) {
 function openModal(type, classId, dateStr, encodedClassName) {
   const className     = decodeURIComponent(encodedClassName);
   const classStudents = students.filter(s => s.classId === classId);
-  const dateLogs      = logs.filter(l => l.classId === classId && l.timestamp.slice(0, 10) === dateStr);
+  const dateLogs      = logs.filter(l => l.classId === classId && getLogDate(l) === dateStr);
 
   const arrivedIds  = new Set(dateLogs.filter(l => l.type === 'arrival').map(l => l.studentId));
   const departedIds = new Set(dateLogs.filter(l => l.type === 'departure').map(l => l.studentId));
@@ -2817,7 +2828,7 @@ function getSchoolDaysInTerm(classId, termNum) {
             if (l.classId !== classId) return false;
             const m = new Date(l.timestamp).getMonth() + 1;
             return term.months.includes(m);
-        }).map(l => l.timestamp.slice(0, 10))
+        }).map(l => getLogDate(l))
     );
 }
 
@@ -2848,10 +2859,10 @@ function renderTermsModalBody() {
     const arrivals = termLogs.filter(l => l.type === 'arrival');
     const departures = termLogs.filter(l => l.type === 'departure');
     const lateCount = arrivals.filter(l => l.isLate).length;
-    const arrivedDays = new Set(arrivals.map(l => l.timestamp.slice(0, 10)));
+    const arrivedDays = new Set(arrivals.map(l => getLogDate(l)));
     const absences = [...schoolDays].filter(d => !arrivedDays.has(d)).length;
 
-    const allLogDates = [...new Set(termLogs.map(l => l.timestamp.slice(0, 10)))].sort((a, b) => b.localeCompare(a));
+    const allLogDates = [...new Set(termLogs.map(l => getLogDate(l)))].sort((a, b) => b.localeCompare(a));
 
     let html = `
     <div style="background:var(--bg); border-radius:8px; padding:0.6rem 0.75rem; margin-bottom:0.25rem;">
@@ -2868,7 +2879,7 @@ function renderTermsModalBody() {
     if (allLogDates.length) {
         html += `<div class="term-section-title">Daily attendance</div>`;
         allLogDates.forEach(dateStr => {
-            const dayLogs = termLogs.filter(l => l.timestamp.slice(0, 10) === dateStr);
+            const dayLogs = termLogs.filter(l => getLogDate(l) === dateStr);
             const arr = dayLogs.filter(l => l.type === 'arrival');
             const dep = dayLogs.filter(l => l.type === 'departure');
             const dateLabel = new Date(dateStr + 'T00:00:00').toLocaleDateString([], { month: 'short', day: 'numeric', weekday: 'short' });
@@ -2943,22 +2954,22 @@ function showStudentRecord(studentId) {
   // Get logs for this student in the selected range
   const studentLogs = logs.filter(l => {
     if (l.studentId !== studentId) return false;
-    const d = l.localDate || l.timestamp.slice(0, 10);
+    const d = l.localDate || getLogDate(l);
     return d >= range.from && d <= range.to;
   });
 
   // Get all school days for this class in the range
   const classLogs = logs.filter(l => {
     if (l.classId !== student.classId) return false;
-    const d = l.localDate || l.timestamp.slice(0, 10);
+    const d = l.localDate || getLogDate(l);
     return d >= range.from && d <= range.to;
   });
-  const schoolDays = [...new Set(classLogs.map(l => l.localDate || l.timestamp.slice(0, 10)))].sort();
+  const schoolDays = [...new Set(classLogs.map(l => l.localDate || getLogDate(l)))].sort();
   
   const arrivals = studentLogs.filter(l => l.type === 'arrival');
   const departures = studentLogs.filter(l => l.type === 'departure');
   const lateCount = arrivals.filter(l => l.isLate).length;
-  const presentDays = new Set(arrivals.map(l => l.localDate || l.timestamp.slice(0, 10)));
+  const presentDays = new Set(arrivals.map(l => l.localDate || getLogDate(l)));
   const absences = schoolDays.filter(d => !presentDays.has(d)).length;
 
   document.getElementById('modal-title').textContent = '📋 Attendance Record';
@@ -2992,7 +3003,7 @@ function showStudentRecord(studentId) {
 
   if (schoolDays.length > 0) {
     schoolDays.forEach(dateStr => {
-      const dayLogs = studentLogs.filter(l => (l.localDate || l.timestamp.slice(0, 10)) === dateStr);
+      const dayLogs = studentLogs.filter(l => (l.localDate || getLogDate(l)) === dateStr);
       const arr = dayLogs.filter(l => l.type === 'arrival');
       const dep = dayLogs.filter(l => l.type === 'departure');
       const dateLabel = new Date(dateStr + 'T00:00:00').toLocaleDateString([], { month: 'short', day: 'numeric', weekday: 'short' });
@@ -3100,7 +3111,7 @@ function showStudentAttendance(studentId) {
   
   const studentLogs = logs.filter(l => {
     if (l.studentId !== studentId) return false;
-    const d = l.timestamp.slice(0, 10);
+    const d = getLogDate(l);
     return d >= range.from && d <= range.to;
   });
   
@@ -3109,11 +3120,11 @@ function showStudentAttendance(studentId) {
   
   const classLogs = logs.filter(l => {
     if (l.classId !== student.classId) return false;
-    const d = l.timestamp.slice(0, 10);
+    const d = getLogDate(l);
     return d >= range.from && d <= range.to;
   });
-  const activeDays = new Set(classLogs.map(l => l.timestamp.slice(0, 10))).size;
-  const presentDays = new Set(arrivals.map(l => l.timestamp.slice(0, 10))).size;
+  const activeDays = new Set(classLogs.map(l => getLogDate(l))).size;
+  const presentDays = new Set(arrivals.map(l => getLogDate(l))).size;
   const absences = Math.max(0, activeDays - presentDays);
   
   let message = `📋 Attendance Record\n\n`;
@@ -3130,7 +3141,7 @@ function showStudentAttendance(studentId) {
   if (lates.length > 0) {
     message += `⏰ Late Arrivals:\n`;
     lates.slice(0, 5).forEach(l => {
-      const date = l.timestamp.slice(0, 10);
+      const date = getLogDate(l);
       const time = new Date(l.timestamp).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
       message += `• ${date} at ${time}\n`;
     });
