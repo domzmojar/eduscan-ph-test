@@ -1389,7 +1389,7 @@ async function deleteStudent(id) {
   showToast('Student removed.');
 }
 
-function renderStudents() {
+async function renderStudents() {
   const container = document.getElementById('students-qr-container');
   const filterVal = document.getElementById('filter-class-select').value;
   const list      = filterVal ? students.filter(s => s.classId === filterVal) : students;
@@ -1398,16 +1398,35 @@ function renderStudents() {
     container.innerHTML = `<p class="empty" style="grid-column:1/-1;">No students registered yet.</p>`;
     return;
   }
+
+  // Generate QR codes for any students missing them
+  for (const student of list) {
+    if (!student.qrDataUrl && typeof QRCode !== 'undefined') {
+      try {
+        const qrPayload = JSON.stringify({ eduscan: true, id: student.id });
+        student.qrDataUrl = await QRCode.toDataURL(qrPayload, { width: 160, margin: 1 });
+        // Save to database
+        await dbPutAll('students', students);
+      } catch (e) {
+        console.error('Failed to generate QR:', e);
+      }
+    }
+  }
+
   container.innerHTML = list.map(s => {
     const cls    = (classes.find(c => c.id === s.classId) || {}).name || 'Unknown';
-    const qrData = encodeURIComponent(JSON.stringify({ eduscan: true, id: s.id }));
-    const qrUrl = s.qrDataUrl || `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${qrData}`;
+    // Always use the stored data URL (works offline)
+    const qrUrl = s.qrDataUrl || '';
+    
     return `
       <div class="qr-card">
         <span class="qr-class">${cls}</span>
         <span class="qr-name">${s.name}</span>
         ${s.lrn ? `<span class="qr-lrn">LRN: ${s.lrn}</span>` : ''}
-        <img src="${qrUrl}" alt="QR for ${s.name}" style="width:100%;max-width:120px;height:auto;border:1px solid #eee;padding:3px;background:#fff;border-radius:4px;">
+        ${qrUrl 
+          ? `<img src="${qrUrl}" alt="QR for ${s.name}" style="width:100%;max-width:120px;height:auto;border:1px solid #eee;padding:3px;background:#fff;border-radius:4px;">`
+          : `<div style="width:120px;height:120px;background:#f0f0f0;border:1px solid #ddd;border-radius:4px;display:flex;align-items:center;justify-content:center;color:#999;font-size:0.7rem;text-align:center;padding:0.5rem;">QR loading...</div>`
+        }
         ${s.guardian ? `<span class="qr-meta" style="margin-top:0.3rem;">👤 ${s.guardian}</span>` : ''}
         <button class="btn danger sm" style="margin-top:0.5rem;" onclick="deleteStudent('${s.id}')">Remove</button>
       </div>`;
