@@ -621,51 +621,33 @@
       </div>
     </div>
     
-    <!-- Key Metrics Row - COMPACT -->
-    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:0.75rem; margin-bottom:1rem;">
-      <div style="background:var(--arrival-bg); border:1px solid var(--arrival-border); border-radius:8px; padding:0.75rem;">
-        <div style="font-size:0.7rem; color:var(--arrival); font-weight:600; margin-bottom:0.25rem;">Present Today</div>
-        <div id="metric-present" style="font-size:1.5rem; font-weight:800; color:var(--arrival); line-height:1;">0</div>
-        <div id="metric-present-change" style="font-size:0.7rem; color:var(--success); margin-top:0.15rem;">↑ 0%</div>
-      </div>
-      
-      <div style="background:var(--departure-bg); border:1px solid var(--departure-border); border-radius:8px; padding:0.75rem;">
-        <div style="font-size:0.7rem; color:var(--departure); font-weight:600; margin-bottom:0.25rem;">Departed</div>
-        <div id="metric-departed" style="font-size:1.5rem; font-weight:800; color:var(--departure); line-height:1;">0</div>
-        <div style="font-size:0.7rem; color:var(--text-muted); margin-top:0.15rem;">On time</div>
-      </div>
-      
-      <div style="background:#fff7ed; border:1px solid #fdba74; border-radius:8px; padding:0.75rem;">
-        <div style="font-size:0.7rem; color:#c2410c; font-weight:600; margin-bottom:0.25rem;">Late</div>
-        <div id="metric-late" style="font-size:1.5rem; font-weight:800; color:#c2410c; line-height:1;">0</div>
-        <div style="font-size:0.7rem; color:var(--text-muted); margin-top:0.15rem;">This week</div>
-      </div>
-      
-      <div style="background:var(--danger-bg); border:1px solid var(--danger-border); border-radius:8px; padding:0.75rem;">
-        <div style="font-size:0.7rem; color:var(--danger); font-weight:600; margin-bottom:0.25rem;">Absent</div>
-        <div id="metric-absent" style="font-size:1.5rem; font-weight:800; color:var(--danger); line-height:1;">0</div>
-        <div style="font-size:0.7rem; color:var(--text-muted); margin-top:0.15rem;">All classes</div>
-      </div>
-    </div>
-    
-    <!-- Charts Row - RESPONSIVE HEIGHTS -->
-    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:1rem; margin-bottom:1rem;">
-      <!-- Attendance Trend Chart -->
-      <div style="background:var(--bg); border-radius:8px; padding:1rem;">
-        <h3 style="font-size:0.85rem; font-weight:700; margin-bottom:0.75rem; color:var(--text);">📈 Weekly Trend</h3>
-        <div style="position: relative; height: 200px;">
-          <canvas id="chart-trend"></canvas>
-        </div>
-      </div>
-      
-      <!-- Attendance Status Pie Chart -->
-      <div style="background:var(--bg); border-radius:8px; padding:1rem;">
-        <h3 style="font-size:0.85rem; font-weight:700; margin-bottom:0.75rem; color:var(--text);">📊 Status</h3>
-        <div style="position: relative; height: 200px;">
-          <canvas id="chart-status"></canvas>
-        </div>
-      </div>
-    </div>
+<!-- Key Metrics Row (Simplified & Accurate) -->
+<div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:0.75rem; margin-bottom:1.5rem;">
+  <div style="background:var(--arrival-bg); border:1px solid var(--arrival-border); border-radius:10px; padding:1rem; text-align:center;">
+    <div style="font-size:0.75rem; color:var(--arrival); font-weight:600; margin-bottom:0.25rem;">Present</div>
+    <div id="metric-present" style="font-size:1.8rem; font-weight:800; color:var(--arrival); line-height:1;">0</div>
+  </div>
+  <div style="background:var(--departure-bg); border:1px solid var(--departure-border); border-radius:10px; padding:1rem; text-align:center;">
+    <div style="font-size:0.75rem; color:var(--departure); font-weight:600; margin-bottom:0.25rem;">Dismissed</div>
+    <div id="metric-departed" style="font-size:1.8rem; font-weight:800; color:var(--departure); line-height:1;">0</div>
+  </div>
+  <div style="background:#fff7ed; border:1px solid #fdba74; border-radius:10px; padding:1rem; text-align:center;">
+    <div style="font-size:0.75rem; color:#c2410c; font-weight:600; margin-bottom:0.25rem;">Late</div>
+    <div id="metric-late" style="font-size:1.8rem; font-weight:800; color:#c2410c; line-height:1;">0</div>
+  </div>
+  <div style="background:var(--danger-bg); border:1px solid var(--danger-border); border-radius:10px; padding:1rem; text-align:center;">
+    <div style="font-size:0.75rem; color:var(--danger); font-weight:600; margin-bottom:0.25rem;">Absent</div>
+    <div id="metric-absent" style="font-size:1.8rem; font-weight:800; color:var(--danger); line-height:1;">0</div>
+  </div>
+</div>
+
+<!-- Single, Highly Accurate Class Performance Chart -->
+<div style="background:var(--bg); border-radius:10px; padding:1rem; margin-bottom:1.5rem;">
+  <h3 style="font-size:0.9rem; font-weight:700; margin-bottom:0.75rem; color:var(--text);">📋 Attendance by Class</h3>
+  <div style="position: relative; height: 220px;">
+    <canvas id="chart-class"></canvas>
+  </div>
+</div>
     
     <!-- Class Performance Chart -->
     <div style="background:var(--bg); border-radius:8px; padding:1rem; margin-bottom:1rem;">
@@ -1769,124 +1751,39 @@ function destroyCharts() {
 }
 
 // Render premium charts
+// Render optimized, accurate charts
 function renderPremiumCharts(range, logsInRange) {
-  // Safety check: Ensure canvases exist before trying to render
-  if (!document.getElementById('chart-trend')) return;
+  // Safety check
+  if (!document.getElementById('chart-class')) return;
+
+  // 1. Calculate Metrics based EXACTLY on the selected date range
+  const presentIds = new Set(logsInRange.filter(l => l.type === 'arrival').map(l => l.studentId));
+  const departedIds = new Set(logsInRange.filter(l => l.type === 'departure').map(l => l.studentId));
+  const lateCount = logsInRange.filter(l => l.type === 'arrival' && l.isLate).length;
   
-  const today = todayStr();
-  const todayLogs = logs.filter(l => l.timestamp.slice(0, 10) === today);
-  
-  // Calculate metrics
-  const presentToday = new Set(todayLogs.filter(l => l.type === 'arrival').map(l => l.studentId)).size;
-  const departedToday = new Set(todayLogs.filter(l => l.type === 'departure').map(l => l.studentId)).size;
-  const lateToday = todayLogs.filter(l => l.type === 'arrival' && l.isLate).length;
   const totalEnrolled = students.length;
-  const absentToday = totalEnrolled - presentToday;
-  
-  // Update metric cards
-  document.getElementById('metric-present').textContent = presentToday;
-  document.getElementById('metric-departed').textContent = departedToday;
-  document.getElementById('metric-late').textContent = lateToday;
-  document.getElementById('metric-absent').textContent = absentToday;
-  
-  // Calculate percentage change (mock - you can enhance this)
-  const presentChange = presentToday > 0 ? '+12%' : '0%';
-  document.getElementById('metric-present-change').textContent = `↑ ${presentChange}`;
-  
-  // 1. Weekly Trend Chart
-  const trendCtx = document.getElementById('chart-trend').getContext('2d');
-  const last7Days = [];
-  const trendData = [];
-  
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    const dateStr = dateToStr(d);
-    last7Days.push(d.toLocaleDateString('en-US', { weekday: 'short' }));
-    
-    const dayLogs = logs.filter(l => l.timestamp.slice(0, 10) === dateStr && l.type === 'arrival');
-    const count = new Set(dayLogs.map(l => l.studentId)).size;
-    trendData.push(count);
-  }
-  
-  chartInstances.trend = new Chart(trendCtx, {
-    type: 'line',
-    data: {
-      labels: last7Days,
-      datasets: [{
-        label: 'Daily Attendance',
-        data: trendData,
-        borderColor: '#1d4ed8',
-        backgroundColor: 'rgba(29, 78, 216, 0.1)',
-        fill: true,
-        tension: 0.4,
-        pointBackgroundColor: '#1d4ed8',
-        pointBorderColor: '#fff',
-        pointBorderWidth: 2,
-        pointRadius: 4,
-        pointHoverRadius: 6
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false }
-      },
-      scales: {
-        y: {
-          beginAtZero: true,
-          grid: { color: 'rgba(0,0,0,0.05)' }
-        },
-        x: {
-          grid: { display: false }
-        }
-      }
-    }
-  });
-  
-  // 2. Status Breakdown Pie Chart
-  const statusCtx = document.getElementById('chart-status').getContext('2d');
-  chartInstances.status = new Chart(statusCtx, {
-    type: 'doughnut',
-    data: {
-      labels: ['Present', 'Absent', 'Late'],
-      datasets: [{
-        data: [presentToday, absentToday, lateToday],
-        backgroundColor: [
-          '#15803d',
-          '#b91c1c',
-          '#f59e0b'
-        ],
-        borderWidth: 0,
-        hoverOffset: 10
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      cutout: '65%',
-      plugins: {
-        legend: {
-          position: 'bottom',
-          labels: {
-            padding: 15,
-            usePointStyle: true,
-            pointStyle: 'circle'
-          }
-        }
-      }
-    }
-  });
-  
-  // 3. Class Performance Bar Chart
+  const presentCount = presentIds.size;
+  const departedCount = departedIds.size;
+  const absentCount = Math.max(0, totalEnrolled - presentCount);
+
+  // Update Metric Cards
+  document.getElementById('metric-present').textContent = presentCount;
+  document.getElementById('metric-departed').textContent = departedCount;
+  document.getElementById('metric-late').textContent = lateCount;
+  document.getElementById('metric-absent').textContent = absentCount;
+
+  // 2. Render the Class Bar Chart (Adapts to the selected date range!)
   const classCtx = document.getElementById('chart-class').getContext('2d');
+  
+  // Destroy existing chart if it exists
+  if (chartInstances.class) chartInstances.class.destroy();
+
   const classLabels = classes.map(c => c.name);
   const classData = classes.map(c => {
     const classLogs = logsInRange.filter(l => l.classId === c.id && l.type === 'arrival');
     return new Set(classLogs.map(l => l.studentId)).size;
   });
-  
+
   chartInstances.class = new Chart(classCtx, {
     type: 'bar',
     data: {
@@ -1910,9 +1807,11 @@ function renderPremiumCharts(range, logsInRange) {
       scales: {
         y: {
           beginAtZero: true,
+          ticks: { stepSize: 1, color: '#64748b' },
           grid: { color: 'rgba(0,0,0,0.05)' }
         },
         x: {
+          ticks: { color: '#64748b', font: { weight: '600' } },
           grid: { display: false }
         }
       }
