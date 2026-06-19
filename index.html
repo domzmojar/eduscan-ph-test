@@ -1612,6 +1612,11 @@ function renderSummary() {
   const range = getActiveDateRange();
   if (!range) return;
 
+  if (schoolYearStart && range.to < schoolYearStart) {
+    // Show "School year has not started yet" message
+    return;
+}
+
   // 1. Filter Logs based on Range
   const logsInRange = logs.filter(l => {
     const d = l.timestamp.slice(0, 10);
