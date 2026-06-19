@@ -1401,7 +1401,7 @@ function renderStudents() {
   container.innerHTML = list.map(s => {
     const cls    = (classes.find(c => c.id === s.classId) || {}).name || 'Unknown';
     const qrData = encodeURIComponent(JSON.stringify({ eduscan: true, id: s.id }));
-    const qrUrl = s.qrDataUrl || https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${qrData};
+    const qrUrl = s.qrDataUrl || `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${qrData}`;
     return `
       <div class="qr-card">
         <span class="qr-class">${cls}</span>
