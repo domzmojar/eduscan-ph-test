@@ -1635,45 +1635,49 @@ function renderSummary() {
     let html = '';
 
     if (isAggregated) {
+        const totalSchoolDays = allDates.length;
         html += `<div style="margin-bottom:1.25rem; padding-bottom:1.25rem; border-bottom:2px solid var(--border);">
           <p style="font-size:0.78rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:0.75rem;">
             ${summaryPeriod === 'weekly' ? 'Week total' : summaryPeriod === 'monthly' ? 'Month total' : 'Range total'}
-            <span style="font-weight:400; text-transform:none; margin-left:4px;">(${fmtShort(range.from)} – ${fmtShort(range.to)})</span>
+            <span style="font-weight:400; text-transform:none; margin-left:4px;">(${fmtShort(range.from)} – ${fmtShort(range.to)} · ${totalSchoolDays} school days)</span>
           </p>`;
 
         classes.forEach(c => {
             const classStudents = students.filter(s => s.classId === c.id);
             const classLogs     = logsInRange.filter(l => l.classId === c.id);
-            if (!classLogs.length && !classStudents.length) return;
+            if (!classStudents.length) return;
 
-            // For aggregated views, count unique students who arrived at least once
-            const arrivedIds   = new Set(classLogs.filter(l => l.type === 'arrival').map(l => l.studentId));
-            const departedIds  = new Set(classLogs.filter(l => l.type === 'departure').map(l => l.studentId));
-            const neverArrived = classStudents.filter(s => !arrivedIds.has(s.id));
-            const lateCount    = classLogs.filter(l => l.type === 'arrival' && l.isLate).length;
+            // FIX: Count TOTAL INSTANCES for aggregated views (DepEd SF2 style)
+            const totalArrivals   = classLogs.filter(l => l.type === 'arrival').length;
+            const totalDismissals = classLogs.filter(l => l.type === 'departure').length;
+            const lateCount       = classLogs.filter(l => l.type === 'arrival' && l.isLate).length;
+            
+            // Total expected = students * school days
+            const totalExpected = classStudents.length * totalSchoolDays;
+            const totalAbsences = Math.max(0, totalExpected - totalArrivals);
 
             html += `
             <div class="history-class-row">
               <div class="history-class-name">${c.name}</div>
               <div class="stat-row-btns">
-                <button class="stat-btn enrolled" onclick="openModalRange('enrolled','${c.id}','${range.from}','${range.to}','${encodeURIComponent(c.name)}')">
-                  <div class="val">${classStudents.length}</div><div class="lbl">Enrolled</div><div class="tap-hint">tap</div>
-                </button>
-                <button class="stat-btn arrived" onclick="openModalRange('arrived','${c.id}','${range.from}','${range.to}','${encodeURIComponent(c.name)}')">
-                  <div class="val" style="color:var(--arrival);">${arrivedIds.size}</div>
-                  <div class="lbl">Present${lateCount > 0 ? ` <span style="color:#c2410c;font-size:0.65rem;font-weight:700;">· ${lateCount} late</span>` : ''}</div>
-                  <div class="tap-hint">tap</div>
-                </button>
-                <button class="stat-btn departed" onclick="openModalRange('departed','${c.id}','${range.from}','${range.to}','${encodeURIComponent(c.name)}')">
-                  <div class="val" style="color:var(--departure);">${departedIds.size}</div><div class="lbl">Dismissed</div><div class="tap-hint">tap</div>
-                </button>
-                <button class="stat-btn absent" onclick="openModalRange('absent','${c.id}','${range.from}','${range.to}','${encodeURIComponent(c.name)}')">
-                  <div class="val" style="color:var(--danger);">${neverArrived.length}</div><div class="lbl">Absent</div><div class="tap-hint">tap</div>
-                </button>
+                <div class="stat-btn enrolled">
+                  <div class="val">${classStudents.length}</div><div class="lbl">Enrolled</div>
+                </div>
+                <div class="stat-btn arrived">
+                  <div class="val" style="color:var(--arrival);">${totalArrivals}</div>
+                  <div class="lbl">Total Arrivals${lateCount > 0 ? ` <span style="color:#c2410c;font-size:0.65rem;font-weight:700;">· ${lateCount} late</span>` : ''}</div>
+                </div>
+                <div class="stat-btn departed">
+                  <div class="val" style="color:var(--departure);">${totalDismissals}</div><div class="lbl">Total Dismissals</div>
+                </div>
+                <div class="stat-btn absent">
+                  <div class="val" style="color:var(--danger);">${totalAbsences}</div><div class="lbl">Total Absences</div>
+                </div>
               </div>
             </div>`;
         });
         html += `</div>`;
+        
         if (!allDates.length) { html += `<p class="empty">No attendance data for this period.</p>`; box.innerHTML = html; return; }
         html += `<p style="font-size:0.78rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:0.75rem;">Daily breakdown</p>`;
     }
