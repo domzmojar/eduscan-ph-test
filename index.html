@@ -2549,216 +2549,152 @@ function triggerDownload(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-// ── TERMS ─────────────────────────────────────────────────────────────────
-// Dynamic Terms: Calculated based on the School Year Start Date
-let TERMS = [];
+// ── TERMS ────────────────────────────────────────────────────────────────
+// Fixed DepEd Terms: Strictly based on calendar months
+const TERMS = [
+    { num: 1, label: 'Term 1', months: [6, 7, 8, 9], range: 'Jun – Sep' },
+    { num: 2, label: 'Term 2', months: [10, 11, 12], range: 'Oct – Dec' },
+    { num: 3, label: 'Term 3', months: [1, 2, 3], range: 'Jan – Mar' }
+];
+
 let termsActiveStudentId = null;
-let termsActiveClassId   = null;
-let termsActiveTerm      = 1;
-
-// Calculate Terms based on DepEd standard (Term 1: ~3 months, Term 2: ~3 months, Term 3: ~3 months)
-function calculateTerms(startDateStr) {
-  if (!startDateStr) {
-    // Fallback to default if not set
-    TERMS = [
-        { num: 1, label: 'Term 1', months: [6, 7, 8, 9], range: 'Jun – Sep' },
-        { num: 2, label: 'Term 2', months: [10, 11, 12], range: 'Oct – Dec' },
-        { num: 3, label: 'Term 3', months: [1, 2, 3], range: 'Jan – Mar' }
-    ];
-    return;
-  }
-
-  const [y, m, d] = startDateStr.split('-').map(Number);
-  const start = new Date(y, m - 1, d);
-  
-  // DepEd Standard: Term 1 is 3 months from start. Term 2 is next 3. Term 3 is next 3.
-  const t1End = new Date(start); t1End.setMonth(start.getMonth() + 3); t1End.setDate(0); // Last day of 3rd month
-  const t2End = new Date(t1End); t2End.setMonth(t1End.getMonth() + 4); t2End.setDate(0); // Next 3 months
-  const t3End = new Date(t2End); t3End.setMonth(t2End.getMonth() + 4); t3End.setDate(0); // Next 3 months
-
-  const fmt = (date) => date.toLocaleDateString([], { month: 'short', day: 'numeric' });
-
-  TERMS = [
-    { 
-      num: 1, label: 'Term 1', 
-      start: start.toISOString().slice(0,10), end: t1End.toISOString().slice(0,10),
-      range: `${fmt(start)} – ${fmt(t1End)}` 
-    },
-    { 
-      num: 2, label: 'Term 2', 
-      start: new Date(t1End.getFullYear(), t1End.getMonth() + 1, 1).toISOString().slice(0,10), 
-      end: t2End.toISOString().slice(0,10),
-      range: `${fmt(new Date(t1End.getFullYear(), t1End.getMonth() + 1, 1))} – ${fmt(t2End)}` 
-    },
-    { 
-      num: 3, label: 'Term 3', 
-      start: new Date(t2End.getFullYear(), t2End.getMonth() + 1, 1).toISOString().slice(0,10), 
-      end: t3End.toISOString().slice(0,10),
-      range: `${fmt(new Date(t2End.getFullYear(), t2End.getMonth() + 1, 1))} – ${fmt(t3End)}` 
-    }
-  ];
-}
+let termsActiveClassId = null;
+let termsActiveTerm = 1;
 
 async function saveSchoolYearStart() {
-  const val = document.getElementById('school-year-start').value;
-  await dbSetSetting('school_year_start', val);
-  schoolYearStart = val; // ADD THIS
-  calculateTerms(val);
-  renderTermsStudentList();
-  showToast('School year calendar updated ✓');
+    const val = document.getElementById('school-year-start').value;
+    await dbSetSetting('school_year_start', val);
+    schoolYearStart = val;
+    showToast('School year calendar updated ✓');
 }
 
-async function renderTermsPage() { 
-  const savedStart = await dbGetSetting('school_year_start') || '';
-  const startInput = document.getElementById('school-year-start');
-  if (startInput) startInput.value = savedStart;
-  
-  calculateTerms(savedStart);
-  populateTermsDropdown(); 
-  renderTermsStudentList(); 
+async function renderTermsPage() {
+    const savedStart = await dbGetSetting('school_year_start') || '';
+    const startInput = document.getElementById('school-year-start');
+    if (startInput) startInput.value = savedStart;
+    populateTermsDropdown();
+    renderTermsStudentList();
 }
 
 function populateTermsDropdown() {
-  const sel  = document.getElementById('terms-class-select');
-  const prev = sel.value;
-  sel.innerHTML = `<option value="">— Choose a class —</option>` +
-    classes.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
-  if (prev && classes.find(c => c.id === prev)) sel.value = prev;
+    const sel = document.getElementById('terms-class-select');
+    const prev = sel.value;
+    sel.innerHTML = `<option value="">— Choose a class —</option>` +
+        classes.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+    if (prev && classes.find(c => c.id === prev)) sel.value = prev;
 }
 
 function renderTermsStudentList() {
-  const classId = document.getElementById('terms-class-select').value;
-  const box     = document.getElementById('terms-student-list');
-  if (!classId) { box.innerHTML = `<p class="empty" style="padding:1rem 0;">Select a class to view students.</p>`; return; }
-  const list = students.filter(s => s.classId === classId);
-  if (!list.length) { box.innerHTML = `<p class="empty" style="padding:1rem 0;">No students in this class yet.</p>`; return; }
-  box.innerHTML = list.map(s => {
-    const initials = s.name.split(' ').map(w => w[0]).slice(0,2).join('').toUpperCase();
-    return `
-      <div class="terms-student-row" onclick="openTermsModal('${s.id}','${classId}')">
-        <div class="terms-student-avatar">${initials}</div>
-        <div style="flex:1;">
-          <div class="terms-student-name">${s.name}</div>
-          ${s.lrn ? `<div class="terms-student-lrn">LRN: ${s.lrn}</div>` : ''}
-        </div>
-        <div class="terms-chevron">›</div>
-      </div>`;
-  }).join('');
+    const classId = document.getElementById('terms-class-select').value;
+    const box = document.getElementById('terms-student-list');
+    if (!classId) { box.innerHTML = `<p class="empty" style="padding:1rem 0;">Select a class to view students.</p>`; return; }
+    const list = students.filter(s => s.classId === classId);
+    if (!list.length) { box.innerHTML = `<p class="empty" style="padding:1rem 0;">No students in this class yet.</p>`; return; }
+    box.innerHTML = list.map(s => {
+        const initials = s.name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
+        return `
+        <div class="terms-student-row" onclick="openTermsModal('${s.id}','${classId}')">
+            <div class="terms-student-avatar">${initials}</div>
+            <div style="flex:1;">
+                <div class="terms-student-name">${s.name}</div>
+                ${s.lrn ? `<div class="terms-student-lrn">LRN: ${s.lrn}</div>` : ''}
+            </div>
+            <div class="terms-chevron">›</div>
+        </div>`;
+    }).join('');
 }
 
 function getTermLogs(studentId, classId, termNum) {
-  const term = TERMS.find(t => t.num === termNum);
-  if (!term || !term.start) {
-    // Fallback to old month logic if no school year is set
+    const term = TERMS.find(t => t.num === termNum);
     return logs.filter(l => {
-      if (l.studentId !== studentId || l.classId !== classId) return false;
-      const m = new Date(l.timestamp).getMonth() + 1;
-      return term.months.includes(m);
+        if (l.studentId !== studentId || l.classId !== classId) return false;
+        const m = new Date(l.timestamp).getMonth() + 1;
+        return term.months.includes(m);
     });
-  }
-  
-  // New exact date logic
-  return logs.filter(l => {
-    if (l.studentId !== studentId || l.classId !== classId) return false;
-    const logDate = l.timestamp.slice(0, 10);
-    return logDate >= term.start && logDate <= term.end;
-  });
 }
 
 function getSchoolDaysInTerm(classId, termNum) {
-  const term = TERMS.find(t => t.num === termNum);
-  if (!term || !term.start) {
-    // Fallback
+    const term = TERMS.find(t => t.num === termNum);
     return new Set(
-      logs.filter(l => {
-        if (l.classId !== classId) return false;
-        const m = new Date(l.timestamp).getMonth() + 1;
-        return term.months.includes(m);
-      }).map(l => l.timestamp.slice(0, 10))
+        logs.filter(l => {
+            if (l.classId !== classId) return false;
+            const m = new Date(l.timestamp).getMonth() + 1;
+            return term.months.includes(m);
+        }).map(l => l.timestamp.slice(0, 10))
     );
-  }
-
-  // New exact date logic
-  return new Set(
-    logs.filter(l => {
-      if (l.classId !== classId) return false;
-      const logDate = l.timestamp.slice(0, 10);
-      return logDate >= term.start && logDate <= term.end;
-    }).map(l => l.timestamp.slice(0, 10))
-  );
 }
 
 function openTermsModal(studentId, classId) {
-  termsActiveStudentId = studentId;
-  termsActiveClassId   = classId;
-  termsActiveTerm      = 1;
-  const student = students.find(s => s.id === studentId);
-  document.getElementById('terms-modal-name').textContent = student ? student.name : 'Student';
-  document.getElementById('terms-modal-meta').textContent = student && student.lrn ? `LRN: ${student.lrn}` : '';
-  renderTermsModalBody();
-  document.getElementById('terms-modal-backdrop').classList.add('open');
-  document.body.style.overflow = 'hidden';
+    termsActiveStudentId = studentId;
+    termsActiveClassId = classId;
+    termsActiveTerm = 1;
+    const student = students.find(s => s.id === studentId);
+    document.getElementById('terms-modal-name').textContent = student ? student.name : 'Student';
+    document.getElementById('terms-modal-meta').textContent = student && student.lrn ? `LRN: ${student.lrn}` : '';
+    renderTermsModalBody();
+    document.getElementById('terms-modal-backdrop').classList.add('open');
+    document.body.style.overflow = 'hidden';
 }
 
 function switchTermTab(num) {
-  termsActiveTerm = num;
-  [1,2,3].forEach(n => document.getElementById('ttab-' + n).classList.toggle('active', n === num));
-  renderTermsModalBody();
+    termsActiveTerm = num;
+    [1, 2, 3].forEach(n => document.getElementById('ttab-' + n).classList.toggle('active', n === num));
+    renderTermsModalBody();
 }
 
 function renderTermsModalBody() {
-  const body      = document.getElementById('terms-modal-body');
-  const term      = TERMS.find(t => t.num === termsActiveTerm);
-  const termLogs  = getTermLogs(termsActiveStudentId, termsActiveClassId, termsActiveTerm);
-  const schoolDays = getSchoolDaysInTerm(termsActiveClassId, termsActiveTerm);
+    const body = document.getElementById('terms-modal-body');
+    const term = TERMS.find(t => t.num === termsActiveTerm);
+    const termLogs = getTermLogs(termsActiveStudentId, termsActiveClassId, termsActiveTerm);
+    const schoolDays = getSchoolDaysInTerm(termsActiveClassId, termsActiveTerm);
 
-  const arrivals   = termLogs.filter(l => l.type === 'arrival');
-  const departures = termLogs.filter(l => l.type === 'departure');
-  const lateCount  = arrivals.filter(l => l.isLate).length;
-  const arrivedDays = new Set(arrivals.map(l => l.timestamp.slice(0,10)));
-  const absences    = [...schoolDays].filter(d => !arrivedDays.has(d)).length;
+    const arrivals = termLogs.filter(l => l.type === 'arrival');
+    const departures = termLogs.filter(l => l.type === 'departure');
+    const lateCount = arrivals.filter(l => l.isLate).length;
+    const arrivedDays = new Set(arrivals.map(l => l.timestamp.slice(0, 10)));
+    const absences = [...schoolDays].filter(d => !arrivedDays.has(d)).length;
 
-  const allLogDates = [...new Set(termLogs.map(l => l.timestamp.slice(0,10)))].sort((a,b) => b.localeCompare(a));
+    const allLogDates = [...new Set(termLogs.map(l => l.timestamp.slice(0, 10)))].sort((a, b) => b.localeCompare(a));
 
-  let html = `
+    let html = `
     <div style="background:var(--bg); border-radius:8px; padding:0.6rem 0.75rem; margin-bottom:0.25rem;">
-      <span style="font-size:0.78rem; font-weight:700; color:var(--text-muted);">${term.label} · ${term.range}</span>
-      ${schoolDays.size ? `<span style="font-size:0.72rem; color:var(--text-muted); margin-left:8px;">${schoolDays.size} school day${schoolDays.size !== 1 ? 's' : ''} on record</span>` : ''}
+        <span style="font-size:0.78rem; font-weight:700; color:var(--text-muted);">${term.label} · ${term.range}</span>
+        ${schoolDays.size ? `<span style="font-size:0.72rem; color:var(--text-muted); margin-left:8px;">${schoolDays.size} school day${schoolDays.size !== 1 ? 's' : ''} on record</span>` : ''}
     </div>
     <div class="term-stat-grid" style="grid-template-columns: repeat(4, 1fr);">
-      <div class="term-stat-card arrival-card"><div class="ts-val">${arrivals.length}</div><div class="ts-lbl">Arrivals</div></div>
-      <div class="term-stat-card departure-card"><div class="ts-val">${departures.length}</div><div class="ts-lbl">Departures</div></div>
-      <div class="term-stat-card" style="background:#fff7ed; border-color:#fdba74; color:#c2410c;"><div class="ts-val">${lateCount}</div><div class="ts-lbl">Late</div></div>
-      <div class="term-stat-card absent-card"><div class="ts-val">${absences}</div><div class="ts-lbl">Absences</div></div>
+        <div class="term-stat-card arrival-card"><div class="ts-val">${arrivals.length}</div><div class="ts-lbl">Arrivals</div></div>
+        <div class="term-stat-card departure-card"><div class="ts-val">${departures.length}</div><div class="ts-lbl">Departures</div></div>
+        <div class="term-stat-card" style="background:#fff7ed; border-color:#fdba74; color:#c2410c;"><div class="ts-val">${lateCount}</div><div class="ts-lbl">Late</div></div>
+        <div class="term-stat-card absent-card"><div class="ts-val">${absences}</div><div class="ts-lbl">Absences</div></div>
     </div>`;
 
-  if (allLogDates.length) {
-    html += `<div class="term-section-title">Daily attendance</div>`;
-    allLogDates.forEach(dateStr => {
-      const dayLogs   = termLogs.filter(l => l.timestamp.slice(0,10) === dateStr);
-      const arr       = dayLogs.filter(l => l.type === 'arrival');
-      const dep       = dayLogs.filter(l => l.type === 'departure');
-      const dateLabel = new Date(dateStr + 'T00:00:00').toLocaleDateString([], { month:'short', day:'numeric', weekday:'short' });
-      html += `
-        <div class="term-day-row">
-          <span class="term-day-date">${dateLabel}</span>
-          <div class="term-day-badges">
-            ${arr.map(l => {
-              const lateTag = l.isLate ? `<span class="badge badge-late" style="font-size:0.65rem;">⏰ Late</span>` : '';
-              return `<span class="badge badge-arrival">☀️ ${new Date(l.timestamp).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</span>${lateTag}`;
-            }).join('')}
-            ${dep.map(l => `<span class="badge badge-departure">🌙 ${new Date(l.timestamp).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</span>`).join('')}
-          </div>
-        </div>`;
-    });
-  } else {
-    html += `<p class="empty" style="padding:1.5rem 0;">No attendance recorded for ${term.label}.</p>`;
-  }
+    if (allLogDates.length) {
+        html += `<div class="term-section-title">Daily attendance</div>`;
+        allLogDates.forEach(dateStr => {
+            const dayLogs = termLogs.filter(l => l.timestamp.slice(0, 10) === dateStr);
+            const arr = dayLogs.filter(l => l.type === 'arrival');
+            const dep = dayLogs.filter(l => l.type === 'departure');
+            const dateLabel = new Date(dateStr + 'T00:00:00').toLocaleDateString([], { month: 'short', day: 'numeric', weekday: 'short' });
+            html += `
+            <div class="term-day-row">
+                <span class="term-day-date">${dateLabel}</span>
+                <div class="term-day-badges">
+                    ${arr.map(l => {
+                        const lateTag = l.isLate ? `<span class="badge badge-late" style="font-size:0.65rem;">⏰ Late</span>` : '';
+                        return `<span class="badge badge-arrival">☀️ ${new Date(l.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>${lateTag}`;
+                    }).join('')}
+                    ${dep.map(l => `<span class="badge badge-departure"> ${new Date(l.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>`).join('')}
+                </div>
+            </div>`;
+        });
+    } else {
+        html += `<p class="empty" style="padding:1.5rem 0;">No attendance recorded for ${term.label}.</p>`;
+    }
 
-  body.innerHTML = html;
+    body.innerHTML = html;
 }
 
-function closeTermsModal(e)      { if (e.target === document.getElementById('terms-modal-backdrop')) closeTermsModalDirect(); }
+function closeTermsModal(e) { if (e.target === document.getElementById('terms-modal-backdrop')) closeTermsModalDirect(); }
 function closeTermsModalDirect() { document.getElementById('terms-modal-backdrop').classList.remove('open'); document.body.style.overflow = ''; }
 
 // ── BOOT ──────────────────────────────────────────────────────────────────
