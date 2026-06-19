@@ -1824,137 +1824,104 @@ function renderPremiumCharts(range, logsInRange) {
   });
 }
 
-let currentLogsInRange = []; // Store logs for the modal to use
-
 function renderActionableList(logsInRange) {
-    const container = document.getElementById('actionable-list-container');
-    if (!container) return;
-
-    currentLogsInRange = logsInRange; // Save for modal functions
-
-    const isDaily = summaryPeriod === 'daily';
+  const container = document.getElementById('actionable-list-container');
+  if (!container) return;
+  
+  let html = '';
+  
+  if (summaryPeriod === 'daily') {
+    // DAILY VIEW: Show "Today's Absentees" with Call Parent button
     const presentIds = new Set(logsInRange.filter(l => l.type === 'arrival').map(l => l.studentId));
     const absentees = students.filter(s => !presentIds.has(s.id));
-
-    // Calculate at-risk students
-    const attentionList = [];
-    students.forEach(s => {
-        const sLogs = logsInRange.filter(l => l.studentId === s.id);
-        const arrivals = sLogs.filter(l => l.type === 'arrival');
-        const lates = arrivals.filter(l => l.isLate);
-        const classLogs = logsInRange.filter(l => l.classId === s.classId);
-        const activeDays = new Set(classLogs.map(l => l.timestamp.slice(0, 10))).size;
-        const presentDays = new Set(arrivals.map(l => l.timestamp.slice(0, 10))).size;
-        const absences = Math.max(0, activeDays - presentDays);
-        if (absences >= 3 || lates.length >= 3) {
-            attentionList.push({ student: s, absences, lates: lates.length });
-        }
-    });
-    attentionList.sort((a, b) => b.absences - a.absences);
-
-    let html = '';
-
-    if (isDaily) {
-        // DAILY VIEW: Clickable card to open Absentees Modal
+    
+    if (absentees.length > 0) {
+      html += `<div style="margin-top:1rem;">
+        <h3 style="font-size:0.9rem; font-weight:700; margin-bottom:0.75rem; color:var(--danger); display:flex; align-items:center; gap:8px;">
+          🚨 Today's Absentees
+          <span style="background:var(--danger); color:white; font-size:0.7rem; padding:2px 8px; border-radius:12px; font-weight:700;">${absentees.length}</span>
+        </h3>
+        <div style="background:var(--bg); border-radius:8px; padding:0.5rem;">`;
+      
+      absentees.forEach(s => {
+        const cls = classes.find(c => c.id === s.classId)?.name || 'Unknown Class';
+        const initials = s.name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
+        const guardianInfo = s.guardian ? `Guardian: ${s.guardian}` : 'No guardian info';
+        
         html += `
-        <div style="margin-top:1rem; background:var(--danger-bg); border:1px solid var(--danger-border); border-radius:10px; padding:1rem; display:flex; align-items:center; justify-content:space-between; cursor:pointer; transition:transform 0.1s;" onclick="openAbsenteesModal()" onmousedown="this.style.transform='scale(0.98)'" onmouseup="this.style.transform='scale(1)'">
-            <div>
-                <div style="font-size:0.95rem; font-weight:700; color:var(--danger);">🚨 Today's Absentees</div>
-                <div style="font-size:0.78rem; color:var(--danger); margin-top:2px;">${absentees.length} student${absentees.length !== 1 ? 's' : ''} absent today</div>
+          <div class="student-row">
+            <div class="student-info">
+              <div class="avatar" style="background:#fef2f2; color:var(--danger);">${initials}</div>
+              <div style="flex:1; min-width:0;">
+                <div class="student-name">${s.name}</div>
+                <div class="student-class">${cls}</div>
+              </div>
             </div>
-            <div style="font-size:1.5rem; color:var(--danger); font-weight:300;">›</div>
-        </div>`;
+            <button class="action-btn btn-call" onclick="showGuardianContact('${s.id}')">📞 Call Parent</button>
+          </div>`;
+      });
+      html += `</div></div>`;
     } else {
-        // WEEKLY/MONTHLY VIEW: Clickable card to open At-Risk Modal
-        if (attentionList.length > 0) {
-            html += `
-            <div style="margin-top:1rem; background:#fff7ed; border:1px solid #fdba74; border-radius:10px; padding:1rem; display:flex; align-items:center; justify-content:space-between; cursor:pointer; transition:transform 0.1s;" onclick="openAtRiskModal()" onmousedown="this.style.transform='scale(0.98)'" onmouseup="this.style.transform='scale(1)'">
-                <div>
-                    <div style="font-size:0.95rem; font-weight:700; color:#c2410c;">⚠️ Students Needing Attention</div>
-                    <div style="font-size:0.78rem; color:#c2410c; margin-top:2px;">${attentionList.length} student${attentionList.length !== 1 ? 's' : ''} with 3+ absences/lates</div>
-                </div>
-                <div style="font-size:1.5rem; color:#c2410c; font-weight:300;">›</div>
-            </div>`;
-        } else {
-            html += `<div style="text-align:center; padding:1.5rem; color:var(--success); font-weight:600; background:var(--success-bg); border-radius:10px; margin-top:1rem; border:1px solid var(--success-border);">✅ No students flagged for this period.</div>`;
-        }
+      html += `<div style="text-align:center; padding:2rem; color:var(--success); font-weight:600;">✅ Perfect Attendance Today!</div>`;
     }
-
-    container.innerHTML = html;
-}
-
-function openAbsenteesModal() {
-    const presentIds = new Set(currentLogsInRange.filter(l => l.type === 'arrival').map(l => l.studentId));
-    const absentees = students.filter(s => !presentIds.has(s.id));
-
-    document.getElementById('modal-title').textContent = `🚨 Absent Students (${absentees.length})`;
-
-    if (absentees.length === 0) {
-        document.getElementById('modal-body').innerHTML = `<p class="empty">No absent students.</p>`;
-    } else {
-        document.getElementById('modal-body').innerHTML = absentees.map(s => {
-            const initials = s.name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
-            const cls = classes.find(c => c.id === s.classId)?.name || 'Unknown Class';
-            return `
-            <div class="modal-student-item">
-                <div class="modal-student-avatar" style="background:var(--danger-bg); color:var(--danger);">${initials}</div>
-                <div style="flex:1;">
-                    <div class="modal-student-name">${s.name}</div>
-                    <div class="modal-student-lrn">${cls} · LRN: ${s.lrn || 'N/A'}</div>
-                </div>
-            </div>`;
-        }).join('');
-    }
-
-    document.getElementById('modal-backdrop').classList.add('open');
-    document.body.style.overflow = 'hidden';
-}
-
-function openAtRiskModal() {
+  } else {
+    // WEEKLY/MONTHLY VIEW: Show "Students Needing Attention" with View Record button
     const attentionList = [];
-
+    
     students.forEach(s => {
-        const sLogs = currentLogsInRange.filter(l => l.studentId === s.id);
-        const arrivals = sLogs.filter(l => l.type === 'arrival');
-        const lates = arrivals.filter(l => l.isLate);
-        const classLogs = currentLogsInRange.filter(l => l.classId === s.classId);
-        const activeDays = new Set(classLogs.map(l => l.timestamp.slice(0, 10))).size;
-        const presentDays = new Set(arrivals.map(l => l.timestamp.slice(0, 10))).size;
-        const absences = Math.max(0, activeDays - presentDays);
-        if (absences >= 3 || lates.length >= 3) {
-            attentionList.push({ student: s, absences, lates: lates.length });
-        }
+      const sLogs = logsInRange.filter(l => l.studentId === s.id);
+      const arrivals = sLogs.filter(l => l.type === 'arrival');
+      const lates = arrivals.filter(l => l.isLate);
+      
+      const classLogs = logsInRange.filter(l => l.classId === s.classId);
+      const activeDays = new Set(classLogs.map(l => l.timestamp.slice(0, 10))).size;
+      const presentDays = new Set(arrivals.map(l => l.timestamp.slice(0, 10))).size;
+      const absences = Math.max(0, activeDays - presentDays);
+      
+      if (absences >= 3 || lates.length >= 3) {
+        attentionList.push({ student: s, absences, lates: lates.length });
+      }
     });
+    
     attentionList.sort((a, b) => b.absences - a.absences);
-
-    document.getElementById('modal-title').textContent = `⚠️ Students Needing Attention (${attentionList.length})`;
-
-    if (attentionList.length === 0) {
-        document.getElementById('modal-body').innerHTML = `<p class="empty">No students flagged.</p>`;
+    
+    if (attentionList.length > 0) {
+      html += `<div style="margin-top:1rem;">
+        <h3 style="font-size:0.9rem; font-weight:700; margin-bottom:0.75rem; color:#c2410c;">⚠️ Students Needing Attention</h3>
+        <div style="background:var(--bg); border-radius:8px; padding:0.5rem;">`;
+      
+      attentionList.forEach(item => {
+        const s = item.student;
+        const cls = classes.find(c => c.id === s.classId)?.name || 'Unknown Class';
+        const initials = s.name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
+        
+        const tags = [];
+        if (item.absences >= 3) {
+          tags.push(`<span class="badge" style="background:var(--danger-bg); color:var(--danger); border:1px solid var(--danger-border); font-size:0.65rem; padding:2px 6px; border-radius:4px;">${item.absences} Abs</span>`);
+        }
+        if (item.lates >= 3) {
+          tags.push(`<span class="badge badge-late" style="font-size:0.65rem; padding:2px 6px; border-radius:4px;">${item.lates} Lates</span>`);
+        }
+        
+        html += `
+          <div class="student-row">
+            <div class="student-info">
+              <div class="avatar" style="background:#fff7ed; color:#c2410c;">${initials}</div>
+              <div style="flex:1; min-width:0;">
+                <div class="student-name">${s.name} ${tags.join(' ')}</div>
+                <div class="student-class">${cls}</div>
+              </div>
+            </div>
+            <button class="action-btn btn-view" onclick="showStudentAttendance('${s.id}')">View Record</button>
+          </div>`;
+      });
+      html += `</div></div>`;
     } else {
-        document.getElementById('modal-body').innerHTML = attentionList.map(item => {
-            const s = item.student;
-            const initials = s.name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
-            const cls = classes.find(c => c.id === s.classId)?.name || 'Unknown Class';
-            
-            let badges = '';
-            if (item.absences >= 3) badges += `<span class="badge" style="background:var(--danger-bg); color:var(--danger); border:1px solid var(--danger-border); margin-right:4px;">${item.absences} Abs</span>`;
-            if (item.lates >= 3) badges += `<span class="badge badge-late">${item.lates} Lates</span>`;
-
-            return `
-            <div class="modal-student-item">
-                <div class="modal-student-avatar" style="background:#fff7ed; color:#c2410c;">${initials}</div>
-                <div style="flex:1;">
-                    <div class="modal-student-name">${s.name}</div>
-                    <div class="modal-student-lrn">${cls} · LRN: ${s.lrn || 'N/A'}</div>
-                </div>
-                <div style="display:flex; flex-wrap:wrap; justify-content:flex-end; gap:4px;">${badges}</div>
-            </div>`;
-        }).join('');
+      html += `<div style="text-align:center; padding:2rem; color:var(--success); font-weight:600;">✅ No students flagged for this period.</div>`;
     }
-
-    document.getElementById('modal-backdrop').classList.add('open');
-    document.body.style.overflow = 'hidden';
+  }
+  
+  container.innerHTML = html;
 }
 
 // Chart instances storage
