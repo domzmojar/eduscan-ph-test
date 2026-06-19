@@ -571,114 +571,107 @@
     </div>
   </div>
 
-  <!-- SUMMARY PAGE -->
+<!-- SUMMARY PAGE -->
 <div id="page-summary" class="page">
   <div class="card">
-    <h2 style="margin-bottom:1.5rem;">📊 Attendance Dashboard</h2>
+    <h2 style="margin-bottom:1rem;">📊 Attendance Dashboard</h2>
     
-    <!-- Key Metrics Row -->
-    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:1rem; margin-bottom:2rem;">
-      <div style="background:var(--arrival-bg); border:1px solid var(--arrival-border); border-radius:10px; padding:1.25rem;">
-        <div style="font-size:0.78rem; color:var(--arrival); font-weight:600; margin-bottom:0.5rem;">Total Present Today</div>
-        <div id="metric-present" style="font-size:2rem; font-weight:800; color:var(--arrival); line-height:1;">0</div>
-        <div id="metric-present-change" style="font-size:0.78rem; color:var(--success); margin-top:0.25rem;">↑ 0%</div>
-      </div>
-      
-      <div style="background:var(--departure-bg); border:1px solid var(--departure-border); border-radius:10px; padding:1.25rem;">
-        <div style="font-size:0.78rem; color:var(--departure); font-weight:600; margin-bottom:0.5rem;">Total Departed</div>
-        <div id="metric-departed" style="font-size:2rem; font-weight:800; color:var(--departure); line-height:1;">0</div>
-        <div style="font-size:0.78rem; color:var(--text-muted); margin-top:0.25rem;">On time</div>
-      </div>
-      
-      <div style="background:#fff7ed; border:1px solid #fdba74; border-radius:10px; padding:1.25rem;">
-        <div style="font-size:0.78rem; color:#c2410c; font-weight:600; margin-bottom:0.5rem;">Late Arrivals</div>
-        <div id="metric-late" style="font-size:2rem; font-weight:800; color:#c2410c; line-height:1;">0</div>
-        <div style="font-size:0.78rem; color:var(--text-muted); margin-top:0.25rem;">This week</div>
-      </div>
-      
-      <div style="background:var(--danger-bg); border:1px solid var(--danger-border); border-radius:10px; padding:1.25rem;">
-        <div style="font-size:0.78rem; color:var(--danger); font-weight:600; margin-bottom:0.5rem;">Absent Today</div>
-        <div id="metric-absent" style="font-size:2rem; font-weight:800; color:var(--danger); line-height:1;">0</div>
-        <div style="font-size:0.78rem; color:var(--text-muted); margin-top:0.25rem;">Across all classes</div>
-      </div>
-    </div>
-    
-<!-- Charts Row -->
-<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:1.5rem; margin-bottom:2rem;">
-  <!-- Attendance Trend Chart -->
-  <div style="background:var(--bg); border-radius:10px; padding:1.25rem;">
-    <h3 style="font-size:0.95rem; font-weight:700; margin-bottom:1rem; color:var(--text);">📈 Weekly Attendance Trend</h3>
-    <!-- FIX: Wrapped in a container with a strict fixed height -->
-    <div style="position: relative; height: 250px;">
-      <canvas id="chart-trend"></canvas>
-    </div>
-  </div>
-  <!-- Attendance Status Pie Chart -->
-  <div style="background:var(--bg); border-radius:10px; padding:1.25rem;">
-    <h3 style="font-size:0.95rem; font-weight:700; margin-bottom:1rem; color:var(--text);">📊 Today's Status Breakdown</h3>
-    <!-- FIX: Wrapped in a container with a strict fixed height -->
-    <div style="position: relative; height: 250px;">
-      <canvas id="chart-status"></canvas>
-    </div>
-  </div>
-</div>
-<!-- Class Performance Chart -->
-<div style="background:var(--bg); border-radius:10px; padding:1.25rem; margin-bottom:2rem;">
-  <h3 style="font-size:0.95rem; font-weight:700; margin-bottom:1rem; color:var(--text);">📋 Attendance by Class</h3>
-  <!-- FIX: Wrapped in a container with a strict fixed height -->
-  <div style="position: relative; height: 300px;">
-    <canvas id="chart-class"></canvas>
-  </div>
-</div>
-    
-    <!-- Class Performance Chart -->
-    <div style="background:var(--bg); border-radius:10px; padding:1.25rem; margin-bottom:2rem;">
-      <h3 style="font-size:0.95rem; font-weight:700; margin-bottom:1rem; color:var(--text);">📋 Attendance by Class</h3>
-      <canvas id="chart-class" height="100"></canvas>
-    </div>
-    
-    <!-- Period Selection -->
-    <div class="summary-period-tabs" id="summary-period-tabs" style="margin-bottom:1.5rem;">
+    <!-- Period Selection - MOVED TO TOP -->
+    <div class="summary-period-tabs" id="summary-period-tabs" style="margin-bottom:1rem;">
       <button class="period-tab active" id="ptab-daily"   onclick="setPeriod('daily')">Daily</button>
       <button class="period-tab"        id="ptab-weekly"  onclick="setPeriod('weekly')">Weekly</button>
       <button class="period-tab"        id="ptab-monthly" onclick="setPeriod('monthly')">Monthly</button>
       <button class="period-tab"        id="ptab-custom"  onclick="setPeriod('custom')">Custom</button>
     </div>
     
-    <!-- Period Controls -->
-    <div id="period-ctrl-daily" class="period-ctrl" style="margin-bottom:1.5rem;">
-      <label for="summary-day-input" style="margin-bottom:0.5rem; display:block;">Select Date</label>
-      <input type="date" id="summary-day-input" onchange="renderSummary()" style="max-width:250px;">
+    <!-- Period Controls - COMPACT -->
+    <div id="period-ctrl-daily" class="period-ctrl" style="margin-bottom:1rem;">
+      <label for="summary-day-input" style="margin-bottom:0.3rem; font-size:0.85rem;">Select Date</label>
+      <input type="date" id="summary-day-input" onchange="renderSummary()" style="max-width:200px;">
     </div>
     
-    <div id="period-ctrl-weekly" class="period-ctrl" style="display:none; margin-bottom:1.5rem;">
-      <label style="margin-bottom:0.5rem; display:block;">Week Starting</label>
-      <div style="display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap;">
-        <button class="btn outline sm" onclick="shiftWeek(-1)">‹ Previous Week</button>
-        <span id="week-label" style="font-size:0.95rem; font-weight:600; flex:1; text-align:center; min-width:200px;"></span>
-        <button class="btn outline sm" onclick="shiftWeek(1)">Next Week ›</button>
+    <div id="period-ctrl-weekly" class="period-ctrl" style="display:none; margin-bottom:1rem;">
+      <label style="margin-bottom:0.3rem; font-size:0.85rem;">Week Starting</label>
+      <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:nowrap;">
+        <button class="btn outline sm" onclick="shiftWeek(-1)" style="white-space:nowrap;">‹ Prev</button>
+        <span id="week-label" style="font-size:0.9rem; font-weight:600; flex:1; text-align:center; min-width:150px;"></span>
+        <button class="btn outline sm" onclick="shiftWeek(1)" style="white-space:nowrap;">Next ›</button>
       </div>
     </div>
     
-    <div id="period-ctrl-monthly" class="period-ctrl" style="display:none; margin-bottom:1.5rem;">
-      <label style="margin-bottom:0.5rem; display:block;">Month</label>
-      <div style="display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap;">
-        <button class="btn outline sm" onclick="shiftMonth(-1)">‹ Previous Month</button>
-        <span id="month-label" style="font-size:0.95rem; font-weight:600; flex:1; text-align:center; min-width:200px;"></span>
-        <button class="btn outline sm" onclick="shiftMonth(1)">Next Month ›</button>
+    <div id="period-ctrl-monthly" class="period-ctrl" style="display:none; margin-bottom:1rem;">
+      <label style="margin-bottom:0.3rem; font-size:0.85rem;">Month</label>
+      <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:nowrap;">
+        <button class="btn outline sm" onclick="shiftMonth(-1)" style="white-space:nowrap;">‹ Prev</button>
+        <span id="month-label" style="font-size:0.9rem; font-weight:600; flex:1; text-align:center; min-width:150px;"></span>
+        <button class="btn outline sm" onclick="shiftMonth(1)" style="white-space:nowrap;">Next ›</button>
       </div>
     </div>
     
-    <div id="period-ctrl-custom" class="period-ctrl" style="display:none; margin-bottom:1.5rem;">
-      <div style="display:flex; gap:1rem; flex-wrap:wrap; align-items:flex-end;">
-        <div style="flex:1; min-width:200px;">
-          <label for="custom-date-from" style="margin-bottom:0.5rem; display:block;">From Date</label>
-          <input type="date" id="custom-date-from" onchange="renderSummary()">
+    <div id="period-ctrl-custom" class="period-ctrl" style="display:none; margin-bottom:1rem;">
+      <div style="display:flex; gap:0.75rem; flex-wrap:wrap; align-items:flex-end;">
+        <div style="flex:1; min-width:150px;">
+          <label for="custom-date-from" style="margin-bottom:0.3rem; font-size:0.85rem;">From</label>
+          <input type="date" id="custom-date-from" onchange="renderSummary()" style="width:100%;">
         </div>
-        <div style="flex:1; min-width:200px;">
-          <label for="custom-date-to" style="margin-bottom:0.5rem; display:block;">To Date</label>
-          <input type="date" id="custom-date-to" onchange="renderSummary()">
+        <div style="flex:1; min-width:150px;">
+          <label for="custom-date-to" style="margin-bottom:0.3rem; font-size:0.85rem;">To</label>
+          <input type="date" id="custom-date-to" onchange="renderSummary()" style="width:100%;">
         </div>
+      </div>
+    </div>
+    
+    <!-- Key Metrics Row - COMPACT -->
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:0.75rem; margin-bottom:1rem;">
+      <div style="background:var(--arrival-bg); border:1px solid var(--arrival-border); border-radius:8px; padding:0.75rem;">
+        <div style="font-size:0.7rem; color:var(--arrival); font-weight:600; margin-bottom:0.25rem;">Present Today</div>
+        <div id="metric-present" style="font-size:1.5rem; font-weight:800; color:var(--arrival); line-height:1;">0</div>
+        <div id="metric-present-change" style="font-size:0.7rem; color:var(--success); margin-top:0.15rem;">↑ 0%</div>
+      </div>
+      
+      <div style="background:var(--departure-bg); border:1px solid var(--departure-border); border-radius:8px; padding:0.75rem;">
+        <div style="font-size:0.7rem; color:var(--departure); font-weight:600; margin-bottom:0.25rem;">Departed</div>
+        <div id="metric-departed" style="font-size:1.5rem; font-weight:800; color:var(--departure); line-height:1;">0</div>
+        <div style="font-size:0.7rem; color:var(--text-muted); margin-top:0.15rem;">On time</div>
+      </div>
+      
+      <div style="background:#fff7ed; border:1px solid #fdba74; border-radius:8px; padding:0.75rem;">
+        <div style="font-size:0.7rem; color:#c2410c; font-weight:600; margin-bottom:0.25rem;">Late</div>
+        <div id="metric-late" style="font-size:1.5rem; font-weight:800; color:#c2410c; line-height:1;">0</div>
+        <div style="font-size:0.7rem; color:var(--text-muted); margin-top:0.15rem;">This week</div>
+      </div>
+      
+      <div style="background:var(--danger-bg); border:1px solid var(--danger-border); border-radius:8px; padding:0.75rem;">
+        <div style="font-size:0.7rem; color:var(--danger); font-weight:600; margin-bottom:0.25rem;">Absent</div>
+        <div id="metric-absent" style="font-size:1.5rem; font-weight:800; color:var(--danger); line-height:1;">0</div>
+        <div style="font-size:0.7rem; color:var(--text-muted); margin-top:0.15rem;">All classes</div>
+      </div>
+    </div>
+    
+    <!-- Charts Row - RESPONSIVE HEIGHTS -->
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:1rem; margin-bottom:1rem;">
+      <!-- Attendance Trend Chart -->
+      <div style="background:var(--bg); border-radius:8px; padding:1rem;">
+        <h3 style="font-size:0.85rem; font-weight:700; margin-bottom:0.75rem; color:var(--text);">📈 Weekly Trend</h3>
+        <div style="position: relative; height: 200px;">
+          <canvas id="chart-trend"></canvas>
+        </div>
+      </div>
+      
+      <!-- Attendance Status Pie Chart -->
+      <div style="background:var(--bg); border-radius:8px; padding:1rem;">
+        <h3 style="font-size:0.85rem; font-weight:700; margin-bottom:0.75rem; color:var(--text);">📊 Status</h3>
+        <div style="position: relative; height: 200px;">
+          <canvas id="chart-status"></canvas>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Class Performance Chart -->
+    <div style="background:var(--bg); border-radius:8px; padding:1rem; margin-bottom:1rem;">
+      <h3 style="font-size:0.85rem; font-weight:700; margin-bottom:0.75rem; color:var(--text);">📋 By Class</h3>
+      <div style="position: relative; height: 250px;">
+        <canvas id="chart-class"></canvas>
       </div>
     </div>
     
