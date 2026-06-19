@@ -2558,15 +2558,15 @@ let termsActiveTerm      = 1;
 
 // Calculate Terms based on DepEd standard (Term 1: ~3 months, Term 2: ~3 months, Term 3: ~3 months)
 function calculateTerms(startDateStr) {
-  if (!startDateStr) {
-    // Fallback to default if not set
-    TERMS = [
-        { num: 1, label: 'Term 1', months: [6, 7, 8, 9], range: 'Jun – Sep' },
-        { num: 2, label: 'Term 2', months: [10, 11, 12], range: 'Oct – Dec' },
-        { num: 3, label: 'Term 3', months: [1, 2, 3], range: 'Jan – Mar' }
-    ];
-    return;
-  }
+  // DepEd terms are strictly based on calendar months.
+  // The startDateStr is only used to check if the school year has started in the Summary tab.
+  // For the Terms tab, we always use the standard DepEd calendar.
+  TERMS = [
+    { num: 1, label: 'Term 1', months: [6, 7, 8, 9],  range: 'Jun – Sep' },
+    { num: 2, label: 'Term 2', months: [10, 11, 12],  range: 'Oct – Dec' },
+    { num: 3, label: 'Term 3', months: [1, 2, 3],     range: 'Jan – Mar' },
+  ];
+}
 
   const [y, m, d] = startDateStr.split('-').map(Number);
   const start = new Date(y, m - 1, d);
@@ -2646,15 +2646,15 @@ function renderTermsStudentList() {
   }).join('');
 }
 
-function getTermLogs(studentId, classId, termNum) {
-  const term = TERMS.find(t => t.num === termNum);
-  if (!term || !term.start) {
-    // Fallback to old month logic if no school year is set
-    return logs.filter(l => {
-      if (l.studentId !== studentId || l.classId !== classId) return false;
-      const m = new Date(l.timestamp).getMonth() + 1;
-      return term.months.includes(m);
-    });
+function getSchoolDaysInTerm(classId, termNum) {
+    const term = TERMS.find(t => t.num === termNum);
+    return new Set(
+      logs.filter(l => {
+        if (l.classId !== classId) return false;
+        const m = new Date(l.timestamp).getMonth() + 1;
+        return term.months.includes(m);
+      }).map(l => l.timestamp.slice(0, 10))
+    );
   }
   
   // New exact date logic
