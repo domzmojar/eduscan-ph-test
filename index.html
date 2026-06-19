@@ -618,23 +618,27 @@
       </div>
     </div>
 
-    <!-- 2. DYNAMIC METRIC CARDS -->
+    <!-- 2. DYNAMIC METRIC CARDS (Premium: Attendance Rate + Context) -->
     <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:0.75rem; margin-bottom:1.5rem;">
       <div style="background:var(--arrival-bg); border:1px solid var(--arrival-border); border-radius:10px; padding:1rem; text-align:center;">
-        <div id="label-present" style="font-size:0.75rem; color:var(--arrival); font-weight:600; margin-bottom:0.25rem;">Present</div>
-        <div id="metric-present" style="font-size:1.8rem; font-weight:800; color:var(--arrival); line-height:1;">0</div>
-      </div>
-      <div style="background:var(--departure-bg); border:1px solid var(--departure-border); border-radius:10px; padding:1rem; text-align:center;">
-        <div id="label-departed" style="font-size:0.75rem; color:var(--departure); font-weight:600; margin-bottom:0.25rem;">Dismissed</div>
-        <div id="metric-departed" style="font-size:1.8rem; font-weight:800; color:var(--departure); line-height:1;">0</div>
-      </div>
-      <div style="background:#fff7ed; border:1px solid #fdba74; border-radius:10px; padding:1rem; text-align:center;">
-        <div id="label-late" style="font-size:0.75rem; color:#c2410c; font-weight:600; margin-bottom:0.25rem;">Late</div>
-        <div id="metric-late" style="font-size:1.8rem; font-weight:800; color:#c2410c; line-height:1;">0</div>
+        <div style="font-size:0.7rem; color:var(--arrival); font-weight:600; margin-bottom:0.25rem;">Attendance Rate</div>
+        <div id="metric-rate" style="font-size:2rem; font-weight:800; color:var(--arrival); line-height:1;">0%</div>
+        <div id="metric-rate-detail" style="font-size:0.68rem; color:var(--arrival); margin-top:0.2rem; opacity:0.8;">0/0 enrolled</div>
       </div>
       <div style="background:var(--danger-bg); border:1px solid var(--danger-border); border-radius:10px; padding:1rem; text-align:center;">
-        <div id="label-absent" style="font-size:0.75rem; color:var(--danger); font-weight:600; margin-bottom:0.25rem;">Absent</div>
-        <div id="metric-absent" style="font-size:1.8rem; font-weight:800; color:var(--danger); line-height:1;">0</div>
+        <div style="font-size:0.7rem; color:var(--danger); font-weight:600; margin-bottom:0.25rem;">Total Absences</div>
+        <div id="metric-absent" style="font-size:2rem; font-weight:800; color:var(--danger); line-height:1;">0</div>
+        <div id="metric-absent-detail" style="font-size:0.68rem; color:var(--danger); margin-top:0.2rem; opacity:0.8;">student-days missed</div>
+      </div>
+      <div style="background:#fff7ed; border:1px solid #fdba74; border-radius:10px; padding:1rem; text-align:center;">
+        <div style="font-size:0.7rem; color:#c2410c; font-weight:600; margin-bottom:0.25rem;">Late Arrivals</div>
+        <div id="metric-late" style="font-size:2rem; font-weight:800; color:#c2410c; line-height:1;">0</div>
+        <div id="metric-late-detail" style="font-size:0.68rem; color:#c2410c; margin-top:0.2rem; opacity:0.8;">instances</div>
+      </div>
+      <div style="background:var(--primary-bg); border:1px solid #bfdbfe; border-radius:10px; padding:1rem; text-align:center;">
+        <div style="font-size:0.7rem; color:var(--primary); font-weight:600; margin-bottom:0.25rem;">School Days</div>
+        <div id="metric-days" style="font-size:2rem; font-weight:800; color:var(--primary); line-height:1;">0</div>
+        <div id="metric-days-detail" style="font-size:0.68rem; color:var(--primary); margin-top:0.2rem; opacity:0.8;">days with records</div>
       </div>
     </div>
 
@@ -649,6 +653,11 @@
     <!-- 4. ACTIONABLE LIST (The "Premium" Feature) -->
     <div id="actionable-list-container">
       <!-- Content injected by JS -->
+
+          <!-- 4. PRINT / SHARE BUTTON -->
+    <button class="btn full" onclick="printSummaryReport()" style="margin-top:1rem; background:linear-gradient(135deg,#1d4ed8,#3b82f6); font-size:0.9rem; padding:0.85rem; border-radius:10px;">
+      🖨️ Generate Summary Report
+    </button>
     </div>
 
   </div>
@@ -1626,6 +1635,41 @@ function renderSummary() {
   renderActionableList(logsInRange);
 }
 
+function printSummaryReport() {
+  const range = getActiveDateRange();
+  if (!range) return showToast('Select a date range first.');
+
+  const logsInRange = logs.filter(l => {
+    const d = l.timestamp.slice(0, 10);
+    return d >= range.from && d <= range.to;
+  });
+
+  const schoolDays = new Set(logsInRange.map(l => l.timestamp.slice(0, 10))).size;
+  const totalEnrolled = students.length;
+  const arrivalLogs = logsInRange.filter(l => l.type === 'arrival');
+  const uniquePresent = new Set(arrivalLogs.map(l => l.studentId)).size;
+  const lateCount = arrivalLogs.filter(l => l.isLate).length;
+  const totalAbsences = Math.max(0, (totalEnrolled * Math.max(1, schoolDays)) - arrivalLogs.length);
+  const rate = totalEnrolled > 0 && schoolDays > 0 ? Math.round((arrivalLogs.length / (totalEnrolled * schoolDays)) * 100) : 0;
+
+  const periodLabel = summaryPeriod === 'daily' ? 'Daily' : summaryPeriod === 'weekly' ? 'Weekly' : summaryPeriod === 'monthly' ? 'Monthly' : 'Custom';
+
+  let classRows = '';
+  classes.forEach(c => {
+    const cs = students.filter(s => s.classId === c.id).length;
+    const ca = logsInRange.filter(l => l.classId === c.id && l.type === 'arrival').length;
+    const cl = logsInRange.filter(l => l.classId === c.id && l.type === 'arrival' && l.isLate).length;
+    classRows += `<tr><td style="padding:8px; border-bottom:1px solid #e2e8f0;">${c.name}</td><td style="padding:8px; border-bottom:1px solid #e2e8f0; text-align:center;">${cs}</td><td style="padding:8px; border-bottom:1px solid #e2e8f0; text-align:center;">${ca}</td><td style="padding:8px; border-bottom:1px solid #e2e8f0; text-align:center;">${cl}</td></tr>`;
+  });
+
+  const printHTML = `<!DOCTYPE html><html><head><title>EduScan PH Report</title><style>body{font-family:Arial,sans-serif;padding:2rem;color:#0f172a;max-width:800px;margin:0 auto;}h1{color:#1d4ed8;font-size:1.5rem;}h2{font-size:1.1rem;margin-top:1.5rem;color:#334155;}table{width:100%;border-collapse:collapse;margin-top:0.5rem;}th{background:#1d4ed8;color:#fff;padding:8px;text-align:left;font-size:0.85rem;}td{font-size:0.85rem;}.meta{color:#64748b;font-size:0.85rem;margin-bottom:1.5rem;}.rate{font-size:2rem;font-weight:800;color:#1d4ed8;}.stats{display:flex;gap:1rem;margin:1rem 0;flex-wrap:wrap;}.stat{flex:1;min-width:120px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:1rem;text-align:center;}.stat .v{font-size:1.5rem;font-weight:700;}.stat .l{font-size:0.75rem;color:#64748b;}@media print{body{padding:0;}}</style></head><body><h1>📊 EduScan PH — Attendance Report</h1><div class="meta">Period: ${periodLabel} (${range.from} to ${range.to}) · Generated: ${new Date().toLocaleString()}</div><div class="stats"><div class="stat"><div class="v" style="color:#0369a1;">${rate}%</div><div class="l">Attendance Rate</div></div><div class="stat"><div class="v" style="color:#b91c1c;">${totalAbsences}</div><div class="l">Total Absences</div></div><div class="stat"><div class="v" style="color:#c2410c;">${lateCount}</div><div class="l">Late Arrivals</div></div><div class="stat"><div class="v" style="color:#1d4ed8;">${schoolDays}</div><div class="l">School Days</div></div></div><h2>Class Breakdown</h2><table><tr><th>Class</th><th style="text-align:center;">Enrolled</th><th style="text-align:center;">Arrivals</th><th style="text-align:center;">Lates</th></tr>${classRows}</table><p style="margin-top:2rem;font-size:0.75rem;color:#94a3b8;">Generated by EduScan PH — Offline-First Attendance System</p></body></html>`;
+
+  const printWindow = window.open('', '_blank');
+  printWindow.document.write(printHTML);
+  printWindow.document.close();
+  printWindow.onload = () => { printWindow.print(); };
+}
+
 function renderPremiumCharts(range, logsInRange) {
   if (!document.getElementById('chart-class')) return;
 
@@ -1804,85 +1848,105 @@ function destroyCharts() {
 // Render optimized, accurate charts
 // Render optimized, accurate charts
 function renderPremiumCharts(range, logsInRange) {
-    if (!document.getElementById('chart-class')) return;
+  if (!document.getElementById('chart-class')) return;
 
-    const isDaily = summaryPeriod === 'daily';
-    const totalEnrolled = students.length;
-    let presentVal, dismissedVal, lateVal, absentVal;
-    let presentLabel = 'Present', dismissedLabel = 'Dismissed', lateLabel = 'Late', absentLabel = 'Absent';
+  const isDaily = summaryPeriod === 'daily';
+  const totalEnrolled = students.length;
 
-    if (isDaily) {
-        // Daily: Unique students today
-        const presentIds = new Set(logsInRange.filter(l => l.type === 'arrival').map(l => l.studentId));
-        const departedIds = new Set(logsInRange.filter(l => l.type === 'departure').map(l => l.studentId));
-        presentVal = presentIds.size;
-        dismissedVal = departedIds.size;
-        lateVal = logsInRange.filter(l => l.type === 'arrival' && l.isLate).length;
-        absentVal = Math.max(0, totalEnrolled - presentVal);
-    } else {
-        // Weekly/Monthly: Total Scans (Fixes the "Same Numbers" bug)
-        presentVal = logsInRange.filter(l => l.type === 'arrival').length;
-        dismissedVal = logsInRange.filter(l => l.type === 'departure').length;
-        lateVal = logsInRange.filter(l => l.type === 'arrival' && l.isLate).length;
-        const activeIds = new Set(logsInRange.map(l => l.studentId));
-        absentVal = activeIds.size; // Repurpose 4th card for "Active Students"
-        
-        presentLabel = 'Total Arrivals';
-        dismissedLabel = 'Total Dismissals';
-        lateLabel = 'Total Late';
-        absentLabel = 'Active Students';
+  // Calculate School Days in range
+  const schoolDays = new Set(logsInRange.map(l => l.timestamp.slice(0, 10))).size;
+
+  // Calculate Core Metrics
+  const arrivalLogs = logsInRange.filter(l => l.type === 'arrival');
+  const uniquePresent = new Set(arrivalLogs.map(l => l.studentId)).size;
+  const lateCount = arrivalLogs.filter(l => l.isLate).length;
+
+  // Attendance Rate = Unique Present / Total Enrolled (Daily) or Avg Daily Rate (Aggregated)
+  let attendanceRate = 0;
+  let totalAbsences = 0;
+
+  if (isDaily) {
+    attendanceRate = totalEnrolled > 0 ? Math.round((uniquePresent / totalEnrolled) * 100) : 0;
+    totalAbsences = Math.max(0, totalEnrolled - uniquePresent);
+  } else {
+    // For weekly/monthly: average daily attendance rate
+    if (schoolDays > 0 && totalEnrolled > 0) {
+      const dailyRates = [];
+      const allDates = [...new Set(logsInRange.map(l => l.timestamp.slice(0, 10)))];
+      allDates.forEach(dateStr => {
+        const dayArrivals = new Set(logsInRange.filter(l => l.timestamp.slice(0, 10) === dateStr && l.type === 'arrival').map(l => l.studentId)).size;
+        dailyRates.push(dayArrivals / totalEnrolled);
+      });
+      attendanceRate = Math.round((dailyRates.reduce((a, b) => a + b, 0) / dailyRates.length) * 100);
     }
+    // Total absences = (enrolled * school days) - total arrival instances
+    totalAbsences = Math.max(0, (totalEnrolled * schoolDays) - arrivalLogs.length);
+  }
 
-    // Update Labels dynamically
-    const updateCard = (id, label) => {
-        const el = document.getElementById(id);
-        if (el && el.previousElementSibling) el.previousElementSibling.textContent = label;
-    };
-    updateCard('metric-present', presentLabel);
-    updateCard('metric-departed', dismissedLabel);
-    updateCard('metric-late', lateLabel);
-    updateCard('metric-absent', absentLabel);
+  // Update Metric Cards
+  document.getElementById('metric-rate').textContent = attendanceRate + '%';
+  document.getElementById('metric-rate-detail').textContent = isDaily ? `${uniquePresent}/${totalEnrolled} enrolled` : `avg across ${schoolDays} days`;
+  document.getElementById('metric-absent').textContent = totalAbsences;
+  document.getElementById('metric-absent-detail').textContent = isDaily ? 'students absent today' : 'student-days missed';
+  document.getElementById('metric-late').textContent = lateCount;
+  document.getElementById('metric-late-detail').textContent = isDaily ? 'late today' : 'total late instances';
+  document.getElementById('metric-days').textContent = schoolDays;
+  document.getElementById('metric-days-detail').textContent = isDaily ? 'today' : 'days with records';
 
-    // Update Values
-    document.getElementById('metric-present').textContent = presentVal;
-    document.getElementById('metric-departed').textContent = dismissedVal;
-    document.getElementById('metric-late').textContent = lateVal;
-    document.getElementById('metric-absent').textContent = absentVal;
+  // Color the rate card based on performance
+  const rateEl = document.getElementById('metric-rate').parentElement;
+  if (attendanceRate >= 90) {
+    rateEl.style.background = 'var(--arrival-bg)';
+    rateEl.style.borderColor = 'var(--arrival-border)';
+  } else if (attendanceRate >= 75) {
+    rateEl.style.background = '#fffbeb';
+    rateEl.style.borderColor = '#fcd34d';
+  } else {
+    rateEl.style.background = 'var(--danger-bg)';
+    rateEl.style.borderColor = 'var(--danger-border)';
+  }
 
-    // Render Chart
-    const classCtx = document.getElementById('chart-class').getContext('2d');
-    if (chartInstances.class) chartInstances.class.destroy();
-    
-    const classLabels = classes.map(c => c.name);
-    const classData = classes.map(c => {
-        const classLogs = logsInRange.filter(l => l.classId === c.id && l.type === 'arrival');
-        return isDaily ? new Set(classLogs.map(l => l.studentId)).size : classLogs.length;
-    });
+  // Render Bar Chart (Attendance Rate per Class)
+  const classCtx = document.getElementById('chart-class').getContext('2d');
+  const classLabels = classes.map(c => c.name);
+  const classData = classes.map(c => {
+    const classStudents = students.filter(s => s.classId === c.id).length;
+    if (classStudents === 0) return 0;
+    if (isDaily) {
+      const present = new Set(logsInRange.filter(l => l.classId === c.id && l.type === 'arrival').map(l => l.studentId)).size;
+      return Math.round((present / classStudents) * 100);
+    } else {
+      const classArrivals = logsInRange.filter(l => l.classId === c.id && l.type === 'arrival').length;
+      const classDays = new Set(logsInRange.filter(l => l.classId === c.id).map(l => l.timestamp.slice(0, 10))).size;
+      return classDays > 0 ? Math.round((classArrivals / (classStudents * classDays)) * 100) : 0;
+    }
+  });
 
-    chartInstances.class = new Chart(classCtx, {
-        type: 'bar',
-        data: {
-            labels: classLabels,
-            datasets: [{
-                label: isDaily ? 'Students Present' : 'Total Arrivals',
-                data: classData,
-                backgroundColor: 'rgba(29, 78, 216, 0.8)',
-                borderColor: '#1d4ed8',
-                borderWidth: 0,
-                borderRadius: 6,
-                borderSkipped: false,
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
-            scales: {
-                y: { beginAtZero: true, ticks: { stepSize: 1, color: '#64748b' }, grid: { color: 'rgba(0,0,0,0.05)' } },
-                x: { ticks: { color: '#64748b', font: { weight: '600', size: 10 }, maxRotation: 45, minRotation: 45 }, grid: { display: false } }
-            }
-        }
-    });
+  chartInstances.class = new Chart(classCtx, {
+    type: 'bar',
+    data: {
+      labels: classLabels,
+      datasets: [{
+        label: 'Attendance Rate (%)',
+        data: classData,
+        backgroundColor: classData.map(v => v >= 90 ? 'rgba(21,128,61,0.8)' : v >= 75 ? 'rgba(245,158,11,0.8)' : 'rgba(185,28,28,0.8)'),
+        borderRadius: 6,
+        borderSkipped: false,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: ctx => ctx.raw + '% attendance' } }
+      },
+      scales: {
+        y: { beginAtZero: true, max: 100, ticks: { callback: v => v + '%', color: '#64748b' }, grid: { color: 'rgba(0,0,0,0.05)' } },
+        x: { ticks: { color: '#64748b', font: { size: 10 }, maxRotation: 45, minRotation: 45 }, grid: { display: false } }
+      }
+    }
+  });
 }
 
 function openModalRange(type, classId, fromDate, toDate, encodedClassName) {
