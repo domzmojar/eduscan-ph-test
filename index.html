@@ -12,7 +12,7 @@
   <meta name="apple-mobile-web-app-title" content="EduScan PH">
   <link rel="apple-touch-icon" href="/icon-192-any.png">
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
 
   <style>
     :root {
@@ -1359,24 +1359,38 @@ function openClassRosterModal(classId) {
 
 // ── STUDENTS ──────────────────────────────────────────────────────────────
 async function addStudent() {
-const classId = document.getElementById('student-class-select').value;
-const name = document.getElementById('student-name-input').value.trim();
-const lrn = document.getElementById('student-lrn-input').value.trim();
-const guardian = document.getElementById('student-guardian-input').value.trim();
-if (!classId || !name) return showToast('Class and full name are required.');
-const id = 'student_' + Date.now();
-const qrPayload = JSON.stringify({ eduscan: true, id });
-const qrDataUrl = await QRCode.toDataURL(qrPayload, { width: 160, margin: 1 });
-students.push({ id, classId, name, lrn, guardian, qrDataUrl });
-students.sort((a, b) => a.name.localeCompare(b.name));
-await saveStudents();
-['student-name-input','student-lrn-input','student-guardian-input'].forEach(id => {
-document.getElementById(id).value = '';
-});
-renderStudents();
-renderClasses();
-populateDropdowns();
-showToast('Student saved. QR generated offline.');
+  const classId  = document.getElementById('student-class-select').value;
+  const name     = document.getElementById('student-name-input').value.trim();
+  const lrn      = document.getElementById('student-lrn-input').value.trim();
+  const guardian = document.getElementById('student-guardian-input').value.trim();
+
+  if (!classId || !name) return showToast('Class and full name are required.');
+
+  const id = 'student_' + Date.now();
+  let qrDataUrl = '';
+  
+  // Safely generate QR code if the library is loaded
+  if (typeof QRCode !== 'undefined') {
+    try {
+      const qrPayload = JSON.stringify({ eduscan: true, id });
+      qrDataUrl = await QRCode.toDataURL(qrPayload, { width: 160, margin: 1 });
+    } catch (e) {
+      console.error('QR generation failed:', e);
+    }
+  }
+
+  students.push({ id, classId, name, lrn, guardian, qrDataUrl });
+  students.sort((a, b) => a.name.localeCompare(b.name));
+  await saveStudents();
+
+  ['student-name-input','student-lrn-input','student-guardian-input'].forEach(inp => {
+    document.getElementById(inp).value = '';
+  });
+  
+  renderStudents();
+  renderClasses();
+  populateDropdowns();
+  showToast('Student saved. QR generated offline.');
 }
 
 async function deleteStudent(id) {
@@ -1399,19 +1413,39 @@ async function renderStudents() {
     return;
   }
 
-  // Generate QR codes for any students missing them
+  // Generate QR codes for any students missing them (e.g. imported from backup)
+  let needsSave = false;
   for (const student of list) {
     if (!student.qrDataUrl && typeof QRCode !== 'undefined') {
       try {
         const qrPayload = JSON.stringify({ eduscan: true, id: student.id });
         student.qrDataUrl = await QRCode.toDataURL(qrPayload, { width: 160, margin: 1 });
-        // Save to database
-        await dbPutAll('students', students);
+        needsSave = true;
       } catch (e) {
         console.error('Failed to generate QR:', e);
       }
     }
   }
+  if (needsSave) await saveStudents();
+
+  container.innerHTML = list.map(s => {
+    const cls    = (classes.find(c => c.id === s.classId) || {}).name || 'Unknown';
+    const qrData = encodeURIComponent(JSON.stringify({ eduscan: true, id: s.id }));
+    
+    // SMART FALLBACK: Use offline image if available, otherwise use online API
+    const qrUrl = s.qrDataUrl || `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${qrData}`;
+    
+    return `
+      <div class="qr-card">
+        <span class="qr-class">${cls}</span>
+        <span class="qr-name">${s.name}</span>
+        ${s.lrn ? `<span class="qr-lrn">LRN: ${s.lrn}</span>` : ''}
+        <img src="${qrUrl}" alt="QR for ${s.name}" style="width:100%;max-width:120px;height:auto;border:1px solid #eee;padding:3px;background:#fff;border-radius:4px;">
+        ${s.guardian ? `<span class="qr-meta" style="margin-top:0.3rem;">👤 ${s.guardian}</span>` : ''}
+        <button class="btn danger sm" style="margin-top:0.5rem;" onclick="deleteStudent('${s.id}')">Remove</button>
+      </div>`;
+  }).join('');
+}
 
   container.innerHTML = list.map(s => {
     const cls    = (classes.find(c => c.id === s.classId) || {}).name || 'Unknown';

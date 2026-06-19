@@ -1,5 +1,5 @@
 // EduScan PH — Service Worker v3 (Bulletproof Offline)
-const CACHE_NAME = 'eduscan-ph-v4'; // Bumped to v3 to force update!
+const CACHE_NAME = 'eduscan-ph-v5'; // Bumped to v3 to force update!
 
 // CRITICAL: We explicitly list index.html here so it is guaranteed 
 // to be downloaded and saved the exact millisecond the app installs.
@@ -12,7 +12,7 @@ const CORE_ASSETS = [
   '/icon-512-any.png',
   '/icon-512-maskable.png',
   'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js',
-  'https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js'
+  'https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js'
 ];
 
 // ── INSTALL: Force download all core files immediately ────────────────────
