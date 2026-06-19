@@ -1,5 +1,5 @@
 // EduScan PH — Service Worker v3 (Bulletproof Offline)
-const CACHE_NAME = 'eduscan-ph-v4'; // Bumped to v3 to force update!
+const CACHE_NAME = 'eduscan-ph-v5'; // Bumped to v3 to force update!
 
 // CRITICAL: We explicitly list index.html here so it is guaranteed 
 // to be downloaded and saved the exact millisecond the app installs.
