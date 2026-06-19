@@ -1831,33 +1831,24 @@ function renderActionableList(logsInRange) {
   let html = '';
   
   if (summaryPeriod === 'daily') {
-    // DAILY VIEW: Show "Today's Absentees" with Call Parent button
+    // DAILY VIEW: Show "Today's Absentees"
     const presentIds = new Set(logsInRange.filter(l => l.type === 'arrival').map(l => l.studentId));
     const absentees = students.filter(s => !presentIds.has(s.id));
     
     if (absentees.length > 0) {
       html += `<div style="margin-top:1rem;">
-        <h3 style="font-size:0.9rem; font-weight:700; margin-bottom:0.75rem; color:var(--danger); display:flex; align-items:center; gap:8px;">
-          🚨 Today's Absentees
-          <span style="background:var(--danger); color:white; font-size:0.7rem; padding:2px 8px; border-radius:12px; font-weight:700;">${absentees.length}</span>
-        </h3>
+        <h3 style="font-size:0.9rem; font-weight:700; margin-bottom:0.75rem; color:var(--danger);">🚨 Today's Absentees (${absentees.length})</h3>
         <div style="background:var(--bg); border-radius:8px; padding:0.5rem;">`;
       
       absentees.forEach(s => {
         const cls = classes.find(c => c.id === s.classId)?.name || 'Unknown Class';
-        const initials = s.name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
-        const guardianInfo = s.guardian ? `Guardian: ${s.guardian}` : 'No guardian info';
-        
         html += `
-          <div class="student-row">
-            <div class="student-info">
-              <div class="avatar" style="background:#fef2f2; color:var(--danger);">${initials}</div>
-              <div style="flex:1; min-width:0;">
-                <div class="student-name">${s.name}</div>
-                <div class="student-class">${cls}</div>
-              </div>
+          <div style="display:flex; justify-content:space-between; align-items:center; padding:0.6rem 0.5rem; border-bottom:1px solid var(--border); font-size:0.85rem;">
+            <div>
+              <div style="font-weight:600;">${s.name}</div>
+              <div style="font-size:0.75rem; color:var(--text-muted);">${cls}</div>
             </div>
-            <button class="action-btn btn-call" onclick="showGuardianContact('${s.id}')">📞 Call Parent</button>
+            <button class="action-btn btn-call" onclick="showParentContact('${s.id}')">📞 Call Parent</button>
           </div>`;
       });
       html += `</div></div>`;
@@ -1865,7 +1856,7 @@ function renderActionableList(logsInRange) {
       html += `<div style="text-align:center; padding:2rem; color:var(--success); font-weight:600;">✅ Perfect Attendance Today!</div>`;
     }
   } else {
-    // WEEKLY/MONTHLY VIEW: Show "Students Needing Attention" with View Record button
+    // WEEKLY/MONTHLY VIEW: Show "Students Needing Attention"
     const attentionList = [];
     
     students.forEach(s => {
@@ -1874,8 +1865,8 @@ function renderActionableList(logsInRange) {
       const lates = arrivals.filter(l => l.isLate);
       
       const classLogs = logsInRange.filter(l => l.classId === s.classId);
-      const activeDays = new Set(classLogs.map(l => l.timestamp.slice(0, 10))).size;
-      const presentDays = new Set(arrivals.map(l => l.timestamp.slice(0, 10))).size;
+      const activeDays = new Set(classLogs.map(l => l.localDate || l.timestamp.slice(0, 10))).size;
+      const presentDays = new Set(arrivals.map(l => l.localDate || l.timestamp.slice(0, 10))).size;
       const absences = Math.max(0, activeDays - presentDays);
       
       if (absences >= 3 || lates.length >= 3) {
@@ -1891,28 +1882,18 @@ function renderActionableList(logsInRange) {
         <div style="background:var(--bg); border-radius:8px; padding:0.5rem;">`;
       
       attentionList.forEach(item => {
-        const s = item.student;
-        const cls = classes.find(c => c.id === s.classId)?.name || 'Unknown Class';
-        const initials = s.name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
-        
+        const cls = classes.find(c => c.id === item.student.classId)?.name || 'Unknown Class';
         const tags = [];
-        if (item.absences >= 3) {
-          tags.push(`<span class="badge" style="background:var(--danger-bg); color:var(--danger); border:1px solid var(--danger-border); font-size:0.65rem; padding:2px 6px; border-radius:4px;">${item.absences} Abs</span>`);
-        }
-        if (item.lates >= 3) {
-          tags.push(`<span class="badge badge-late" style="font-size:0.65rem; padding:2px 6px; border-radius:4px;">${item.lates} Lates</span>`);
-        }
+        if (item.absences >= 3) tags.push(`<span class="badge" style="background:var(--danger-bg); color:var(--danger); border:1px solid var(--danger-border); font-size:0.65rem;">${item.absences} Abs</span>`);
+        if (item.lates >= 3) tags.push(`<span class="badge badge-late" style="font-size:0.65rem;">${item.lates} Lates</span>`);
         
         html += `
-          <div class="student-row">
-            <div class="student-info">
-              <div class="avatar" style="background:#fff7ed; color:#c2410c;">${initials}</div>
-              <div style="flex:1; min-width:0;">
-                <div class="student-name">${s.name} ${tags.join(' ')}</div>
-                <div class="student-class">${cls}</div>
-              </div>
+          <div style="display:flex; justify-content:space-between; align-items:center; padding:0.6rem 0.5rem; border-bottom:1px solid var(--border); font-size:0.85rem;">
+            <div>
+              <div style="font-weight:600;">${item.student.name} <span style="display:inline-flex; gap:4px; margin-left:4px;">${tags.join('')}</span></div>
+              <div style="font-size:0.75rem; color:var(--text-muted);">${cls}</div>
             </div>
-            <button class="action-btn btn-view" onclick="showStudentAttendance('${s.id}')">View Record</button>
+            <button class="action-btn btn-view" onclick="showStudentRecord('${item.student.id}')">📋 View Record</button>
           </div>`;
       });
       html += `</div></div>`;
@@ -2912,6 +2893,137 @@ function renderTermsModalBody() {
 
 function closeTermsModal(e) { if (e.target === document.getElementById('terms-modal-backdrop')) closeTermsModalDirect(); }
 function closeTermsModalDirect() { document.getElementById('terms-modal-backdrop').classList.remove('open'); document.body.style.overflow = ''; }
+
+// ── PREMIUM MODAL ACTIONS ───────────────────────────────────────────────
+
+// 1. "Call Parent" Modal
+function showParentContact(studentId) {
+  const student = students.find(s => s.id === studentId);
+  if (!student) return;
+  const cls = classes.find(c => c.id === student.classId);
+  
+  document.getElementById('modal-title').textContent = '📞 Contact Guardian';
+  
+  let bodyHTML = `
+    <div style="background:var(--bg); border-radius:10px; padding:1rem; margin-bottom:1rem; border:1px solid var(--border);">
+      <div style="display:flex; align-items:center; gap:12px; margin-bottom:1rem;">
+        <div class="modal-student-avatar" style="width:48px; height:48px; font-size:1rem; background:var(--danger-bg); color:var(--danger);">
+          ${student.name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()}
+        </div>
+        <div>
+          <div style="font-weight:700; font-size:1.05rem;">${student.name}</div>
+          <div style="font-size:0.8rem; color:var(--text-muted);">${cls ? cls.name : 'Unknown Class'} · LRN: ${student.lrn || 'N/A'}</div>
+        </div>
+      </div>
+      <div style="background:var(--surface); border-radius:8px; padding:0.85rem; border:1px solid var(--border);">
+        <div style="font-size:0.75rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; margin-bottom:0.3rem;">Guardian Name</div>
+        <div style="font-size:1rem; font-weight:600; color:var(--text);">${student.guardian || '<span style="color:var(--danger); font-weight:500;">Not provided</span>'}</div>
+      </div>
+    </div>
+    <div class="instruction-block" style="margin-bottom:0;">
+      <p style="font-size:0.85rem; color:var(--text); line-height:1.5; margin:0;">
+        💡 <strong>Reminder:</strong> Please call or text the guardian to inquire about the student's absence today. Record any feedback or reasons provided in your class logbook.
+      </p>
+    </div>
+  `;
+  
+  document.getElementById('modal-body').innerHTML = bodyHTML;
+  document.getElementById('modal-backdrop').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+// 2. "View Record" Modal (Matches Terms Tab UI/UX)
+function showStudentRecord(studentId) {
+  const student = students.find(s => s.id === studentId);
+  if (!student) return;
+  const cls = classes.find(c => c.id === student.classId);
+  const range = getActiveDateRange();
+  if (!range) return;
+
+  // Get logs for this student in the selected range
+  const studentLogs = logs.filter(l => {
+    if (l.studentId !== studentId) return false;
+    const d = l.localDate || l.timestamp.slice(0, 10);
+    return d >= range.from && d <= range.to;
+  });
+
+  // Get all school days for this class in the range
+  const classLogs = logs.filter(l => {
+    if (l.classId !== student.classId) return false;
+    const d = l.localDate || l.timestamp.slice(0, 10);
+    return d >= range.from && d <= range.to;
+  });
+  const schoolDays = [...new Set(classLogs.map(l => l.localDate || l.timestamp.slice(0, 10)))].sort();
+  
+  const arrivals = studentLogs.filter(l => l.type === 'arrival');
+  const departures = studentLogs.filter(l => l.type === 'departure');
+  const lateCount = arrivals.filter(l => l.isLate).length;
+  const presentDays = new Set(arrivals.map(l => l.localDate || l.timestamp.slice(0, 10)));
+  const absences = schoolDays.filter(d => !presentDays.has(d)).length;
+
+  document.getElementById('modal-title').textContent = '📋 Attendance Record';
+  
+  let bodyHTML = `
+    <div style="background:var(--bg); border-radius:10px; padding:1rem; margin-bottom:1rem; border:1px solid var(--border);">
+      <div style="display:flex; align-items:center; gap:12px; margin-bottom:1rem;">
+        <div class="modal-student-avatar" style="width:48px; height:48px; font-size:1rem; background:var(--primary-bg); color:var(--primary);">
+          ${student.name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()}
+        </div>
+        <div>
+          <div style="font-weight:700; font-size:1.05rem;">${student.name}</div>
+          <div style="font-size:0.8rem; color:var(--text-muted);">${cls ? cls.name : 'Unknown Class'} · LRN: ${student.lrn || 'N/A'}</div>
+        </div>
+      </div>
+      <div style="font-size:0.8rem; color:var(--text-muted); margin-bottom:0.5rem;">
+        Period: ${fmtShort(range.from)} – ${fmtShort(range.to)} (${schoolDays.length} school days)
+      </div>
+    </div>
+
+    <!-- Uses the exact same CSS classes as the Terms tab! -->
+    <div class="term-stat-grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom:1.5rem;">
+      <div class="term-stat-card arrival-card"><div class="ts-val">${arrivals.length}</div><div class="ts-lbl">Arrivals</div></div>
+      <div class="term-stat-card departure-card"><div class="ts-val">${departures.length}</div><div class="ts-lbl">Dismissals</div></div>
+      <div class="term-stat-card" style="background:#fff7ed; border-color:#fdba74; color:#c2410c;"><div class="ts-val">${lateCount}</div><div class="ts-lbl">Late</div></div>
+      <div class="term-stat-card absent-card"><div class="ts-val">${absences}</div><div class="ts-lbl">Absences</div></div>
+    </div>
+
+    <div class="term-section-title">Daily Breakdown</div>
+  `;
+
+  if (schoolDays.length > 0) {
+    schoolDays.forEach(dateStr => {
+      const dayLogs = studentLogs.filter(l => (l.localDate || l.timestamp.slice(0, 10)) === dateStr);
+      const arr = dayLogs.filter(l => l.type === 'arrival');
+      const dep = dayLogs.filter(l => l.type === 'departure');
+      const dateLabel = new Date(dateStr + 'T00:00:00').toLocaleDateString([], { month: 'short', day: 'numeric', weekday: 'short' });
+      
+      let badgesHTML = '';
+      if (arr.length > 0) {
+        const lateTag = arr[0].isLate ? `<span class="badge badge-late" style="font-size:0.65rem;">⏰ Late</span>` : '';
+        badgesHTML += `<span class="badge badge-arrival">☀️ ${new Date(arr[0].timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>${lateTag}`;
+      } else {
+        badgesHTML += `<span class="badge" style="background:var(--danger-bg); color:var(--danger); border:1px solid var(--danger-border); font-size:0.65rem;">❌ Absent</span>`;
+      }
+      
+      if (dep.length > 0) {
+        badgesHTML += `<span class="badge badge-departure">🌙 ${new Date(dep[0].timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>`;
+      }
+
+      bodyHTML += `
+        <div class="term-day-row">
+          <span class="term-day-date">${dateLabel}</span>
+          <div class="term-day-badges">${badgesHTML}</div>
+        </div>
+      `;
+    });
+  } else {
+    bodyHTML += `<p class="empty" style="padding:1rem 0;">No school days recorded for this period.</p>`;
+  }
+
+  document.getElementById('modal-body').innerHTML = bodyHTML;
+  document.getElementById('modal-backdrop').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
 
 // ── BOOT ──────────────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', async () => {
