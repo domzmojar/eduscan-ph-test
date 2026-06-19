@@ -651,24 +651,35 @@
 </div>
 </div>
 
-  <!-- TERMS PAGE -->
-  <div id="page-terms" class="page">
-    <div class="card">
-      <h2 style="margin-bottom:0.25rem;">Term Report</h2>
-      <p style="font-size:0.78rem; color:var(--text-muted); margin-bottom:1rem;">DepEd 3-term calendar: Term 1 (Jun–Sep) · Term 2 (Oct–Dec) · Term 3 (Jan–Mar)</p>
-      <div class="form-group" style="margin-bottom:0.75rem;">
-        <label for="terms-class-select">Class / Section</label>
-        <select id="terms-class-select" onchange="renderTermsStudentList()">
-          <option value="">— Choose a class —</option>
-        </select>
-      </div>
-      <div id="terms-student-list">
-        <p class="empty" style="padding:1rem 0;">Select a class to view students.</p>
+<!-- TERMS PAGE -->
+<div id="page-terms" class="page">
+  <div class="card">
+    <h2 style="margin-bottom:0.25rem;">Term Report</h2>
+    <p style="font-size:0.78rem; color:var(--text-muted); margin-bottom:1rem;">DepEd 3-term calendar: Term 1 (Jun–Sep) · Term 2 (Oct–Dec) · Term 3 (Jan–Mar)</p>
+    
+    <!-- NEW: SCHOOL YEAR SETTINGS (Moved inside the Terms page) -->
+    <div class="card" style="background: var(--primary-bg); border-color: var(--primary-light); margin-bottom: 1.5rem;">
+      <h3 style="font-size: 0.95rem; font-weight: 700; color: var(--primary); margin-bottom: 0.5rem;">🏫 School Year Calendar</h3>
+      <p style="font-size: 0.78rem; color:var(--text-muted); margin-bottom: 0.75rem;">Set the exact first day of classes. The app will automatically calculate Term 1, 2, and 3 based on DepEd standards.</p>
+      <div class="form-group" style="margin-bottom: 0;">
+        <label for="school-year-start">First Day of Classes</label>
+        <input type="date" id="school-year-start" onchange="saveSchoolYearStart()" style="max-width: 250px;">
       </div>
     </div>
-  </div>
 
-  <!-- DOWNLOAD PAGE -->
+    <div class="form-group" style="margin-bottom:0.75rem;">
+      <label for="terms-class-select">Class / Section</label>
+      <select id="terms-class-select" onchange="renderTermsStudentList()">
+        <option value="">— Choose a class —</option>
+      </select>
+    </div>
+    <div id="terms-student-list">
+      <p class="empty" style="padding:1rem 0;">Select a class to view students.</p>
+    </div>
+  </div>
+</div>
+
+<!-- DOWNLOAD PAGE -->
   <div id="page-download" class="page">
 
     <!-- PWA Install Card -->
@@ -1529,9 +1540,17 @@ function updateMonthLabel() {
     d.toLocaleDateString([], { month: 'long', year: 'numeric' });
 }
 
-function dateToStr(d) { return d.toISOString().slice(0, 10); }
+// FIX: Use local date methods instead of UTC toISOString()
+function dateToStr(d) {
+  return d.getFullYear() + '-' +
+         String(d.getMonth() + 1).padStart(2, '0') + '-' +
+         String(d.getDate()).padStart(2, '0');
+}
+
 function fmtShort(dateStr) {
-  return new Date(dateStr + 'T00:00:00').toLocaleDateString([], { month: 'short', day: 'numeric' });
+  // FIX: Parse as local date, not UTC
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString([], { month: 'short', day: 'numeric' });
 }
 
 function getActiveDateRange() {
@@ -2385,17 +2404,72 @@ function triggerDownload(blob, filename) {
 }
 
 // ── TERMS ─────────────────────────────────────────────────────────────────
-const TERMS = [
-  { num: 1, label: 'Term 1', months: [6,7,8,9],  range: 'Jun – Sep' },
-  { num: 2, label: 'Term 2', months: [10,11,12],  range: 'Oct – Dec' },
-  { num: 3, label: 'Term 3', months: [1,2,3],     range: 'Jan – Mar' },
-];
-
+// Dynamic Terms: Calculated based on the School Year Start Date
+let TERMS = [];
 let termsActiveStudentId = null;
 let termsActiveClassId   = null;
 let termsActiveTerm      = 1;
 
-function renderTermsPage() { populateTermsDropdown(); renderTermsStudentList(); }
+// Calculate Terms based on DepEd standard (Term 1: ~3 months, Term 2: ~3 months, Term 3: ~3 months)
+function calculateTerms(startDateStr) {
+  if (!startDateStr) {
+    // Fallback to default if not set
+    TERMS = [
+      { num: 1, label: 'Term 1', months: [6,7,8,9],  range: 'Jun – Sep' },
+      { num: 2, label: 'Term 2', months: [10,11,12],  range: 'Oct – Dec' },
+      { num: 3, label: 'Term 3', months: [1,2,3],     range: 'Jan – Mar' },
+    ];
+    return;
+  }
+
+  const [y, m, d] = startDateStr.split('-').map(Number);
+  const start = new Date(y, m - 1, d);
+  
+  // DepEd Standard: Term 1 is 3 months from start. Term 2 is next 3. Term 3 is next 3.
+  const t1End = new Date(start); t1End.setMonth(start.getMonth() + 3); t1End.setDate(0); // Last day of 3rd month
+  const t2End = new Date(t1End); t2End.setMonth(t1End.getMonth() + 4); t2End.setDate(0); // Next 3 months
+  const t3End = new Date(t2End); t3End.setMonth(t2End.getMonth() + 4); t3End.setDate(0); // Next 3 months
+
+  const fmt = (date) => date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+
+  TERMS = [
+    { 
+      num: 1, label: 'Term 1', 
+      start: start.toISOString().slice(0,10), end: t1End.toISOString().slice(0,10),
+      range: `${fmt(start)} – ${fmt(t1End)}` 
+    },
+    { 
+      num: 2, label: 'Term 2', 
+      start: new Date(t1End.getFullYear(), t1End.getMonth() + 1, 1).toISOString().slice(0,10), 
+      end: t2End.toISOString().slice(0,10),
+      range: `${fmt(new Date(t1End.getFullYear(), t1End.getMonth() + 1, 1))} – ${fmt(t2End)}` 
+    },
+    { 
+      num: 3, label: 'Term 3', 
+      start: new Date(t2End.getFullYear(), t2End.getMonth() + 1, 1).toISOString().slice(0,10), 
+      end: t3End.toISOString().slice(0,10),
+      range: `${fmt(new Date(t2End.getFullYear(), t2End.getMonth() + 1, 1))} – ${fmt(t3End)}` 
+    }
+  ];
+}
+
+async function saveSchoolYearStart() {
+  const val = document.getElementById('school-year-start').value;
+  await dbSetSetting('school_year_start', val);
+  calculateTerms(val);
+  renderTermsStudentList();
+  showToast('School year calendar updated ✓');
+}
+
+async function renderTermsPage() { 
+  const savedStart = await dbGetSetting('school_year_start') || '';
+  const startInput = document.getElementById('school-year-start');
+  if (startInput) startInput.value = savedStart;
+  
+  calculateTerms(savedStart);
+  populateTermsDropdown(); 
+  renderTermsStudentList(); 
+}
 
 function populateTermsDropdown() {
   const sel  = document.getElementById('terms-class-select');
@@ -2427,20 +2501,42 @@ function renderTermsStudentList() {
 
 function getTermLogs(studentId, classId, termNum) {
   const term = TERMS.find(t => t.num === termNum);
+  if (!term || !term.start) {
+    // Fallback to old month logic if no school year is set
+    return logs.filter(l => {
+      if (l.studentId !== studentId || l.classId !== classId) return false;
+      const m = new Date(l.timestamp).getMonth() + 1;
+      return term.months.includes(m);
+    });
+  }
+  
+  // New exact date logic
   return logs.filter(l => {
     if (l.studentId !== studentId || l.classId !== classId) return false;
-    const m = new Date(l.timestamp).getMonth() + 1;
-    return term.months.includes(m);
+    const logDate = l.timestamp.slice(0, 10);
+    return logDate >= term.start && logDate <= term.end;
   });
 }
 
 function getSchoolDaysInTerm(classId, termNum) {
   const term = TERMS.find(t => t.num === termNum);
+  if (!term || !term.start) {
+    // Fallback
+    return new Set(
+      logs.filter(l => {
+        if (l.classId !== classId) return false;
+        const m = new Date(l.timestamp).getMonth() + 1;
+        return term.months.includes(m);
+      }).map(l => l.timestamp.slice(0, 10))
+    );
+  }
+
+  // New exact date logic
   return new Set(
     logs.filter(l => {
       if (l.classId !== classId) return false;
-      const m = new Date(l.timestamp).getMonth() + 1;
-      return term.months.includes(m);
+      const logDate = l.timestamp.slice(0, 10);
+      return logDate >= term.start && logDate <= term.end;
     }).map(l => l.timestamp.slice(0, 10))
   );
 }
