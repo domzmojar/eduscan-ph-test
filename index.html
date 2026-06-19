@@ -603,20 +603,33 @@
       </div>
     </div>
     
-    <!-- Charts Row -->
-    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(350px, 1fr)); gap:1.5rem; margin-bottom:2rem;">
-      <!-- Attendance Trend Chart -->
-      <div style="background:var(--bg); border-radius:10px; padding:1.25rem;">
-        <h3 style="font-size:0.95rem; font-weight:700; margin-bottom:1rem; color:var(--text);">📈 Weekly Attendance Trend</h3>
-        <canvas id="chart-trend" height="250"></canvas>
-      </div>
-      
-      <!-- Attendance Status Pie Chart -->
-      <div style="background:var(--bg); border-radius:10px; padding:1.25rem;">
-        <h3 style="font-size:0.95rem; font-weight:700; margin-bottom:1rem; color:var(--text);">📊 Today's Status Breakdown</h3>
-        <canvas id="chart-status" height="250"></canvas>
-      </div>
+<!-- Charts Row -->
+<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:1.5rem; margin-bottom:2rem;">
+  <!-- Attendance Trend Chart -->
+  <div style="background:var(--bg); border-radius:10px; padding:1.25rem;">
+    <h3 style="font-size:0.95rem; font-weight:700; margin-bottom:1rem; color:var(--text);">📈 Weekly Attendance Trend</h3>
+    <!-- FIX: Wrapped in a container with a strict fixed height -->
+    <div style="position: relative; height: 250px;">
+      <canvas id="chart-trend"></canvas>
     </div>
+  </div>
+  <!-- Attendance Status Pie Chart -->
+  <div style="background:var(--bg); border-radius:10px; padding:1.25rem;">
+    <h3 style="font-size:0.95rem; font-weight:700; margin-bottom:1rem; color:var(--text);">📊 Today's Status Breakdown</h3>
+    <!-- FIX: Wrapped in a container with a strict fixed height -->
+    <div style="position: relative; height: 250px;">
+      <canvas id="chart-status"></canvas>
+    </div>
+  </div>
+</div>
+<!-- Class Performance Chart -->
+<div style="background:var(--bg); border-radius:10px; padding:1.25rem; margin-bottom:2rem;">
+  <h3 style="font-size:0.95rem; font-weight:700; margin-bottom:1rem; color:var(--text);">📋 Attendance by Class</h3>
+  <!-- FIX: Wrapped in a container with a strict fixed height -->
+  <div style="position: relative; height: 300px;">
+    <canvas id="chart-class"></canvas>
+  </div>
+</div>
     
     <!-- Class Performance Chart -->
     <div style="background:var(--bg); border-radius:10px; padding:1.25rem; margin-bottom:2rem;">
@@ -1764,6 +1777,9 @@ function destroyCharts() {
 
 // Render premium charts
 function renderPremiumCharts(range, logsInRange) {
+  // Safety check: Ensure canvases exist before trying to render
+  if (!document.getElementById('chart-trend')) return;
+  
   const today = todayStr();
   const todayLogs = logs.filter(l => l.timestamp.slice(0, 10) === today);
   
