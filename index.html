@@ -379,6 +379,82 @@
     .install-step-icon { font-size: 1.1rem; flex-shrink: 0; line-height: 1; margin-top: 2px; }
     .install-step-text { font-size: 0.83rem; line-height: 1.5; color: var(--text); flex: 1; }
     .install-step-text strong { color: var(--text); font-weight: 700; }
+
+    /* Action Buttons for Summary Tab */
+.action-btn { 
+  padding: 0.4rem 0.8rem; 
+  border-radius: 6px; 
+  border: none; 
+  font-size: 0.75rem; 
+  font-weight: 600; 
+  cursor: pointer; 
+  transition: all 0.15s;
+}
+.action-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+.btn-call { 
+  background: var(--success-bg); 
+  color: var(--success); 
+  border: 1px solid var(--success-border); 
+}
+.btn-call:hover {
+  background: #dcfce7;
+}
+.btn-view { 
+  background: var(--primary-bg); 
+  color: var(--primary); 
+  border: 1px solid #bfdbfe; 
+}
+.btn-view:hover {
+  background: #dbeafe;
+}
+.student-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+  gap: 0.5rem;
+}
+.student-row:last-child {
+  border-bottom: none;
+}
+.student-info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex: 1;
+  min-width: 0;
+}
+.avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--primary-bg);
+  color: var(--primary);
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+.student-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.student-class {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
   </style>
 </head>
 <body>
@@ -1751,37 +1827,45 @@ function renderPremiumCharts(range, logsInRange) {
 function renderActionableList(logsInRange) {
   const container = document.getElementById('actionable-list-container');
   if (!container) return;
-
+  
   let html = '';
-
+  
   if (summaryPeriod === 'daily') {
-    // DAILY VIEW: Show "Today's Absentees"
+    // DAILY VIEW: Show "Today's Absentees" with Call Parent button
     const presentIds = new Set(logsInRange.filter(l => l.type === 'arrival').map(l => l.studentId));
     const absentees = students.filter(s => !presentIds.has(s.id));
-
+    
     if (absentees.length > 0) {
       html += `<div style="margin-top:1rem;">
-        <h3 style="font-size:0.9rem; font-weight:700; margin-bottom:0.75rem; color:var(--danger);">🚨 Today's Absentees (${absentees.length})</h3>
+        <h3 style="font-size:0.9rem; font-weight:700; margin-bottom:0.75rem; color:var(--danger); display:flex; align-items:center; gap:8px;">
+          🚨 Today's Absentees
+          <span style="background:var(--danger); color:white; font-size:0.7rem; padding:2px 8px; border-radius:12px; font-weight:700;">${absentees.length}</span>
+        </h3>
         <div style="background:var(--bg); border-radius:8px; padding:0.5rem;">`;
       
       absentees.forEach(s => {
         const cls = classes.find(c => c.id === s.classId)?.name || 'Unknown Class';
+        const initials = s.name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
+        const guardianInfo = s.guardian ? `Guardian: ${s.guardian}` : 'No guardian info';
+        
         html += `
-          <div style="display:flex; justify-content:space-between; padding:0.6rem 0.5rem; border-bottom:1px solid var(--border); font-size:0.85rem;">
-            <div>
-              <div style="font-weight:600;">${s.name}</div>
-              <div style="font-size:0.75rem; color:var(--text-muted);">${cls}</div>
+          <div class="student-row">
+            <div class="student-info">
+              <div class="avatar" style="background:#fef2f2; color:var(--danger);">${initials}</div>
+              <div style="flex:1; min-width:0;">
+                <div class="student-name">${s.name}</div>
+                <div class="student-class">${cls}</div>
+              </div>
             </div>
-            <span class="badge badge-late">Absent</span>
+            <button class="action-btn btn-call" onclick="showGuardianContact('${s.id}')">📞 Call Parent</button>
           </div>`;
       });
       html += `</div></div>`;
     } else {
       html += `<div style="text-align:center; padding:2rem; color:var(--success); font-weight:600;">✅ Perfect Attendance Today!</div>`;
     }
-
   } else {
-    // WEEKLY/MONTHLY VIEW: Show "Students Needing Attention" (3+ Absences or Lates)
+    // WEEKLY/MONTHLY VIEW: Show "Students Needing Attention" with View Record button
     const attentionList = [];
     
     students.forEach(s => {
@@ -1789,39 +1873,46 @@ function renderActionableList(logsInRange) {
       const arrivals = sLogs.filter(l => l.type === 'arrival');
       const lates = arrivals.filter(l => l.isLate);
       
-      // Calculate absences based on school days in range (simplified for UI)
-      // A student is absent if there are days in the range where the class had logs but they didn't
       const classLogs = logsInRange.filter(l => l.classId === s.classId);
       const activeDays = new Set(classLogs.map(l => l.timestamp.slice(0, 10))).size;
       const presentDays = new Set(arrivals.map(l => l.timestamp.slice(0, 10))).size;
       const absences = Math.max(0, activeDays - presentDays);
-
+      
       if (absences >= 3 || lates.length >= 3) {
         attentionList.push({ student: s, absences, lates: lates.length });
       }
     });
-
-    // Sort by most absences
+    
     attentionList.sort((a, b) => b.absences - a.absences);
-
+    
     if (attentionList.length > 0) {
       html += `<div style="margin-top:1rem;">
         <h3 style="font-size:0.9rem; font-weight:700; margin-bottom:0.75rem; color:#c2410c;">⚠️ Students Needing Attention</h3>
         <div style="background:var(--bg); border-radius:8px; padding:0.5rem;">`;
       
       attentionList.forEach(item => {
-        const cls = classes.find(c => c.id === item.student.classId)?.name || 'Unknown Class';
+        const s = item.student;
+        const cls = classes.find(c => c.id === s.classId)?.name || 'Unknown Class';
+        const initials = s.name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
+        
         const tags = [];
-        if (item.absences >= 3) tags.push(`<span class="badge" style="background:var(--danger-bg); color:var(--danger); border:1px solid var(--danger-border);">${item.absences} Abs</span>`);
-        if (item.lates >= 3) tags.push(`<span class="badge badge-late">${item.lates} Lates</span>`);
+        if (item.absences >= 3) {
+          tags.push(`<span class="badge" style="background:var(--danger-bg); color:var(--danger); border:1px solid var(--danger-border); font-size:0.65rem; padding:2px 6px; border-radius:4px;">${item.absences} Abs</span>`);
+        }
+        if (item.lates >= 3) {
+          tags.push(`<span class="badge badge-late" style="font-size:0.65rem; padding:2px 6px; border-radius:4px;">${item.lates} Lates</span>`);
+        }
         
         html += `
-          <div style="display:flex; justify-content:space-between; align-items:center; padding:0.6rem 0.5rem; border-bottom:1px solid var(--border); font-size:0.85rem;">
-            <div>
-              <div style="font-weight:600;">${item.student.name}</div>
-              <div style="font-size:0.75rem; color:var(--text-muted);">${cls}</div>
+          <div class="student-row">
+            <div class="student-info">
+              <div class="avatar" style="background:#fff7ed; color:#c2410c;">${initials}</div>
+              <div style="flex:1; min-width:0;">
+                <div class="student-name">${s.name} ${tags.join(' ')}</div>
+                <div class="student-class">${cls}</div>
+              </div>
             </div>
-            <div style="display:flex; gap:4px;">${tags.join('')}</div>
+            <button class="action-btn btn-view" onclick="showStudentAttendance('${s.id}')">View Record</button>
           </div>`;
       });
       html += `</div></div>`;
@@ -1829,7 +1920,7 @@ function renderActionableList(logsInRange) {
       html += `<div style="text-align:center; padding:2rem; color:var(--success); font-weight:600;">✅ No students flagged for this period.</div>`;
     }
   }
-
+  
   container.innerHTML = html;
 }
 
@@ -2874,6 +2965,70 @@ window.addEventListener('DOMContentLoaded', async () => {
   // Show install banner after a short delay so it doesn't flash on load
   setTimeout(initInstallBanner, 1200);
 });
+
+// Show guardian contact info when "Call Parent" is clicked
+function showGuardianContact(studentId) {
+  const student = students.find(s => s.id === studentId);
+  if (!student) return;
+  
+  const cls = classes.find(c => c.id === student.classId)?.name || 'Unknown Class';
+  const guardianInfo = student.guardian || 'No guardian information available';
+  
+  alert(`📞 Contact Information\n\nStudent: ${student.name}\nClass: ${cls}\nLRN: ${student.lrn || 'N/A'}\n\nGuardian: ${guardianInfo}\n\nNote: Please update the student record with guardian contact details if not available.`);
+}
+
+// Show detailed attendance record when "View Record" is clicked
+function showStudentAttendance(studentId) {
+  const student = students.find(s => s.id === studentId);
+  if (!student) return;
+  
+  const cls = classes.find(c => c.id === student.classId)?.name || 'Unknown Class';
+  const range = getActiveDateRange();
+  if (!range) return;
+  
+  const studentLogs = logs.filter(l => {
+    if (l.studentId !== studentId) return false;
+    const d = l.timestamp.slice(0, 10);
+    return d >= range.from && d <= range.to;
+  });
+  
+  const arrivals = studentLogs.filter(l => l.type === 'arrival');
+  const lates = arrivals.filter(l => l.isLate);
+  
+  const classLogs = logs.filter(l => {
+    if (l.classId !== student.classId) return false;
+    const d = l.timestamp.slice(0, 10);
+    return d >= range.from && d <= range.to;
+  });
+  const activeDays = new Set(classLogs.map(l => l.timestamp.slice(0, 10))).size;
+  const presentDays = new Set(arrivals.map(l => l.timestamp.slice(0, 10))).size;
+  const absences = Math.max(0, activeDays - presentDays);
+  
+  let message = `📋 Attendance Record\n\n`;
+  message += `Student: ${student.name}\n`;
+  message += `Class: ${cls}\n`;
+  message += `LRN: ${student.lrn || 'N/A'}\n`;
+  message += `Period: ${range.from} to ${range.to}\n\n`;
+  message += `📊 Summary:\n`;
+  message += `• Total Arrivals: ${arrivals.length}\n`;
+  message += `• Total Lates: ${lates.length}\n`;
+  message += `• Total Absences: ${absences}\n`;
+  message += `• Attendance Rate: ${activeDays > 0 ? Math.round((presentDays / activeDays) * 100) : 0}%\n\n`;
+  
+  if (lates.length > 0) {
+    message += `⏰ Late Arrivals:\n`;
+    lates.slice(0, 5).forEach(l => {
+      const date = l.timestamp.slice(0, 10);
+      const time = new Date(l.timestamp).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+      message += `• ${date} at ${time}\n`;
+    });
+    if (lates.length > 5) {
+      message += `... and ${lates.length - 5} more\n`;
+    }
+  }
+  
+  alert(message);
+}
 </script>
 
 <script>
