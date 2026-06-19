@@ -41,23 +41,32 @@ self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;
 
   event.respondWith(
-    fetch(event.request)
-      .then(networkResponse => {
-        // If we have internet, fetch from network and update the cache
-        if (networkResponse && networkResponse.status === 200) {
-          const clone = networkResponse.clone();
-          caches.open(CACHE_NAME).then(cache => {
-            cache.put(event.request, clone);
-          });
-        }
-        return networkResponse;
-      })
-      .catch(() => {
-        // NO INTERNET: Try to serve from cache
-        return caches.match(event.request).then(cachedResponse => {
-          // If the exact file isn't cached, fallback to index.html so the app shell still loads
-          return cachedResponse || caches.match('/index.html');
+  fetch(event.request)
+    .then(networkResponse => {
+      // 1. Only cache successful, same-origin (basic) responses
+      if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
+        const clone = networkResponse.clone();
+        caches.open(CACHE_NAME).then(cache => {
+          cache.put(event.request, clone);
         });
-      })
-  );
+      }
+      return networkResponse;
+    })
+    .catch(() => {
+      // NO INTERNET: Try to serve from cache
+      return caches.match(event.request).then(cachedResponse => {
+        // If we found it in the cache, return it!
+        if (cachedResponse) return cachedResponse;
+        
+        // 2. Fallback to index.html ONLY for page navigations
+        if (event.request.mode === 'navigate') {
+          return caches.match('/index.html');
+        }
+        
+        // If it's a missing image/script while offline, let it fail gracefully 
+        // instead of trying to load HTML as an image.
+        return new Response('', { status: 404, statusText: 'Not Found' });
+      });
+    })
+);
 });
