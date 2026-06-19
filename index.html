@@ -1248,6 +1248,7 @@ async function handleQRScan(rawData) {
 
     const logEntry = {
       timestamp:   new Date().toISOString(),
+      localDate:   todayStr(), // ADD THIS LINE (Fixes Timezone Bug)
       classId:     currentClassId,
       className:   (classes.find(c => c.id === currentClassId) || {}).name || '',
       studentId:   student.id,
@@ -1608,127 +1609,114 @@ function getActiveDateRange() {
 }
 
 function renderSummary() {
-  const box = document.getElementById('summary-analytics-content');
-  if (!classes.length) { box.innerHTML = `<p class="empty">No classes configured yet.</p>`; return; }
-  const range = getActiveDateRange();
-  if (!range)  { box.innerHTML = `<p class="empty">Select a date range to view data.</p>`; return; }
+    const box = document.getElementById('summary-analytics-content');
+    if (!classes.length) { box.innerHTML = `<p class="empty">No classes configured yet.</p>`; return; }
+    const range = getActiveDateRange();
+    if (!range)  { box.innerHTML = `<p class="empty">Select a date range to view data.</p>`; return; }
 
-  // NEW: Check if the selected range is entirely before the school year started
-  if (schoolYearStart && range.to < schoolYearStart) {
-    const startDate = new Date(schoolYearStart + 'T00:00:00').toLocaleDateString([], { month: 'long', day: 'numeric', year: 'numeric' });
-    box.innerHTML = `<div class="instruction-block" style="text-align:center; border-color:var(--primary-light); background:var(--primary-bg);">
-      <p style="font-size:0.9rem; font-weight:700; color:var(--primary); margin-bottom:0.3rem;">🏫 School year has not started yet</p>
-      <p style="font-size:0.82rem; color:var(--text);">Classes officially begin on <strong>${startDate}</strong>. No attendance data or absences are recorded prior to this date.</p>
-    </div>`;
-    return;
-  }
+    // FIX: Use localDate to prevent UTC timezone drift (Early morning scans counting as previous day)
+    const getLogDate = (log) => {
+        if (log.localDate) return log.localDate;
+        const d = new Date(log.timestamp);
+        const ph = new Date(d.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+        return ph.getFullYear() + '-' + String(ph.getMonth() + 1).padStart(2, '0') + '-' + String(ph.getDate()).padStart(2, '0');
+    };
 
-  const logsInRange = logs.filter(l => {
-    const d = l.timestamp.slice(0, 10);
-    return d >= range.from && d <= range.to;
-  });
-
-  // NEW: Destroy old charts and render the new premium charts!
-  destroyCharts();
-  renderPremiumCharts(range, logsInRange);
-
-  const allDates = [...new Set(logsInRange.map(l => l.timestamp.slice(0, 10)))]
-    .sort((a, b) => b.localeCompare(a));
-
-  const isAggregated = summaryPeriod !== 'daily';
-  let html = '';
-
-  if (isAggregated) {
-    html += `<div style="margin-bottom:1.25rem; padding-bottom:1.25rem; border-bottom:2px solid var(--border);">
-      <p style="font-size:0.78rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:0.75rem;">
-        ${summaryPeriod === 'weekly' ? 'Week total' : summaryPeriod === 'monthly' ? 'Month total' : 'Range total'}
-        <span style="font-weight:400; text-transform:none; margin-left:4px;">(${fmtShort(range.from)} – ${fmtShort(range.to)})</span>
-      </p>`;
-
-    classes.forEach(c => {
-      const classStudents = students.filter(s => s.classId === c.id);
-      const classLogs     = logsInRange.filter(l => l.classId === c.id);
-      if (!classLogs.length && !classStudents.length) return;
-
-      const arrivedIds   = new Set(classLogs.filter(l => l.type === 'arrival').map(l => l.studentId));
-      const departedIds  = new Set(classLogs.filter(l => l.type === 'departure').map(l => l.studentId));
-      const neverArrived = classStudents.filter(s => !arrivedIds.has(s.id));
-      const lateCount    = classLogs.filter(l => l.type === 'arrival' && l.isLate).length;
-
-      html += `
-        <div class="history-class-row">
-          <div class="history-class-name">${c.name}</div>
-          <div class="stat-row-btns">
-            <button class="stat-btn enrolled" onclick="openModalRange('enrolled','${c.id}','${range.from}','${range.to}','${encodeURIComponent(c.name)}')">
-              <div class="val">${classStudents.length}</div><div class="lbl">Enrolled</div><div class="tap-hint">tap</div>
-            </button>
-            <button class="stat-btn arrived" onclick="openModalRange('arrived','${c.id}','${range.from}','${range.to}','${encodeURIComponent(c.name)}')">
-              <div class="val" style="color:var(--arrival);">${arrivedIds.size}</div>
-              <div class="lbl">Arrived${lateCount > 0 ? ` <span style="color:#c2410c;font-size:0.65rem;font-weight:700;">· ${lateCount} late</span>` : ''}</div>
-              <div class="tap-hint">tap</div>
-            </button>
-            <button class="stat-btn departed" onclick="openModalRange('departed','${c.id}','${range.from}','${range.to}','${encodeURIComponent(c.name)}')">
-              <div class="val" style="color:var(--departure);">${departedIds.size}</div><div class="lbl">Departed</div><div class="tap-hint">tap</div>
-            </button>
-            <button class="stat-btn absent" onclick="openModalRange('absent','${c.id}','${range.from}','${range.to}','${encodeURIComponent(c.name)}')">
-              <div class="val" style="color:var(--danger);">${neverArrived.length}</div><div class="lbl">Absent</div><div class="tap-hint">tap</div>
-            </button>
-          </div>
-        </div>`;
+    const logsInRange = logs.filter(l => {
+        const d = getLogDate(l);
+        return d >= range.from && d <= range.to;
     });
-    html += `</div>`;
 
-    if (!allDates.length) {
-      html += `<p class="empty">No attendance data for this period.</p>`;
-      box.innerHTML = html; return;
+    destroyCharts();
+    renderPremiumCharts(range, logsInRange);
+
+    const allDates = [...new Set(logsInRange.map(l => getLogDate(l)))].sort((a, b) => b.localeCompare(a));
+    const isAggregated = summaryPeriod !== 'daily';
+    let html = '';
+
+    if (isAggregated) {
+        html += `<div style="margin-bottom:1.25rem; padding-bottom:1.25rem; border-bottom:2px solid var(--border);">
+          <p style="font-size:0.78rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:0.75rem;">
+            ${summaryPeriod === 'weekly' ? 'Week total' : summaryPeriod === 'monthly' ? 'Month total' : 'Range total'}
+            <span style="font-weight:400; text-transform:none; margin-left:4px;">(${fmtShort(range.from)} – ${fmtShort(range.to)})</span>
+          </p>`;
+
+        classes.forEach(c => {
+            const classStudents = students.filter(s => s.classId === c.id);
+            const classLogs     = logsInRange.filter(l => l.classId === c.id);
+            if (!classLogs.length && !classStudents.length) return;
+
+            // For aggregated views, count unique students who arrived at least once
+            const arrivedIds   = new Set(classLogs.filter(l => l.type === 'arrival').map(l => l.studentId));
+            const departedIds  = new Set(classLogs.filter(l => l.type === 'departure').map(l => l.studentId));
+            const neverArrived = classStudents.filter(s => !arrivedIds.has(s.id));
+            const lateCount    = classLogs.filter(l => l.type === 'arrival' && l.isLate).length;
+
+            html += `
+            <div class="history-class-row">
+              <div class="history-class-name">${c.name}</div>
+              <div class="stat-row-btns">
+                <button class="stat-btn enrolled" onclick="openModalRange('enrolled','${c.id}','${range.from}','${range.to}','${encodeURIComponent(c.name)}')">
+                  <div class="val">${classStudents.length}</div><div class="lbl">Enrolled</div><div class="tap-hint">tap</div>
+                </button>
+                <button class="stat-btn arrived" onclick="openModalRange('arrived','${c.id}','${range.from}','${range.to}','${encodeURIComponent(c.name)}')">
+                  <div class="val" style="color:var(--arrival);">${arrivedIds.size}</div>
+                  <div class="lbl">Present${lateCount > 0 ? ` <span style="color:#c2410c;font-size:0.65rem;font-weight:700;">· ${lateCount} late</span>` : ''}</div>
+                  <div class="tap-hint">tap</div>
+                </button>
+                <button class="stat-btn departed" onclick="openModalRange('departed','${c.id}','${range.from}','${range.to}','${encodeURIComponent(c.name)}')">
+                  <div class="val" style="color:var(--departure);">${departedIds.size}</div><div class="lbl">Dismissed</div><div class="tap-hint">tap</div>
+                </button>
+                <button class="stat-btn absent" onclick="openModalRange('absent','${c.id}','${range.from}','${range.to}','${encodeURIComponent(c.name)}')">
+                  <div class="val" style="color:var(--danger);">${neverArrived.length}</div><div class="lbl">Absent</div><div class="tap-hint">tap</div>
+                </button>
+              </div>
+            </div>`;
+        });
+        html += `</div>`;
+        if (!allDates.length) { html += `<p class="empty">No attendance data for this period.</p>`; box.innerHTML = html; return; }
+        html += `<p style="font-size:0.78rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:0.75rem;">Daily breakdown</p>`;
     }
-    html += `<p style="font-size:0.78rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:0.75rem;">Daily breakdown</p>`;
-  }
 
-  if (!allDates.length) { box.innerHTML = `<p class="empty">No attendance data for this period.</p>`; return; }
+    if (!allDates.length) { box.innerHTML = `<p class="empty">No attendance data for this period.</p>`; return; }
 
-  allDates.forEach(dateStr => {
-    const dateLogs = logsInRange.filter(l => l.timestamp.slice(0, 10) === dateStr);
-    if (!dateLogs.length) return;
-
-    html += `<div class="history-date-block">`;
-    html += `<div class="history-date-label">📅 ${formatDate(dateStr)}</div>`;
-
-    classes.forEach(c => {
-      const classStudents = students.filter(s => s.classId === c.id);
-      const classLogs     = dateLogs.filter(l => l.classId === c.id);
-      if (!classLogs.length && !classStudents.length) return;
-
-      const arrivedIds  = new Set(classLogs.filter(l => l.type === 'arrival').map(l => l.studentId));
-      const departedIds = new Set(classLogs.filter(l => l.type === 'departure').map(l => l.studentId));
-      const absentCount = classStudents.filter(s => !arrivedIds.has(s.id)).length;
-      const lateCount   = classLogs.filter(l => l.type === 'arrival' && l.isLate).length;
-
-      html += `
-        <div class="history-class-row">
-          <div class="history-class-name">${c.name}</div>
-          <div class="stat-row-btns">
-            <button class="stat-btn enrolled" onclick="openModal('enrolled','${c.id}','${dateStr}','${encodeURIComponent(c.name)}')">
-              <div class="val">${classStudents.length}</div><div class="lbl">Enrolled</div><div class="tap-hint">tap</div>
-            </button>
-            <button class="stat-btn arrived" onclick="openModal('arrived','${c.id}','${dateStr}','${encodeURIComponent(c.name)}')">
-              <div class="val" style="color:var(--arrival);">${arrivedIds.size}</div>
-              <div class="lbl">Arrived${lateCount > 0 ? ` <span style="color:#c2410c;font-size:0.65rem;font-weight:700;">· ${lateCount} late</span>` : ''}</div>
-              <div class="tap-hint">tap</div>
-            </button>
-            <button class="stat-btn departed" onclick="openModal('departed','${c.id}','${dateStr}','${encodeURIComponent(c.name)}')">
-              <div class="val" style="color:var(--departure);">${departedIds.size}</div><div class="lbl">Departed</div><div class="tap-hint">tap</div>
-            </button>
-            <button class="stat-btn absent" onclick="openModal('absent','${c.id}','${dateStr}','${encodeURIComponent(c.name)}')">
-              <div class="val" style="color:var(--danger);">${absentCount}</div><div class="lbl">Absent</div><div class="tap-hint">tap</div>
-            </button>
-          </div>
-        </div>`;
+    allDates.forEach(dateStr => {
+        const dateLogs = logsInRange.filter(l => getLogDate(l) === dateStr);
+        if (!dateLogs.length) return;
+        html += `<div class="history-date-block">`;
+        html += `<div class="history-date-label">📅 ${formatDate(dateStr)}</div>`;
+        classes.forEach(c => {
+            const classStudents = students.filter(s => s.classId === c.id);
+            const classLogs     = dateLogs.filter(l => l.classId === c.id);
+            if (!classLogs.length && !classStudents.length) return;
+            const arrivedIds  = new Set(classLogs.filter(l => l.type === 'arrival').map(l => l.studentId));
+            const departedIds = new Set(classLogs.filter(l => l.type === 'departure').map(l => l.studentId));
+            const absentCount = classStudents.filter(s => !arrivedIds.has(s.id)).length;
+            const lateCount   = classLogs.filter(l => l.type === 'arrival' && l.isLate).length;
+            html += `
+            <div class="history-class-row">
+              <div class="history-class-name">${c.name}</div>
+              <div class="stat-row-btns">
+                <button class="stat-btn enrolled" onclick="openModal('enrolled','${c.id}','${dateStr}','${encodeURIComponent(c.name)}')">
+                  <div class="val">${classStudents.length}</div><div class="lbl">Enrolled</div><div class="tap-hint">tap</div>
+                </button>
+                <button class="stat-btn arrived" onclick="openModal('arrived','${c.id}','${dateStr}','${encodeURIComponent(c.name)}')">
+                  <div class="val" style="color:var(--arrival);">${arrivedIds.size}</div>
+                  <div class="lbl">Present${lateCount > 0 ? ` <span style="color:#c2410c;font-size:0.65rem;font-weight:700;">· ${lateCount} late</span>` : ''}</div>
+                  <div class="tap-hint">tap</div>
+                </button>
+                <button class="stat-btn departed" onclick="openModal('departed','${c.id}','${dateStr}','${encodeURIComponent(c.name)}')">
+                  <div class="val" style="color:var(--departure);">${departedIds.size}</div><div class="lbl">Dismissed</div><div class="tap-hint">tap</div>
+                </button>
+                <button class="stat-btn absent" onclick="openModal('absent','${c.id}','${dateStr}','${encodeURIComponent(c.name)}')">
+                  <div class="val" style="color:var(--danger);">${absentCount}</div><div class="lbl">Absent</div><div class="tap-hint">tap</div>
+                </button>
+              </div>
+            </div>`;
+        });
+        html += `</div>`;
     });
-    html += `</div>`;
-  });
-
-  box.innerHTML = html || `<p class="empty">No data found.</p>`;
+    box.innerHTML = html || `<p class="empty">No data found.</p>`;
 }
 
 // Chart instances storage
@@ -1746,82 +1734,85 @@ function destroyCharts() {
 // Render optimized, accurate charts
 // Render optimized, accurate charts
 function renderPremiumCharts(range, logsInRange) {
-  // Safety check
-  if (!document.getElementById('chart-class')) return;
+    if (!document.getElementById('chart-class')) return;
 
-  // 1. Calculate Metrics based EXACTLY on the selected date range
-  const presentIds = new Set(logsInRange.filter(l => l.type === 'arrival').map(l => l.studentId));
-  const departedIds = new Set(logsInRange.filter(l => l.type === 'departure').map(l => l.studentId));
-  const lateCount = logsInRange.filter(l => l.type === 'arrival' && l.isLate).length;
-  
-  const totalEnrolled = students.length;
-  const presentCount = presentIds.size;
-  const departedCount = departedIds.size;
-  const absentCount = Math.max(0, totalEnrolled - presentCount);
+    const isDaily = summaryPeriod === 'daily';
+    const totalEnrolled = students.length;
+    let presentVal, dismissedVal, lateVal, absentVal;
+    let presentLabel = 'Present', dismissedLabel = 'Dismissed', lateLabel = 'Late', absentLabel = 'Absent';
 
-  // Update Metric Cards
-  document.getElementById('metric-present').textContent = presentCount;
-  document.getElementById('metric-departed').textContent = departedCount;
-  document.getElementById('metric-late').textContent = lateCount;
-  document.getElementById('metric-absent').textContent = absentCount;
-
-  // 2. Render the Class Bar Chart (Adapts to the selected date range!)
-  const classCtx = document.getElementById('chart-class').getContext('2d');
-  
-  // Destroy existing chart if it exists
-  if (chartInstances.class) chartInstances.class.destroy();
-
-  const classLabels = classes.map(c => c.name);
-  const classData = classes.map(c => {
-    const classLogs = logsInRange.filter(l => l.classId === c.id && l.type === 'arrival');
-    return new Set(classLogs.map(l => l.studentId)).size;
-  });
-
-  chartInstances.class = new Chart(classCtx, {
-    type: 'bar',
-    data: {
-      labels: classLabels,
-      datasets: [{
-        label: 'Students Present',
-        data: classData,
-        backgroundColor: 'rgba(29, 78, 216, 0.8)',
-        borderColor: '#1d4ed8',
-        borderWidth: 0,
-        // FIX: Round ONLY the top corners for a professional "column" look
-        borderRadius: { topLeft: 6, topRight: 6, bottomLeft: 0, bottomRight: 0 },
-        // FIX: Distribute bars evenly across the chart width
-        barPercentage: 0.6,    
-        categoryPercentage: 0.8 
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false }
-      },
-      layout: {
-        padding: { right: 10 } // Prevents labels from getting cut off
-      },
-      scales: {
-        y: {
-          beginAtZero: true,
-          ticks: { stepSize: 1, color: '#64748b' },
-          grid: { color: 'rgba(0,0,0,0.05)' }
-        },
-        x: {
-          ticks: { 
-            color: '#64748b', 
-            font: { weight: '600', size: 10 }, // Smaller font for mobile
-            maxRotation: 45, 
-            minRotation: 45 
-          },
-          grid: { display: false },
-          offset: true // FIX: Ensures bars are centered in their category
-        }
-      }
+    if (isDaily) {
+        // Daily: Unique students today
+        const presentIds = new Set(logsInRange.filter(l => l.type === 'arrival').map(l => l.studentId));
+        const departedIds = new Set(logsInRange.filter(l => l.type === 'departure').map(l => l.studentId));
+        presentVal = presentIds.size;
+        dismissedVal = departedIds.size;
+        lateVal = logsInRange.filter(l => l.type === 'arrival' && l.isLate).length;
+        absentVal = Math.max(0, totalEnrolled - presentVal);
+    } else {
+        // Weekly/Monthly: Total Scans (Fixes the "Same Numbers" bug)
+        presentVal = logsInRange.filter(l => l.type === 'arrival').length;
+        dismissedVal = logsInRange.filter(l => l.type === 'departure').length;
+        lateVal = logsInRange.filter(l => l.type === 'arrival' && l.isLate).length;
+        const activeIds = new Set(logsInRange.map(l => l.studentId));
+        absentVal = activeIds.size; // Repurpose 4th card for "Active Students"
+        
+        presentLabel = 'Total Arrivals';
+        dismissedLabel = 'Total Dismissals';
+        lateLabel = 'Total Late';
+        absentLabel = 'Active Students';
     }
-  });
+
+    // Update Labels dynamically
+    const updateCard = (id, label) => {
+        const el = document.getElementById(id);
+        if (el && el.previousElementSibling) el.previousElementSibling.textContent = label;
+    };
+    updateCard('metric-present', presentLabel);
+    updateCard('metric-departed', dismissedLabel);
+    updateCard('metric-late', lateLabel);
+    updateCard('metric-absent', absentLabel);
+
+    // Update Values
+    document.getElementById('metric-present').textContent = presentVal;
+    document.getElementById('metric-departed').textContent = dismissedVal;
+    document.getElementById('metric-late').textContent = lateVal;
+    document.getElementById('metric-absent').textContent = absentVal;
+
+    // Render Chart
+    const classCtx = document.getElementById('chart-class').getContext('2d');
+    if (chartInstances.class) chartInstances.class.destroy();
+    
+    const classLabels = classes.map(c => c.name);
+    const classData = classes.map(c => {
+        const classLogs = logsInRange.filter(l => l.classId === c.id && l.type === 'arrival');
+        return isDaily ? new Set(classLogs.map(l => l.studentId)).size : classLogs.length;
+    });
+
+    chartInstances.class = new Chart(classCtx, {
+        type: 'bar',
+        data: {
+            labels: classLabels,
+            datasets: [{
+                label: isDaily ? 'Students Present' : 'Total Arrivals',
+                data: classData,
+                backgroundColor: 'rgba(29, 78, 216, 0.8)',
+                borderColor: '#1d4ed8',
+                borderWidth: 0,
+                borderRadius: 6,
+                borderSkipped: false,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                y: { beginAtZero: true, ticks: { stepSize: 1, color: '#64748b' }, grid: { color: 'rgba(0,0,0,0.05)' } },
+                x: { ticks: { color: '#64748b', font: { weight: '600', size: 10 }, maxRotation: 45, minRotation: 45 }, grid: { display: false } }
+            }
+        }
+    });
 }
 
 function openModalRange(type, classId, fromDate, toDate, encodedClassName) {
