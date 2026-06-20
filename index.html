@@ -206,6 +206,10 @@
 
     #toast { position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%) translateY(100px); background: #1e293b; color: white; padding: 0.65rem 1.25rem; border-radius: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); transition: transform 0.3s ease; z-index: 1000; pointer-events: none; font-size: 0.85rem; white-space: nowrap; max-width: 90vw; text-overflow: ellipsis; overflow: hidden; }
     #toast.show { transform: translateX(-50%) translateY(0); }
+    #toast.toast-ok   { background: #14532d; }
+    #toast.toast-err  { background: #7f1d1d; }
+    #toast.toast-warn { background: #78350f; }
+    #toast.toast-info { background: #1e293b; }
 
     /* ── QR GRID — 3 columns ── */
     #students-qr-container {
@@ -457,29 +461,34 @@
 }
 
 /* ── LOGS FEED (Mobile-First Design) ── */
-.log-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 0.85rem;
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    transition: background 0.15s;
+.log-feed-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.85rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+  gap: 1rem;
+  transition: background 0.15s;
 }
-.log-card:hover { background: var(--bg); }
-.log-card-time {
-    display: flex; flex-direction: column; align-items: flex-end; min-width: 60px;
+.log-feed-item:hover { background: var(--bg); }
+.log-feed-item:last-child { border-bottom: none; }
+
+.log-feed-time {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  min-width: 50px;
 }
-.log-card-time .time { font-weight: 700; font-size: 0.95rem; color: var(--text); line-height: 1.2; }
-.log-card-time .date { font-size: 0.72rem; color: var(--text-muted); }
-.log-card-info { flex: 1; min-width: 0; }
-.log-card-name { 
-    font-weight: 600; font-size: 0.95rem; 
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; 
-    display: flex; align-items: center; gap: 6px;
+.log-feed-time .time { font-weight: 700; font-size: 0.9rem; color: var(--text); line-height: 1.2; }
+.log-feed-time .date { font-size: 0.7rem; color: var(--text-muted); }
+
+.log-feed-info { flex: 1; min-width: 0; }
+.log-feed-name { 
+  font-weight: 600; font-size: 0.95rem; 
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; 
+  display: flex; align-items: center; gap: 6px;
 }
-.log-card-meta { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
+.log-feed-meta { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
 
 .log-feed-actions { display: flex; align-items: center; gap: 0.5rem; }
   </style>
@@ -644,7 +653,16 @@
         <label for="student-guardian-input">Guardian name <span style="font-weight:400; text-transform:none;">(optional)</span></label>
         <input type="text" id="student-guardian-input" placeholder="e.g. Maria Dela Cruz">
       </div>
+      <div class="form-group">
+        <label for="student-enrolled-input">Enrollment date <span style="font-weight:400; text-transform:none;">(defaults to today)</span></label>
+        <input type="date" id="student-enrolled-input">
+        <p style="font-size:0.73rem; color:var(--text-muted); margin-top:0.4rem;">Days before this date won't count as absences for this student — useful for late transfers or balik-aral students.</p>
+      </div>
       <button class="btn full" onclick="addStudent()">Save & generate QR</button>
+      <label style="display:flex; align-items:center; gap:8px; margin-top:0.75rem; cursor:pointer;">
+        <input type="checkbox" id="student-keep-enrolled-date" style="width:16px;height:16px;cursor:pointer;">
+        <span style="text-transform:none; font-size:0.8rem; font-weight:500; color:var(--text-muted);">Keep this enrollment date for the next student I add (bulk roster entry)</span>
+      </label>
     </div>
     <div class="card">
       <div class="form-group" style="margin-bottom:0.5rem;">
@@ -653,6 +671,7 @@
           <option value="">All classes</option>
         </select>
       </div>
+      <button class="btn outline full" id="download-all-qr-btn" onclick="downloadAllQR()" style="margin-bottom:0.85rem;">⬇ Download all QR codes</button>
       <div id="students-qr-container"></div>
     </div>
   </div>
@@ -665,7 +684,7 @@
         <button class="btn danger sm" onclick="clearLogs()">Clear all</button>
       </div>
       <!-- NEW: Premium Log Feed Container -->
-      <div id="logs-feed-container" style="display:flex; flex-direction:column; gap:0.75rem; max-height:65vh; overflow-y:auto; padding-right:4px;">
+      <div id="logs-feed-container" style="overflow-y:auto; max-height:65vh; border-radius:8px; border:1px solid var(--border); margin-top:0.5rem; padding: 0 0.5rem;">
         <!-- Content injected by JS -->
       </div>
     </div>
@@ -776,9 +795,18 @@
 <!-- NEW MANAGED SETUP MESSAGE -->
 <div class="instruction-block">
     <p style="font-size:0.87rem; font-weight:600; margin-bottom:0.6rem;">🔐 Managed Sync Setup</p>
-    <p style="font-size:0.85rem; color:var(--text-muted); line-height:1.5; margin:0;">
-        Your private Google Sheet is already configured! Simply paste your unique <strong>Sync URL</strong> provided during onboarding to connect this app to your data.
+    <p style="font-size:0.85rem; color:var(--text-muted); line-height:1.5; margin:0 0 0.6rem;">
+        If your private Google Sheet was already configured during onboarding, paste your unique <strong>Sync URL</strong> below to connect this app to your data.
     </p>
+    <details>
+      <summary>Don't have a Sync URL yet? Set one up yourself →</summary>
+      <ol style="margin-top:0.6rem;">
+        <li>Create a new Google Sheet, then go to <strong>Extensions → Apps Script</strong>.</li>
+        <li>Paste in the EduScan PH sync script (ask your administrator or check the EduScan PH documentation for the latest script code).</li>
+        <li>Click <strong>Deploy → New deployment</strong>, choose type <strong>Web app</strong>, set "Who has access" to <strong>Anyone</strong>, then deploy.</li>
+        <li>Copy the generated <code>.../exec</code> URL and paste it into the Sync URL field below.</li>
+      </ol>
+    </details>
 </div>
 
 <!-- REMOVED: Spreadsheet ID input (PWA doesn't need it) -->
@@ -802,7 +830,7 @@
 <div id="page-terms" class="page">
   <div class="card">
     <h2 style="margin-bottom:0.25rem;">Term Report</h2>
-    <p style="font-size:0.78rem; color:var(--text-muted); margin-bottom:1rem;">DepEd 3-term calendar: Term 1 (Jun–Sep) · Term 2 (Oct–Dec) · Term 3 (Jan–Mar)</p>
+    <p style="font-size:0.78rem; color:var(--text-muted); margin-bottom:1rem;" id="terms-calendar-desc">DepEd 3-term calendar: Term 1 (Jun–Sep) · Term 2 (Oct–Dec) · Term 3 (Jan–Mar)</p>
     
     <!-- NEW: SCHOOL YEAR SETTINGS (Moved inside the Terms page) -->
     <div class="card" style="background: var(--primary-bg); border-color: var(--primary-light); margin-bottom: 1.5rem;">
@@ -909,7 +937,7 @@
         <select id="autoexport-interval">
           <option value="daily">Daily (when app is opened)</option>
           <option value="weekly">Weekly (when app is opened)</option>
-          <option value="each_scan">After every scan</option>
+          <option value="each_scan">After every scan ⚠️ downloads a file per scan</option>
         </select>
       </div>
       <button class="btn full success" onclick="enableAutoExport()">⏱ Enable auto-export</button>
@@ -1009,6 +1037,11 @@
         <label for="edit-student-guardian-input">Guardian name</label>
         <input type="text" id="edit-student-guardian-input">
       </div>
+      <div class="form-group">
+        <label for="edit-student-enrolled-input">Enrollment date</label>
+        <input type="date" id="edit-student-enrolled-input">
+        <p style="font-size:0.73rem; color:var(--text-muted); margin-top:0.4rem;">Days before this date won't count as absences for this student.</p>
+      </div>
       <button class="btn full" onclick="saveEditStudent()">Save changes</button>
     </div>
   </div>
@@ -1030,7 +1063,7 @@
       </div>
       <div class="form-group">
         <label for="edit-log-type">Record type</label>
-        <select id="edit-log-type">
+        <select id="edit-log-type" onchange="onEditLogTypeChange()">
           <option value="arrival">☀️ Arrival</option>
           <option value="departure">🌙 Departure</option>
         </select>
@@ -1043,7 +1076,7 @@
         <label for="edit-log-date">Date</label>
         <input type="date" id="edit-log-date">
       </div>
-      <div class="form-group" style="display:flex; align-items:center; gap:10px; margin-bottom:1rem;">
+      <div class="form-group" id="edit-log-late-row" style="display:flex; align-items:center; gap:10px; margin-bottom:1rem;">
         <input type="checkbox" id="edit-log-is-late" style="width:18px;height:18px;cursor:pointer;">
         <label for="edit-log-is-late" style="text-transform:none; font-size:0.9rem; font-weight:600; color:var(--text); cursor:pointer; margin:0;">⏰ Mark as Late</label>
       </div>
@@ -1063,10 +1096,10 @@
       </div>
       <button class="modal-close" onclick="closeTermsModalDirect()">✕</button>
     </div>
-    <div style="display:flex; border-bottom:1px solid var(--border); background:var(--bg);">
-      <button class="term-tab active" id="ttab-1" onclick="switchTermTab(1)">Term 1<br><span style="font-size:0.65rem;font-weight:400;">Jun–Sep</span></button>
-      <button class="term-tab"        id="ttab-2" onclick="switchTermTab(2)">Term 2<br><span style="font-size:0.65rem;font-weight:400;">Oct–Dec</span></button>
-      <button class="term-tab"        id="ttab-3" onclick="switchTermTab(3)">Term 3<br><span style="font-size:0.65rem;font-weight:400;">Jan–Mar</span></button>
+    <div style="display:flex; border-bottom:1px solid var(--border); background:var(--bg);" id="terms-modal-tabs">
+      <button class="term-tab active" id="ttab-1" onclick="switchTermTab(1)">Term 1<br><span style="font-size:0.65rem;font-weight:400;" id="ttab-1-range">Jun–Sep</span></button>
+      <button class="term-tab"        id="ttab-2" onclick="switchTermTab(2)">Term 2<br><span style="font-size:0.65rem;font-weight:400;" id="ttab-2-range">Oct–Dec</span></button>
+      <button class="term-tab"        id="ttab-3" onclick="switchTermTab(3)">Term 3<br><span style="font-size:0.65rem;font-weight:400;" id="ttab-3-range">Jan–Mar</span></button>
     </div>
     <div class="modal-body" id="terms-modal-body"></div>
   </div>
@@ -1179,9 +1212,14 @@ async function saveStudents() { await dbPutAll('students', students); }
 
 // ── TOAST ──────────────────────────────────────────────────────────────────
 let toastTimer;
-function showToast(msg) {
+// type: 'info' (default), 'ok', 'err', 'warn' — controls toast color so
+// teachers can tell success from failure at a glance without reading it.
+function showToast(msg, type = 'info') {
   const t = document.getElementById('toast');
   t.textContent = msg;
+  t.className = 'toast-' + type;
+  // Force reflow so the class change + 'show' transition both apply cleanly.
+  void t.offsetWidth;
   t.classList.add('show');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.remove('show'), 3000);
@@ -1210,6 +1248,7 @@ function onClassChange() {
   resetScanResult();
   if (currentClassId) {
     document.getElementById('idle-notice-text').textContent = 'Tap to activate camera';
+    dbSetSetting('last_scanner_class_id', currentClassId);
   } else {
     document.getElementById('idle-notice-text').textContent = 'Select a class to start scanning';
     stopCamera();
@@ -1223,7 +1262,7 @@ function resetScanResult() {
 }
 
 // ── SCAN MODE ─────────────────────────────────────────────────────────────
-function setMode(mode) {
+function setMode(mode, persist = true) {
   scanMode = mode;
   lastScanned = null;
 
@@ -1250,6 +1289,10 @@ function setMode(mode) {
   }
 
   resetScanResult();
+
+  // Persist so a teacher running an afternoon dismissal-only session
+  // doesn't have to re-flip this every time the app is reopened.
+  if (persist) dbSetSetting('last_scan_mode', mode);
 }
 
 // ── CAMERA ────────────────────────────────────────────────────────────────
@@ -1258,7 +1301,7 @@ async function startCamera() {
   const idle    = document.getElementById('cam-idle');
   const stopBtn = document.getElementById('stop-scan-btn');
   const overlay = document.getElementById('scan-mode-overlay');
-  if (!currentClassId) return showToast('Select a class first.');
+  if (!currentClassId) return showToast('Select a class first.', 'warn');
   if (cameraStream) stopCamera();
   try {
     cameraStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
@@ -1273,7 +1316,7 @@ async function startCamera() {
     scanning = true;
     requestAnimationFrame(scanFrameLoop);
   } catch(err) {
-    showToast('Camera access denied. Check browser permissions.');
+    showToast('Camera access denied. Check browser permissions.', 'err');
   }
 }
 
@@ -1294,12 +1337,12 @@ function stopCamera() {
 function stopCameraManual() {
   stopCamera();
   document.getElementById('idle-notice-text').textContent = 'Camera stopped. Tap to resume.';
-  showToast('Camera stopped.');
+  showToast('Camera stopped.', 'info');
 }
 
 function handleScanAreaClick() {
   if (!currentClassId) {
-    showToast('📋 Please select or add a class first.');
+    showToast('📋 Please select or add a class first.', 'warn');
     const sel = document.getElementById('scanner-class-select');
     sel.style.transition = 'box-shadow 0.15s';
     sel.style.boxShadow  = '0 0 0 3px rgba(245,158,11,0.5)';
@@ -1309,23 +1352,34 @@ function handleScanAreaClick() {
   if (!scanning) startCamera();
 }
 
-function scanFrameLoop() {
+// Decode throttle: jsQR over a full-resolution video frame is expensive.
+// Running it on every requestAnimationFrame tick (~60/sec) burns battery
+// and generates heat fast on the budget Android devices this app targets.
+// Decoding every ~180ms is still well within "instant" for a human moving
+// a QR code in front of the camera, but cuts CPU work roughly 10x.
+const SCAN_DECODE_INTERVAL_MS = 180;
+let lastDecodeAttempt = 0;
+
+function scanFrameLoop(ts) {
   if (!scanning) return;
-  const video  = document.getElementById('scan-video');
-  const canvas = document.getElementById('qr-canvas');
-  if (video.readyState >= 2) {
-    canvas.width  = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const code = jsQR(imgData.data, imgData.width, imgData.height, { inversionAttempts: 'attemptBoth' });
-    if (code) {
-      const now = Date.now();
-      if (code.data !== lastScanned || (now - lastScannedTime > 4000)) {
-        lastScanned     = code.data;
-        lastScannedTime = now;
-        handleQRScan(code.data);
+  if (!lastDecodeAttempt || ts - lastDecodeAttempt >= SCAN_DECODE_INTERVAL_MS) {
+    lastDecodeAttempt = ts || performance.now();
+    const video  = document.getElementById('scan-video');
+    const canvas = document.getElementById('qr-canvas');
+    if (video.readyState >= 2) {
+      canvas.width  = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const code = jsQR(imgData.data, imgData.width, imgData.height, { inversionAttempts: 'attemptBoth' });
+      if (code) {
+        const now = Date.now();
+        if (code.data !== lastScanned || (now - lastScannedTime > 4000)) {
+          lastScanned     = code.data;
+          lastScannedTime = now;
+          handleQRScan(code.data);
+        }
       }
     }
   }
@@ -1339,6 +1393,17 @@ function todayStr() {
   return ph.getFullYear() + '-' +
     String(ph.getMonth() + 1).padStart(2, '0') + '-' +
     String(ph.getDate()).padStart(2, '0');
+}
+// Returns {h, m} for the current time IN PHILIPPINE TIME, regardless of the
+// device's own OS timezone setting. Every other date/day boundary in this
+// app (todayStr, sameDay, getLogDate) is explicitly pinned to Asia/Manila —
+// the late-arrival check below previously used the device's raw local
+// clock (now.getHours()/getMinutes()), which silently drifts on any device
+// whose OS timezone isn't UTC+8 (common on secondhand/misconfigured
+// Android units). This keeps that check consistent with everything else.
+function nowPHTime() {
+  const ph = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+  return { h: ph.getHours(), m: ph.getMinutes() };
 }
 function sameDay(isoTimestamp, dateStr) {
   const d  = new Date(isoTimestamp);
@@ -1364,12 +1429,26 @@ function getLogDate(l) {
     return ph.getFullYear() + '-' + String(ph.getMonth() + 1).padStart(2, '0') + '-' + String(ph.getDate()).padStart(2, '0');
 }
 
+// Single source of truth for "which calendar month (1-12, Philippine time)
+// is this log in" — used by term grouping. Previously term grouping read
+// new Date(l.timestamp).getMonth(), which (a) used device-local time
+// instead of Asia/Manila and (b) could disagree with getLogDate()/localDate
+// for a manually edited log, since saveEditLog() builds the new timestamp
+// using new Date(y,mo-1,d,h,mi).toISOString() in the device's own
+// timezone. Deriving the month from the same localDate string that drives
+// every other date computation keeps a log's term assignment consistent
+// with where it shows up in the Logs page.
+function getLogMonth(l) {
+  const dateStr = getLogDate(l); // 'YYYY-MM-DD'
+  return parseInt(dateStr.split('-')[1], 10);
+}
+
 // ── QR SCAN HANDLER ───────────────────────────────────────────────────────
 async function handleQRScan(rawData) {
   try {
     const payload = JSON.parse(rawData);
-    if (!payload.eduscan) return showToast('Unknown QR — not an EduScan ID.');
-    if (!currentClassId)  return showToast('No class selected.');
+    if (!payload.eduscan) return showToast('Unknown QR — not an EduScan ID.', 'err');
+    if (!currentClassId)  return showToast('No class selected.', 'warn');
 
     const student = students.find(s => s.id === payload.id && s.classId === currentClassId);
     if (!student) {
@@ -1381,7 +1460,7 @@ async function handleQRScan(rawData) {
     const todayLog = logs.filter(l =>
       l.studentId === student.id &&
       l.classId   === currentClassId &&
-      sameDay(l.timestamp, today)
+      getLogDate(l) === today
     );
 
     const alreadyLogged = todayLog.find(l => l.type === scanMode);
@@ -1411,11 +1490,12 @@ async function handleQRScan(rawData) {
     if (scanMode === 'arrival') {
       const cls = classes.find(c => c.id === currentClassId);
       if (cls && cls.startTime) {
-        const now       = new Date();
+        // Use Philippine time consistently — see nowPHTime() comment above.
+        const { h: nowH, m: nowM } = nowPHTime();
         const [h, m]    = cls.startTime.split(':').map(Number);
         const grace     = cls.graceMins != null ? cls.graceMins : 5;
         const cutoffMin = h * 60 + m + grace;
-        const nowMin    = now.getHours() * 60 + now.getMinutes();
+        const nowMin    = nowH * 60 + nowM;
         if (nowMin > cutoffMin) logEntry.isLate = true;
       }
     }
@@ -1441,7 +1521,7 @@ async function handleQRScan(rawData) {
     renderTodayList();
 
   } catch(err) {
-    showToast('Could not read QR code.');
+    showToast('Could not read QR code.', 'err');
   }
 }
 
@@ -1458,7 +1538,7 @@ function renderTodayList() {
   if (!currentClassId) { container.style.display = 'none'; return; }
   
   const today = todayStr();
-  const todayLog = logs.filter(l => l.classId === currentClassId && sameDay(l.timestamp, today));
+  const todayLog = logs.filter(l => l.classId === currentClassId && getLogDate(l) === today);
   
   // Count unique students scanned today for this class
   const uniqueScanned = new Set(todayLog.map(l => l.studentId)).size;
@@ -1485,24 +1565,37 @@ async function addClass() {
   const name      = input.value.trim();
   const startTime = document.getElementById('class-start-time').value || '07:30';
   const graceMins = parseInt(document.getElementById('class-grace-mins').value) || 5;
-  if (!name) return showToast('Enter a class name.');
+  if (!name) return showToast('Enter a class name.', 'warn');
   classes.push({ id: 'class_' + Date.now(), name, startTime, graceMins });
   await saveClasses();
   input.value = '';
   renderClasses(); populateDropdowns();
-  showToast('Class saved.');
+  showToast('Class saved.', 'ok');
 }
 
 async function removeClass(id) {
-  if (!confirm('Delete this class and all its student and log data?')) return;
+  const cls = classes.find(c => c.id === id);
+  const studentCount = students.filter(s => s.classId === id).length;
+  const logCount = logs.filter(l => l.classId === id).length;
+  const warningDetail = (studentCount || logCount)
+    ? ` This removes ${studentCount} student${studentCount !== 1 ? 's' : ''} from active rosters. Their ${logCount} attendance record${logCount !== 1 ? 's' : ''} will be KEPT (visible in Logs/exports) but will no longer appear in Summary, Terms, or chart views, since those are scoped to currently-active classes.`
+    : '';
+  if (!confirm(`Delete "${cls ? cls.name : 'this class'}"?${warningDetail}`)) return;
+
+  // Detach the class and its students from the live roster, but do NOT
+  // delete log rows. Attendance logs are the school's record of who was
+  // present on a given day — destroying them on a routine class deletion
+  // (e.g. a teacher fixing a typo'd class name via delete-and-recreate)
+  // would silently erase historical attendance. Each log already carries
+  // its own denormalized studentName/className/studentLrn snapshot, so
+  // the Logs feed and exports keep working correctly for these records
+  // even after the parent class/student is gone.
   classes  = classes.filter(c => c.id !== id);
   students = students.filter(s => s.classId !== id);
-  logs     = logs.filter(l => l.classId !== id);
   await dbClear('classes');  await dbPutAll('classes',  classes);
   await dbClear('students'); await dbPutAll('students', students);
-  await dbClear('logs');     await dbPutAll('logs',     logs);
   renderClasses(); populateDropdowns();
-  showToast('Class deleted.');
+  showToast(logCount ? `Class deleted. ${logCount} past attendance record${logCount !== 1 ? 's' : ''} kept in Logs.` : 'Class deleted.', 'ok');
 }
 
 function renderClasses() {
@@ -1567,8 +1660,20 @@ async function addStudent() {
   const name     = document.getElementById('student-name-input').value.trim();
   const lrn      = document.getElementById('student-lrn-input').value.trim();
   const guardian = document.getElementById('student-guardian-input').value.trim();
+  const enrolledInput = document.getElementById('student-enrolled-input');
+  const enrolledDate = enrolledInput.value || todayStr();
 
-  if (!classId || !name) return showToast('Class and full name are required.');
+  if (!classId || !name) return showToast('Class and full name are required.', 'warn');
+
+  // Duplicate-LRN guard: catches a typo'd/re-scanned LRN colliding with
+  // an existing student before it silently creates ambiguous records.
+  if (lrn) {
+    const dupe = students.find(s => s.lrn && s.lrn === lrn);
+    if (dupe) {
+      const proceed = confirm(`LRN ${lrn} is already registered to "${dupe.name}". Save anyway?`);
+      if (!proceed) return;
+    }
+  }
 
   const id = 'student_' + Date.now();
   let qrDataUrl = '';
@@ -1582,28 +1687,134 @@ async function addStudent() {
     }
   }
 
-  students.push({ id, classId, name, lrn, guardian, qrDataUrl });
+  students.push({ id, classId, name, lrn, guardian, enrolledDate, qrDataUrl });
   students.sort((a, b) => a.name.localeCompare(b.name));
   await saveStudents();
 
   ['student-name-input','student-lrn-input','student-guardian-input'].forEach(inp => {
     document.getElementById(inp).value = '';
   });
-  
+  // Bulk roster entry: keep the enrollment date pre-filled if the teacher
+  // checked "keep this enrollment date for the next student I add" —
+  // otherwise reset to blank (defaults to today) as before.
+  const keepDate = document.getElementById('student-keep-enrolled-date').checked;
+  if (!keepDate) enrolledInput.value = '';
+
   renderStudents();
   renderClasses();
   populateDropdowns();
-  showToast('Student saved. QR generated offline.');
+  showToast('Student saved. QR generated offline.', 'ok');
 }
 
 async function deleteStudent(id) {
-  if (!confirm('Remove this student?')) return;
+  const student = students.find(s => s.id === id);
+  const logCount = logs.filter(l => l.studentId === id).length;
+  const warningDetail = logCount
+    ? ` Their ${logCount} attendance record${logCount !== 1 ? 's' : ''} will be KEPT (visible in Logs/exports) but will no longer appear in Summary, Terms, or chart views, since those are scoped to currently-enrolled students.`
+    : '';
+  if (!confirm(`Remove ${student ? student.name : 'this student'}?${warningDetail}`)) return;
+
+  // Detach the student from the live roster, but do NOT delete their log
+  // rows — see the matching comment in removeClass() for why. Each log
+  // already carries its own denormalized studentName/studentLrn/className
+  // snapshot, so historical attendance for a removed student (e.g. one
+  // who transferred out) stays intact in the Logs feed and exports.
   students = students.filter(s => s.id !== id);
-  logs     = logs.filter(l => l.studentId !== id);
   await dbClear('students'); await dbPutAll('students', students);
-  await dbClear('logs');     await dbPutAll('logs',     logs);
   renderStudents(); renderClasses();
-  showToast('Student removed.');
+  showToast(logCount ? `Student removed. ${logCount} past attendance record${logCount !== 1 ? 's' : ''} kept in Logs.` : 'Student removed.', 'ok');
+}
+
+// ── BULK QR DOWNLOAD ─────────────────────────────────────────────────────
+// Downloads one PNG per student for whichever set is currently visible in
+// the Students tab — i.e. it respects the SAME class filter as the on-
+// screen grid (filter-class-select), so "All classes" downloads every
+// student and picking a specific class downloads only that roster. This
+// mirrors renderStudents()'s own filtering exactly rather than re-deriving
+// it, so the button never disagrees with what's on screen.
+//
+// Downloads are individual PNG files (not a zip) deliberately: a zip
+// would need a new CDN library, which breaks the app's offline-first
+// promise the moment a teacher tries this with no signal. Each file is
+// triggered with a small delay between downloads because mobile browsers
+// (notably Android Chrome) treat a tight loop of programmatic downloads
+// as spam and silently drop all but the first few.
+let qrDownloadInProgress = false;
+
+async function downloadAllQR() {
+  if (qrDownloadInProgress) return;
+
+  const filterVal = document.getElementById('filter-class-select').value;
+  const list = filterVal ? students.filter(s => s.classId === filterVal) : students;
+
+  if (!list.length) return showToast('No students to download.', 'warn');
+
+  const btn = document.getElementById('download-all-qr-btn');
+  qrDownloadInProgress = true;
+  btn.disabled = true;
+
+  // Generate any missing QR codes OFFLINE before downloading anything.
+  // renderStudents() does this too, but a bulk export must never fall
+  // back to the network QR API (api.qrserver.com) the way the on-screen
+  // <img> tag does — a teacher exporting QR codes with no signal would
+  // otherwise silently get broken images with no warning.
+  let needsSave = false;
+  let genFailures = 0;
+  for (const student of list) {
+    if (!student.qrDataUrl) {
+      if (typeof QRCode === 'undefined') { genFailures++; continue; }
+      try {
+        const qrPayload = JSON.stringify({ eduscan: true, id: student.id });
+        student.qrDataUrl = await QRCode.toDataURL(qrPayload, { width: 160, margin: 1 });
+        needsSave = true;
+      } catch (e) {
+        console.error('Failed to generate QR for', student.name, e);
+        genFailures++;
+      }
+    }
+  }
+  if (needsSave) await saveStudents();
+
+  const downloadable = list.filter(s => s.qrDataUrl);
+  if (!downloadable.length) {
+    qrDownloadInProgress = false;
+    btn.disabled = false;
+    return showToast('Could not generate any QR codes offline.', 'err');
+  }
+
+  const className = filterVal ? (classes.find(c => c.id === filterVal)?.name || 'Class') : 'All Classes';
+  showToast(`Downloading ${downloadable.length} QR code${downloadable.length !== 1 ? 's' : ''}…`, 'info');
+
+  // Build a filesystem-safe filename per student: strip characters that
+  // are invalid (or awkward) across Windows/Android/iOS filesystems, and
+  // include LRN when available since teachers commonly sort/search a
+  // folder of printed QR codes by LRN rather than by full name.
+  const safeName = s => {
+    const base = (s.lrn ? `${s.name}_${s.lrn}` : s.name).replace(/[\\/:*?"<>|]+/g, '').trim();
+    return base || s.id;
+  };
+
+  for (let i = 0; i < downloadable.length; i++) {
+    const s = downloadable[i];
+    btn.textContent = `Downloading ${i + 1}/${downloadable.length}…`;
+    try {
+      const resp = await fetch(s.qrDataUrl);
+      const blob = await resp.blob();
+      triggerDownload(blob, `QR_${safeName(s)}.png`);
+    } catch (e) {
+      console.error('Failed to download QR for', s.name, e);
+    }
+    // Pace downloads so the browser doesn't treat this as download spam
+    // and start silently dropping files after the first few.
+    if (i < downloadable.length - 1) await new Promise(r => setTimeout(r, 350));
+  }
+
+  btn.disabled = false;
+  btn.textContent = '⬇ Download all QR codes';
+  qrDownloadInProgress = false;
+
+  const skippedMsg = genFailures ? ` (${genFailures} skipped — QR library unavailable)` : '';
+  showToast(`Downloaded ${downloadable.length} QR code${downloadable.length !== 1 ? 's' : ''} for ${className}.${skippedMsg}`, genFailures ? 'warn' : 'ok');
 }
 
 async function renderStudents() {
@@ -1660,9 +1871,10 @@ function renderLog() {
   }
 
   container.innerHTML = logs.map(l => {
-    // FIX: Use localDate to prevent UTC timezone drift in display
+    // Use localDate if available (for timezone accuracy), otherwise fallback to timestamp
     const dateObj = l.localDate ? new Date(l.localDate + 'T00:00:00') : new Date(l.timestamp);
     
+    // Format Time (e.g., 07:30 AM) and Date (e.g., Jun 19)
     const timeStr = new Date(l.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const dateStr = dateObj.toLocaleDateString([], { month: 'short', day: 'numeric' });
 
@@ -1674,18 +1886,18 @@ function renderLog() {
       : `<span class="badge badge-arrival" style="font-size:0.7rem;">☀️ Arrived</span>`;
 
     return `
-    <div class="log-card">
-      <div class="log-card-time">
+    <div class="log-feed-item">
+      <div class="log-feed-time">
         <span class="time">${timeStr}</span>
         <span class="date">${dateStr}</span>
       </div>
-      <div class="log-card-info">
-        <div class="log-card-name">${l.studentName} ${lateTag}</div>
-        <div class="log-card-meta">${l.className || 'Unknown Class'} · LRN ${l.studentLrn || 'N/A'}</div>
+      <div class="log-feed-info">
+        <div class="log-feed-name">${l.studentName} ${lateTag}</div>
+        <div class="log-feed-meta">${l.className || 'Unknown Class'} · LRN ${l.studentLrn || 'N/A'}</div>
       </div>
-      <div style="display:flex; align-items:center; gap:0.5rem;">
+      <div class="log-feed-actions">
         ${statusBadge}
-        <button class="btn outline sm" style="padding: 4px 8px; font-size: 0.75rem;" onclick="openEditLogModal(${l.id})">️</button>
+        <button class="btn outline sm" style="padding: 4px 8px; font-size: 0.75rem;" onclick="openEditLogModal(${l.id})">✏️</button>
       </div>
     </div>`;
   }).join('');
@@ -1696,7 +1908,7 @@ async function clearLogs() {
   logs = [];
   await dbClear('logs');
   renderLog();
-  showToast('All logs cleared.');
+  showToast('All logs cleared.', 'ok');
 }
 
 // ── SUMMARY PERIOD STATE ──────────────────────────────────────────────────
@@ -1780,6 +1992,32 @@ function getActiveDateRange() {
   return null;
 }
 
+// True only when the daily view's selected date is today (Philippine
+// time). Drives whether "Today's Absentees" / "absence today" wording is
+// shown verbatim, vs. a date-specific label for a past day being reviewed.
+function isViewingToday(range) {
+  return summaryPeriod === 'daily' && range && range.from === todayStr();
+}
+
+// Returns the enrolled students for a class as of a given date — i.e.
+// excluding anyone whose enrolledDate is after that date. Used everywhere
+// enrollment counts feed into a metric, so a late transfer isn't counted
+// as "absent" for days before they actually joined.
+function studentsEnrolledAsOf(classId, dateStr) {
+  return students.filter(s => {
+    if (classId && s.classId !== classId) return false;
+    if (s.enrolledDate && s.enrolledDate > dateStr) return false;
+    return true;
+  });
+}
+// Same idea, but for a date *range*: a student counts if they were
+// enrolled on or before the LAST day of the range (i.e. they were
+// enrolled for at least part of it). Per-day absence counting elsewhere
+// still excludes individual days before their enrolledDate.
+function studentsEnrolledInRange(classId, range) {
+  return studentsEnrolledAsOf(classId, range.to);
+}
+
 function renderSummary() {
   const range = getActiveDateRange();
   if (!range) return;
@@ -1795,12 +2033,12 @@ function renderSummary() {
   renderPremiumCharts(range, logsInRange);
 
   // 3. Render Actionable List
-  renderActionableList(logsInRange);
+  renderActionableList(range, logsInRange);
 }
 
 function printSummaryReport() {
   const range = getActiveDateRange();
-  if (!range) return showToast('Select a date range first.');
+  if (!range) return showToast('Select a date range first.', 'warn');
 
   const logsInRange = logs.filter(l => {
     const d = getLogDate(l);
@@ -1808,18 +2046,24 @@ function printSummaryReport() {
   });
 
   const schoolDays = new Set(logsInRange.map(l => getLogDate(l))).size;
-  const totalEnrolled = students.length;
+  // Enrollment-aware total, consistent with the live dashboard — and a
+  // school-days floor of 0 (not the prior Math.max(1, schoolDays)) so an
+  // empty range reports 0 absences instead of "everyone enrolled was
+  // absent" when there's simply no attendance data for that range yet.
+  const totalEnrolled = studentsEnrolledInRange(null, range).length;
   const arrivalLogs = logsInRange.filter(l => l.type === 'arrival');
   const uniquePresent = new Set(arrivalLogs.map(l => l.studentId)).size;
   const lateCount = arrivalLogs.filter(l => l.isLate).length;
-  const totalAbsences = Math.max(0, (totalEnrolled * Math.max(1, schoolDays)) - arrivalLogs.length);
+  const totalAbsences = schoolDays > 0
+    ? Math.max(0, (totalEnrolled * schoolDays) - arrivalLogs.length)
+    : 0;
   const rate = totalEnrolled > 0 && schoolDays > 0 ? Math.round((arrivalLogs.length / (totalEnrolled * schoolDays)) * 100) : 0;
 
   const periodLabel = summaryPeriod === 'daily' ? 'Daily' : summaryPeriod === 'weekly' ? 'Weekly' : summaryPeriod === 'monthly' ? 'Monthly' : 'Custom';
 
   let classRows = '';
   classes.forEach(c => {
-    const cs = students.filter(s => s.classId === c.id).length;
+    const cs = studentsEnrolledInRange(c.id, range).length;
     const ca = logsInRange.filter(l => l.classId === c.id && l.type === 'arrival').length;
     const cl = logsInRange.filter(l => l.classId === c.id && l.type === 'arrival' && l.isLate).length;
     classRows += `<tr><td style="padding:8px; border-bottom:1px solid #e2e8f0;">${c.name}</td><td style="padding:8px; border-bottom:1px solid #e2e8f0; text-align:center;">${cs}</td><td style="padding:8px; border-bottom:1px solid #e2e8f0; text-align:center;">${ca}</td><td style="padding:8px; border-bottom:1px solid #e2e8f0; text-align:center;">${cl}</td></tr>`;
@@ -1833,98 +2077,29 @@ function printSummaryReport() {
   printWindow.onload = () => { printWindow.print(); };
 }
 
-function renderPremiumCharts(range, logsInRange) {
-  if (!document.getElementById('chart-class')) return;
-
-  const isDaily = summaryPeriod === 'daily';
-  const totalEnrolled = students.length;
-
-  // --- DYNAMIC LABELS ---
-  // We change the text above the numbers based on the view
-  const updateLabel = (id, text) => {
-    const el = document.getElementById('label-' + id);
-    if (el) el.textContent = text;
-  };
-
-  let presentVal, dismissedVal, lateVal, absentVal;
-
-  if (isDaily) {
-    updateLabel('present', 'Present Today');
-    updateLabel('departed', 'Dismissed');
-    updateLabel('late', 'Late');
-    updateLabel('absent', 'Absent');
-
-    const presentIds = new Set(logsInRange.filter(l => l.type === 'arrival').map(l => l.studentId));
-    const departedIds = new Set(logsInRange.filter(l => l.type === 'departure').map(l => l.studentId));
-    
-    presentVal = presentIds.size;
-    dismissedVal = departedIds.size;
-    lateVal = logsInRange.filter(l => l.type === 'arrival' && l.isLate).length;
-    absentVal = Math.max(0, totalEnrolled - presentVal);
-  } else {
-    updateLabel('present', 'Total Arrivals');
-    updateLabel('departed', 'Total Dismissals');
-    updateLabel('late', 'Total Lates');
-    updateLabel('absent', 'Active Students'); // Repurposed for aggregated view
-
-    presentVal = logsInRange.filter(l => l.type === 'arrival').length;
-    dismissedVal = logsInRange.filter(l => l.type === 'departure').length;
-    lateVal = logsInRange.filter(l => l.type === 'arrival' && l.isLate).length;
-    absentVal = new Set(logsInRange.map(l => l.studentId)).size;
-  }
-
-  // Update Numbers
-  document.getElementById('metric-present').textContent = presentVal;
-  document.getElementById('metric-departed').textContent = dismissedVal;
-  document.getElementById('metric-late').textContent = lateVal;
-  document.getElementById('metric-absent').textContent = absentVal;
-
-  // --- RENDER SINGLE BAR CHART ---
-  const classCtx = document.getElementById('chart-class').getContext('2d');
-  const classLabels = classes.map(c => c.name);
-  const classData = classes.map(c => {
-    const classLogs = logsInRange.filter(l => l.classId === c.id && l.type === 'arrival');
-    return isDaily ? new Set(classLogs.map(l => l.studentId)).size : classLogs.length;
-  });
-
-  chartInstances.class = new Chart(classCtx, {
-    type: 'bar',
-    data: {
-      labels: classLabels,
-      datasets: [{
-        label: isDaily ? 'Students Present' : 'Total Arrivals',
-        data: classData,
-        backgroundColor: 'rgba(29, 78, 216, 0.8)',
-        borderRadius: 6,
-        borderSkipped: false,
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
-      scales: {
-        y: { beginAtZero: true, ticks: { stepSize: 1 } },
-        x: { ticks: { font: { size: 10 } } }
-      }
-    }
-  });
-}
-
-function renderActionableList(logsInRange) {
+function renderActionableList(range, logsInRange) {
   const container = document.getElementById('actionable-list-container');
   if (!container) return;
   
   let html = '';
+  const viewingToday = isViewingToday(range);
+  // Date-specific label used whenever the teacher is reviewing a day
+  // other than today, so the UI never implies "today" for a past date.
+  const dayLabel = summaryPeriod === 'daily' && range ? fmtShort(range.from) : '';
   
   if (summaryPeriod === 'daily') {
-    // DAILY VIEW: Show "Today's Absentees"
+    // DAILY VIEW: Show "Absentees" for the selected date (enrollment-aware)
     const presentIds = new Set(logsInRange.filter(l => l.type === 'arrival').map(l => l.studentId));
-    const absentees = students.filter(s => !presentIds.has(s.id));
+    const dayEnrolled = studentsEnrolledAsOf(null, range.from);
+    const absentees = dayEnrolled.filter(s => !presentIds.has(s.id));
     
+    const headingText = viewingToday
+      ? `🚨 Today's Absentees (${absentees.length})`
+      : `🚨 Absentees — ${dayLabel} (${absentees.length})`;
+
     if (absentees.length > 0) {
       html += `<div style="margin-top:1rem;">
-        <h3 style="font-size:0.9rem; font-weight:700; margin-bottom:0.75rem; color:var(--danger);">🚨 Today's Absentees (${absentees.length})</h3>
+        <h3 style="font-size:0.9rem; font-weight:700; margin-bottom:0.75rem; color:var(--danger);">${headingText}</h3>
         <div style="background:var(--bg); border-radius:8px; padding:0.5rem;">`;
       
       absentees.forEach(s => {
@@ -1935,25 +2110,36 @@ function renderActionableList(logsInRange) {
               <div style="font-weight:600;">${s.name}</div>
               <div style="font-size:0.75rem; color:var(--text-muted);">${cls}</div>
             </div>
-            <button class="action-btn btn-call" onclick="showParentContact('${s.id}')">📞 Call Parent</button>
+            <button class="action-btn btn-call" onclick="showParentContact('${s.id}', '${range.from}', ${viewingToday})">📞 Call Parent</button>
           </div>`;
       });
       html += `</div></div>`;
     } else {
-      html += `<div style="text-align:center; padding:2rem; color:var(--success); font-weight:600;">✅ Perfect Attendance Today!</div>`;
+      const perfectText = viewingToday ? '✅ Perfect Attendance Today!' : `✅ Perfect Attendance — ${dayLabel}`;
+      html += `<div style="text-align:center; padding:2rem; color:var(--success); font-weight:600;">${perfectText}</div>`;
     }
   } else {
-    // WEEKLY/MONTHLY VIEW: Show "Students Needing Attention"
+    // WEEKLY/MONTHLY VIEW: Show "Students Needing Attention" (enrollment-aware)
     const attentionList = [];
+    const rangeEnrolled = studentsEnrolledInRange(null, range);
     
-    students.forEach(s => {
-      const sLogs = logsInRange.filter(l => l.studentId === s.id);
+    rangeEnrolled.forEach(s => {
+      // Exclude days before this student's own enrollment date so a
+      // late transfer isn't penalized for days before they joined.
+      const sLogs = logsInRange.filter(l => l.studentId === s.id && (!s.enrolledDate || getLogDate(l) >= s.enrolledDate));
       const arrivals = sLogs.filter(l => l.type === 'arrival');
       const lates = arrivals.filter(l => l.isLate);
       
-      const classLogs = logsInRange.filter(l => l.classId === s.classId);
-      const activeDays = new Set(classLogs.map(l => l.localDate || getLogDate(l))).size;
-      const presentDays = new Set(arrivals.map(l => l.localDate || getLogDate(l))).size;
+      // "School day" = any day this class had at least one log entry
+      // (arrival or departure) within the range, restricted to days on
+      // or after the student's own enrollment date. getLogDate(l) is the
+      // single source of truth for a log's calendar day (it already
+      // prefers l.localDate internally) — call it directly rather than
+      // re-deriving the same fallback inline, which a previous version
+      // of this code did redundantly.
+      const classLogs = logsInRange.filter(l => l.classId === s.classId && (!s.enrolledDate || getLogDate(l) >= s.enrolledDate));
+      const activeDays = new Set(classLogs.map(l => getLogDate(l))).size;
+      const presentDays = new Set(arrivals.map(l => getLogDate(l))).size;
       const absences = Math.max(0, activeDays - presentDays);
       
       if (absences >= 3 || lates.length >= 3) {
@@ -2003,14 +2189,16 @@ function destroyCharts() {
   chartInstances = {};
 }
 
-// Render premium charts
-// Render optimized, accurate charts
 // Render optimized, accurate charts
 function renderPremiumCharts(range, logsInRange) {
   if (!document.getElementById('chart-class')) return;
 
   const isDaily = summaryPeriod === 'daily';
-  const totalEnrolled = students.length;
+  // Enrollment-aware: a student isn't counted in the denominator for a
+  // period before their own enrolledDate. For ranges this uses the
+  // "enrolled as of the last day in range" set; per-class/day comparisons
+  // below additionally respect each student's own enrolledDate.
+  const totalEnrolled = studentsEnrolledInRange(null, range).length;
 
   // Calculate School Days in range
   const schoolDays = new Set(logsInRange.map(l => getLogDate(l))).size;
@@ -2025,26 +2213,31 @@ function renderPremiumCharts(range, logsInRange) {
   let totalAbsences = 0;
 
   if (isDaily) {
-    attendanceRate = totalEnrolled > 0 ? Math.round((uniquePresent / totalEnrolled) * 100) : 0;
-    totalAbsences = Math.max(0, totalEnrolled - uniquePresent);
+    const dayEnrolled = studentsEnrolledAsOf(null, range.from).length;
+    attendanceRate = dayEnrolled > 0 ? Math.round((uniquePresent / dayEnrolled) * 100) : 0;
+    totalAbsences = Math.max(0, dayEnrolled - uniquePresent);
   } else {
-    // For weekly/monthly: average daily attendance rate
-    if (schoolDays > 0 && totalEnrolled > 0) {
+    // For weekly/monthly: average daily attendance rate, using the
+    // enrollment count as of EACH individual day (not the range-end
+    // count) so days before a student enrolled don't drag the rate down.
+    if (schoolDays > 0) {
       const dailyRates = [];
       const allDates = [...new Set(logsInRange.map(l => getLogDate(l)))];
       allDates.forEach(dateStr => {
+        const dayEnrolledCount = studentsEnrolledAsOf(null, dateStr).length;
+        if (dayEnrolledCount === 0) return;
         const dayArrivals = new Set(logsInRange.filter(l => getLogDate(l) === dateStr && l.type === 'arrival').map(l => l.studentId)).size;
-        dailyRates.push(dayArrivals / totalEnrolled);
+        dailyRates.push(dayArrivals / dayEnrolledCount);
       });
-      attendanceRate = Math.round((dailyRates.reduce((a, b) => a + b, 0) / dailyRates.length) * 100);
+      attendanceRate = dailyRates.length ? Math.round((dailyRates.reduce((a, b) => a + b, 0) / dailyRates.length) * 100) : 0;
     }
     // Total absences = (enrolled * school days) - total arrival instances
-    totalAbsences = Math.max(0, (totalEnrolled * schoolDays) - arrivalLogs.length);
+    totalAbsences = schoolDays > 0 ? Math.max(0, (totalEnrolled * schoolDays) - arrivalLogs.length) : 0;
   }
 
   // Update Metric Cards
   document.getElementById('metric-rate').textContent = attendanceRate + '%';
-  document.getElementById('metric-rate-detail').textContent = isDaily ? `${uniquePresent}/${totalEnrolled} enrolled` : `avg across ${schoolDays} days`;
+  document.getElementById('metric-rate-detail').textContent = isDaily ? `${uniquePresent}/${studentsEnrolledAsOf(null, range.from).length} enrolled` : `avg across ${schoolDays} days`;
   document.getElementById('metric-absent').textContent = totalAbsences;
   document.getElementById('metric-absent-detail').textContent = isDaily ? 'students absent today' : 'student-days missed';
   document.getElementById('metric-late').textContent = lateCount;
@@ -2069,15 +2262,18 @@ function renderPremiumCharts(range, logsInRange) {
   const classCtx = document.getElementById('chart-class').getContext('2d');
   const classLabels = classes.map(c => c.name);
   const classData = classes.map(c => {
-    const classStudents = students.filter(s => s.classId === c.id).length;
-    if (classStudents === 0) return 0;
+    const classStudents = isDaily
+      ? studentsEnrolledAsOf(c.id, range.from)
+      : studentsEnrolledInRange(c.id, range);
+    if (classStudents.length === 0) return 0;
     if (isDaily) {
-      const present = new Set(logsInRange.filter(l => l.classId === c.id && l.type === 'arrival').map(l => l.studentId)).size;
-      return Math.round((present / classStudents) * 100);
+      const enrolledIds = new Set(classStudents.map(s => s.id));
+      const present = new Set(logsInRange.filter(l => l.classId === c.id && l.type === 'arrival' && enrolledIds.has(l.studentId)).map(l => l.studentId)).size;
+      return Math.round((present / classStudents.length) * 100);
     } else {
       const classArrivals = logsInRange.filter(l => l.classId === c.id && l.type === 'arrival').length;
       const classDays = new Set(logsInRange.filter(l => l.classId === c.id).map(l => getLogDate(l))).size;
-      return classDays > 0 ? Math.round((classArrivals / (classStudents * classDays)) * 100) : 0;
+      return classDays > 0 ? Math.round((classArrivals / (classStudents.length * classDays)) * 100) : 0;
     }
   });
 
@@ -2220,45 +2416,67 @@ async function saveEditClass() {
   const name      = document.getElementById('edit-class-name').value.trim();
   const startTime = document.getElementById('edit-class-start-time').value || '07:30';
   const graceMins = parseInt(document.getElementById('edit-class-grace-mins').value) || 0;
-  if (!name) return showToast('Class name cannot be empty.');
+  if (!name) return showToast('Class name cannot be empty.', 'warn');
   const cls = classes.find(c => c.id === id);
   if (!cls) return;
   cls.name = name; cls.startTime = startTime; cls.graceMins = graceMins;
   await saveClasses();
   closeEditClassModalDirect();
   renderClasses(); populateDropdowns();
-  showToast('Class updated.');
+  showToast('Class updated.', 'ok');
 }
 
 function closeEditClassModal(e)      { if (e.target === document.getElementById('edit-class-modal')) closeEditClassModalDirect(); }
 function closeEditClassModalDirect() { document.getElementById('edit-class-modal').classList.remove('open'); document.body.style.overflow = ''; }
 
 // ── EDIT LOG MODAL ────────────────────────────────────────────────────────
+function onEditLogTypeChange() {
+  // "Mark as Late" is meaningless for a departure record — hide it instead
+  // of leaving a checkbox visible that has no effect for that record type.
+  const type = document.getElementById('edit-log-type').value;
+  const row  = document.getElementById('edit-log-late-row');
+  row.style.display = type === 'departure' ? 'none' : 'flex';
+  if (type === 'departure') document.getElementById('edit-log-is-late').checked = false;
+}
+
 function openEditLogModal(logId) {
     const log = logs.find(l => l.id === logId);
-    if (!log) return showToast('Record not found.');
-    const ts = new Date(log.timestamp);
-    
-    // FIX: Extract Date and Time using LOCAL time methods, not UTC
-    const localDate = ts.getFullYear() + '-' + 
-                      String(ts.getMonth() + 1).padStart(2, '0') + '-' + 
-                      String(ts.getDate()).padStart(2, '0');
-                      
-    const localTime = String(ts.getHours()).padStart(2, '0') + ':' + 
-                      String(ts.getMinutes()).padStart(2, '0');
+    if (!log) return showToast('Record not found.', 'err');
+
+    // Derive the editable date/time fields in PHILIPPINE TIME, not the
+    // device's own OS timezone. Every other date boundary in this app
+    // (todayStr, sameDay, getLogDate, nowPHTime) is explicitly pinned to
+    // Asia/Manila — using the device's local getFullYear()/getHours()
+    // here meant editing a log on a misconfigured device (OS timezone
+    // != UTC+8) could silently shift it to the wrong calendar day
+    // relative to every other view that reads localDate.
+    const phDate = new Date(new Date(log.timestamp).toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+    const localDate = getLogDate(log); // PH-time date string, consistent with the rest of the app
+    const localTime = String(phDate.getHours()).padStart(2, '0') + ':' +
+                      String(phDate.getMinutes()).padStart(2, '0');
 
     document.getElementById('edit-log-id').value                = logId;
     document.getElementById('edit-log-original-timestamp').value = log.timestamp;
     document.getElementById('edit-log-student-name').textContent = log.studentName + (log.studentLrn ? ` · LRN ${log.studentLrn}` : '');
     document.getElementById('edit-log-type').value    = log.type || 'arrival';
     
-    // Use the local variables instead of toISOString()
     document.getElementById('edit-log-time').value    = localTime;
     document.getElementById('edit-log-date').value    = localDate;
     
     document.getElementById('edit-log-is-late').checked = !!log.isLate;
+    onEditLogTypeChange();
     document.getElementById('edit-log-modal').classList.add('open');
     document.body.style.overflow = 'hidden';
+}
+
+// Converts a PH-local "wall clock" date+time into the equivalent UTC ISO
+// timestamp, since the Philippines has a single fixed UTC+8 offset with
+// no DST. This is what lets editing a log build a correct `timestamp`
+// regardless of the device's own OS timezone — the device's offset is
+// never consulted here.
+function phLocalToISOString(y, mo, d, h, mi) {
+  const utcMillis = Date.UTC(y, mo - 1, d, h, mi, 0) - (8 * 60 * 60 * 1000);
+  return new Date(utcMillis).toISOString();
 }
 
 async function saveEditLog() {
@@ -2267,20 +2485,20 @@ async function saveEditLog() {
     const type       = document.getElementById('edit-log-type').value;
     const timeVal    = document.getElementById('edit-log-time').value;
     const dateVal    = document.getElementById('edit-log-date').value;
-    const isLate     = document.getElementById('edit-log-is-late').checked;
+    const isLate     = type === 'departure' ? false : document.getElementById('edit-log-is-late').checked;
 
-    if (!timeVal || !dateVal) return showToast('Date and time are required.');
+    if (!timeVal || !dateVal) return showToast('Date and time are required.', 'warn');
     const log = logs.find(l => l.id === logId);
     if (!log) return;
 
-    // FIX: Parse the date and time strictly as LOCAL time to prevent UTC drift
+    // Build the new timestamp from the entered date+time as PHILIPPINE
+    // TIME (UTC+8 fixed offset), not the device's own local timezone —
+    // see phLocalToISOString() and the openEditLogModal() comment above.
     const [y, mo, d] = dateVal.split('-').map(Number);
     const [h, mi] = timeVal.split(':').map(Number);
-    const localDateObj = new Date(y, mo - 1, d, h, mi, 0);
-    
-    log.timestamp = localDateObj.toISOString();
-    log.localDate = dateVal; // ADD THIS: Preserves the Philippine date for Summary/Terms tabs!
-    log.type  = type;
+
+    log.timestamp = phLocalToISOString(y, mo, d, h, mi);
+    log.localDate = dateVal;
     log.type  = type;
     log.isLate = isLate;
     
@@ -2294,8 +2512,8 @@ async function saveEditLog() {
     if (document.getElementById('page-summary').classList.contains('active')) renderSummary();
     if (document.getElementById('terms-modal-backdrop').classList.contains('open')) renderTermsModalBody();
     
-    syncSingleLog(log, originalTs);
-    showToast('Record updated.');
+    await syncSingleLog(log, originalTs);
+    showToast('Record updated.', 'ok');
 }
 
 async function deleteLogEntry() {
@@ -2307,7 +2525,7 @@ async function deleteLogEntry() {
   renderLog(); renderTodayList();
   if (document.getElementById('page-summary').classList.contains('active')) renderSummary();
   if (document.getElementById('terms-modal-backdrop').classList.contains('open')) renderTermsModalBody();
-  showToast('Record deleted.');
+  showToast('Record deleted.', 'ok');
 }
 
 function closeEditLogModal(e)      { if (e.target === document.getElementById('edit-log-modal')) closeEditLogModalDirect(); }
@@ -2369,7 +2587,7 @@ async function saveSyncUrl() {
     const url = document.getElementById('sync-url-input').value.trim();
     const msg = document.getElementById('sync-status-msg');
     
-    if (!url) return showToast('Paste your Sync URL first.');
+    if (!url) return showToast('Paste your Sync URL first.', 'warn');
     
     if (!url.includes('script.google.com')) {
         msg.innerHTML = `<div class="sync-status err">Invalid URL. It must be your unique EduScan PH sync link.</div>`;
@@ -2390,7 +2608,7 @@ async function saveSyncUrl() {
         
         if (result.pong || result.success) {
             msg.innerHTML = `<div class="sync-status ok">✅ Connected! Auto-sync enabled.</div>`;
-            showToast('Connected to Google Sheets ✓');
+            showToast('Connected to Google Sheets ✓', 'ok');
         } else {
             msg.innerHTML = `<div class="sync-status err">Script error: ${result.error || 'Unknown error'}</div>`;
         }
@@ -2404,17 +2622,35 @@ async function disableAutoSync() {
   autoSyncEnabled = false;
   clearTimeout(autoSyncTimer);
   updateAutoSyncBar();
-  showToast('Auto-sync disabled.');
+  showToast('Auto-sync disabled.', 'info');
 }
 
+// syncSingleLog now rewinds the watermark instead of pushing out-of-band.
+// This means an edited historical log gets picked up by the normal,
+// chunked, retrying syncToSheets() path instead of a fire-and-forget
+// fetch with no retry and no UI feedback on failure.
 async function syncSingleLog(log, originalTimestamp) {
   if (!autoSyncEnabled) return;
   const url = await dbGetSetting('sync_url');
   if (!url) return;
-  try {
-    const payload = { ...log, _originalTimestamp: originalTimestamp || log.timestamp };
-    await fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ logs: [payload], activeClasses: classes.map(c => c.name) }) });
-  } catch(e) {}
+
+  // Rewind the watermark so this log (and anything after it) is
+  // re-included in the next bulk sync pass. Use the earlier of the
+  // log's original timestamp and its new timestamp, in case the edit
+  // moved the log backwards or forwards in time.
+  const lastSync = await dbGetSetting('last_sync_time');
+  const candidateWatermarks = [originalTimestamp, log.timestamp].filter(Boolean);
+  if (candidateWatermarks.length) {
+    const earliestRelevant = candidateWatermarks.sort()[0];
+    // Only rewind — never advance — the watermark here.
+    if (!lastSync || earliestRelevant < lastSync) {
+      await dbSetSetting('last_sync_time', earliestRelevant);
+      updateAutoSyncLastLabel();
+    }
+  }
+
+  // Let the normal chunked/retrying sync path do the actual push.
+  scheduleAutoSync();
 }
 
 function scheduleAutoSync() {
@@ -2440,6 +2676,25 @@ async function getPendingLogs() {
 async function advanceSyncWatermark(timestamp) {
     await dbSetSetting('last_sync_time', timestamp);
     updateAutoSyncLastLabel();
+}
+
+// Clears the per-record needsSync/_originalTimestamp scratch flags once a
+// log has been successfully pushed in a sync batch. Previously these were
+// set in saveEditLog() and never cleared, so they sat as permanently-true
+// stale metadata in IndexedDB and every future export, regardless of
+// whether the edit had actually been synced yet.
+async function clearSyncFlags(syncedLogs) {
+  if (!syncedLogs.length) return;
+  const syncedIds = new Set(syncedLogs.map(l => l.id));
+  let changed = false;
+  logs.forEach(l => {
+    if (syncedIds.has(l.id) && (l.needsSync || l._originalTimestamp)) {
+      delete l.needsSync;
+      delete l._originalTimestamp;
+      changed = true;
+    }
+  });
+  if (changed) await dbPutAll('logs', logs.filter(l => syncedIds.has(l.id)));
 }
 
 // ── OPTIMIZED SYNC FUNCTION (Chunking + Retry) ────────────────────────────
@@ -2487,9 +2742,18 @@ async function syncToSheets(silent = false) {
         while (!success && retries <= MAX_RETRIES) {
             try {
                 const payload = {
-                    action: 'sync', // Matches GAS v7 requirement
+                    action: 'sync', // Matches GAS v8 requirement
                     logs: chunk,
-                    activeClasses: getActiveClasses()
+                    activeClasses: getActiveClasses(),
+                    // Lets the spreadsheet compute the SAME year-aware term
+                    // boundaries as the app (see computeTermsFromStartDate /
+                    // defaultTermsForYear). Without this, GAS falls back to
+                    // its own hardcoded Jun-Sep/Oct-Dec/Jan-Mar calendar,
+                    // which can silently disagree with a school's configured
+                    // start date and — more importantly — has no year
+                    // component, so it merges multiple school years' worth
+                    // of attendance into the same "Term 1" bucket.
+                    schoolYearStart: schoolYearStart || ''
                 };
 
                 const resp = await fetch(url, {
@@ -2507,7 +2771,8 @@ async function syncToSheets(silent = false) {
                     totalUpdated += result.updated || 0;
                     // Advance watermark to the last log in this successful chunk
                     lastSuccessfulTimestamp = chunk[chunk.length - 1].timestamp;
-                    success = true; 
+                    success = true;
+                    await clearSyncFlags(chunk);
                 } else {
                     throw new Error(result.error || 'Unknown script error');
                 }
@@ -2520,7 +2785,7 @@ async function syncToSheets(silent = false) {
                         if (msg) msg.innerHTML = `<div class="sync-status err">⚠️ ${errMsg}</div>`;
                         if (btn) { btn.disabled = false; btn.textContent = '⬆ Push unsynced logs'; }
                     } else {
-                        showToast('⚠ Sync paused. Check Sync tab.');
+                        showToast('⚠ Sync paused. Check Sync tab.', 'err');
                     }
                     return; // Abort further chunks
                 }
@@ -2540,7 +2805,7 @@ async function syncToSheets(silent = false) {
         if (msg) msg.innerHTML = `<div class="sync-status ok">✅ Synced! ${totalAdded} added, ${totalUpdated} updated.</div>`;
         if (btn) { btn.disabled = false; btn.textContent = '⬆ Push unsynced logs'; }
     } else if (totalAdded > 0 || totalUpdated > 0) {
-        showToast(`☁ Synced ${totalAdded + totalUpdated} records`);
+        showToast(`☁ Synced ${totalAdded + totalUpdated} records`, 'ok');
     }
 }
 
@@ -2687,7 +2952,7 @@ window.addEventListener('appinstalled', () => {
   pwaInstallPrompt = null;
   updatePWAInstallUI();
   document.getElementById('install-banner').style.display = 'none';
-  showToast('✅ EduScan PH installed!');
+  showToast('✅ EduScan PH installed!', 'ok');
 });
 
 async function triggerPWAInstall() {
@@ -2744,7 +3009,7 @@ async function exportData(type = 'all') {
   if (type === 'all') renderDownloadPage();
   msg.innerHTML = `<div class="sync-status ok">✅ Exported <strong>${filename}</strong></div>`;
   setTimeout(() => msg.innerHTML = '', 4000);
-  showToast(`Downloaded ${filename}`);
+  showToast(`Downloaded ${filename}`, 'ok');
 }
 
 async function enableAutoExport() {
@@ -2752,13 +3017,13 @@ async function enableAutoExport() {
   await dbSetSetting('autoexport_enabled',  true);
   await dbSetSetting('autoexport_interval', interval);
   renderDownloadPage();
-  showToast(`Auto-export enabled (${interval}) ✓`);
+  showToast(`Auto-export enabled (${interval}) ✓`, 'ok');
 }
 
 async function disableAutoExport() {
   await dbSetSetting('autoexport_enabled', false);
   document.getElementById('autoexport-bar').style.display = 'none';
-  showToast('Auto-export disabled.');
+  showToast('Auto-export disabled.', 'info');
 }
 
 async function checkAutoExport(trigger = 'boot') {
@@ -2806,13 +3071,21 @@ async function importData(event) {
       importedStudents = newStudents.length;
     }
     if (payload.logs?.length) {
-      const existingKeys = new Set(logs.map(l => `${l.timestamp}|${l.studentId}`));
-      const newLogs      = payload.logs.filter(l => !existingKeys.has(`${l.timestamp}|${l.studentId}`));
+      // Dedupe on the semantic identity of an attendance record — one
+      // arrival/departure per student, per class, per day — rather than
+      // on raw timestamp. Editing a log's time (saveEditLog) changes
+      // `timestamp` but not the underlying event, so a timestamp-based
+      // key would let an old backup re-insert a duplicate of an
+      // already-edited record.
+      const recordKey = l => `${l.studentId}|${l.classId}|${l.localDate || getLogDate(l)}|${l.type}`;
+      const existingKeys = new Set(logs.map(recordKey));
+      const newLogs      = payload.logs.filter(l => !existingKeys.has(recordKey(l)));
       for (const l of newLogs) {
         const entry = { ...l }; delete entry.id;
         const newId = await dbAdd('logs', entry);
         entry.id = newId;
         logs.push(entry);
+        existingKeys.add(recordKey(entry));
       }
       logs.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
       importedLogs = newLogs.length;
@@ -2820,7 +3093,7 @@ async function importData(event) {
     if (payload.settings?.syncUrl) await dbSetSetting('sync_url', payload.settings.syncUrl);
     populateDropdowns();
     msg.innerHTML = `<div class="sync-status ok">✅ Import complete: ${importedClasses} classes · ${importedStudents} students · ${importedLogs} logs added</div>`;
-    showToast('Import complete ✓');
+    showToast('Import complete ✓', 'ok');
   } catch(e) {
     msg.innerHTML = `<div class="sync-status err">Failed to read file: ${e.message}</div>`;
   }
@@ -2836,12 +3109,102 @@ function triggerDownload(blob, filename) {
 }
 
 // ── TERMS ────────────────────────────────────────────────────────────────
-// Fixed DepEd Terms: Strictly based on calendar months
-const TERMS = [
-    { num: 1, label: 'Term 1', months: [6, 7, 8, 9], range: 'Jun – Sep' },
-    { num: 2, label: 'Term 2', months: [10, 11, 12], range: 'Oct – Dec' },
-    { num: 3, label: 'Term 3', months: [1, 2, 3], range: 'Jan – Mar' }
-];
+// Terms are matched against logs using explicit [startDate, endDate)
+// boundaries (YYYY-MM-DD strings, compared against getLogDate(l)) rather
+// than bare 1-12 month numbers. A bare-month match (the original design)
+// has no year component, so a student's June 2026 and June 2027 arrivals
+// would both land in "Term 1" forever — silently merging every school
+// year's attendance the first time the app carries over into a second
+// year. Anchoring each term to a real date range fixes that while still
+// allowing terms to wrap across a Dec→Jan year boundary.
+//
+// DEFAULT_TERMS_FOR_YEAR(startYear) is the DepEd-aligned fallback (Jun-Sep
+// / Oct-Dec / Jan-Mar) used ONLY when no school year start date has been
+// configured, anchored to a specific calendar year so it still produces
+// real date boundaries instead of repeating months forever.
+function defaultTermsForYear(startYear) {
+  return [
+    { num: 1, label: 'Term 1', startDate: `${startYear}-06-01`,     endDate: `${startYear}-10-01`,     range: 'Jun – Sep' },
+    { num: 2, label: 'Term 2', startDate: `${startYear}-10-01`,     endDate: `${startYear + 1}-01-01`, range: 'Oct – Dec' },
+    { num: 3, label: 'Term 3', startDate: `${startYear + 1}-01-01`, endDate: `${startYear + 1}-04-01`, range: 'Jan – Mar' },
+  ];
+}
+
+// Builds a 3-term calendar from an explicit "first day of classes" date,
+// using the same ~4/3/3-month DepEd split as the default, just anchored
+// to the configured start date instead of always being June 1st. Each
+// term is described by a real [startDate, endDate) range so matching
+// logs against it is unambiguous across year boundaries and across
+// repeated school years.
+function computeTermsFromStartDate(startDateStr) {
+  const monthName = m => new Date(2000, m - 1, 1).toLocaleDateString([], { month: 'short' });
+  // Add `months` whole calendar months to a YYYY-MM-DD string, returning
+  // a YYYY-MM-DD string. Used to derive each term boundary from the
+  // configured start date without drifting through Date's local timezone.
+  const addMonths = (dateStr, months) => {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const totalMonths = (m - 1) + months;
+    const newYear  = y + Math.floor(totalMonths / 12);
+    const newMonth = (totalMonths % 12) + 1;
+    return `${newYear}-${String(newMonth).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  };
+  const startMonthNum = parseInt(startDateStr.split('-')[1], 10);
+  const wrap = m => ((m - 1) % 12) + 1;
+
+  const t1Start = startDateStr,        t1End = addMonths(startDateStr, 4);
+  const t2Start = t1End,                t2End = addMonths(startDateStr, 7);
+  const t3Start = t2End,                t3End = addMonths(startDateStr, 10);
+
+  const labelFor = (offset, span) => {
+    const first = wrap(startMonthNum + offset);
+    const last  = wrap(startMonthNum + offset + span - 1);
+    return `${monthName(first)} – ${monthName(last)}`;
+  };
+
+  return [
+    { num: 1, label: 'Term 1', startDate: t1Start, endDate: t1End, range: labelFor(0, 4) },
+    { num: 2, label: 'Term 2', startDate: t2Start, endDate: t2End, range: labelFor(4, 3) },
+    { num: 3, label: 'Term 3', startDate: t3Start, endDate: t3End, range: labelFor(7, 3) },
+  ];
+}
+
+// Active TERMS — recomputed by refreshTerms() whenever schoolYearStart
+// changes (on boot and on saveSchoolYearStart()), or when the active log
+// set spans a year refreshTerms() didn't anchor to (see refreshTerms()).
+// Everything else in the app (getTermLogs, getSchoolDaysInTerm, the Terms
+// modal tab labels) reads from this variable rather than a hardcoded
+// constant.
+let TERMS = defaultTermsForYear(new Date().getFullYear());
+
+function refreshTerms() {
+  if (schoolYearStart) {
+    TERMS = computeTermsFromStartDate(schoolYearStart);
+  } else {
+    // No explicit school year configured: anchor the default DepEd
+    // calendar to whichever year covers "today" (Philippine time) so the
+    // active term boundaries track the real current school year instead
+    // of a single fixed year baked in at load time.
+    const todayY = parseInt(todayStr().split('-')[0], 10);
+    const todayM = parseInt(todayStr().split('-')[1], 10);
+    // If we're in Jan-May, "today" falls in a school year that STARTED
+    // the previous calendar year (e.g. Term 3 of the 2025-26 year runs
+    // Jan-Mar 2026, anchored to startYear 2025).
+    const anchorYear = todayM < 6 ? todayY - 1 : todayY;
+    TERMS = defaultTermsForYear(anchorYear);
+  }
+  // Keep the static descriptive text and the term-tab range labels in the
+  // Terms modal in sync with whatever calendar is actually active.
+  const desc = document.getElementById('terms-calendar-desc');
+  if (desc) {
+    desc.textContent = schoolYearStart
+      ? `Custom calendar from ${formatDate(schoolYearStart)}: Term 1 (${TERMS[0].range}) · Term 2 (${TERMS[1].range}) · Term 3 (${TERMS[2].range})`
+      : `DepEd 3-term calendar: Term 1 (${TERMS[0].range}) · Term 2 (${TERMS[1].range}) · Term 3 (${TERMS[2].range})`;
+  }
+  TERMS.forEach(t => {
+    const el = document.getElementById(`ttab-${t.num}-range`);
+    if (el) el.textContent = t.range;
+  });
+}
 
 let termsActiveStudentId = null;
 let termsActiveClassId = null;
@@ -2851,13 +3214,17 @@ async function saveSchoolYearStart() {
     const val = document.getElementById('school-year-start').value;
     await dbSetSetting('school_year_start', val);
     schoolYearStart = val;
-    showToast('School year calendar updated ✓');
+    refreshTerms();
+    renderTermsStudentList();
+    showToast('School year calendar updated ✓', 'ok');
 }
 
 async function renderTermsPage() {
     const savedStart = await dbGetSetting('school_year_start') || '';
     const startInput = document.getElementById('school-year-start');
     if (startInput) startInput.value = savedStart;
+    schoolYearStart = savedStart;
+    refreshTerms();
     populateTermsDropdown();
     renderTermsStudentList();
 }
@@ -2894,18 +3261,28 @@ function getTermLogs(studentId, classId, termNum) {
     const term = TERMS.find(t => t.num === termNum);
     return logs.filter(l => {
         if (l.studentId !== studentId || l.classId !== classId) return false;
-        const m = new Date(l.timestamp).getMonth() + 1;
-        return term.months.includes(m);
+        // Match against the term's actual [startDate, endDate) range
+        // (year-aware) rather than a bare 1-12 month number — a bare
+        // month match would also pull in the same calendar month from
+        // every other school year a class has ever been used in.
+        const d = getLogDate(l);
+        return d >= term.startDate && d < term.endDate;
     });
 }
 
-function getSchoolDaysInTerm(classId, termNum) {
+// Returns the set of school-day date strings for a class within a term,
+// optionally excluding days before a student's enrollment date so a
+// late transfer isn't counted absent for days before they enrolled.
+function getSchoolDaysInTerm(classId, termNum, sinceDate) {
     const term = TERMS.find(t => t.num === termNum);
     return new Set(
         logs.filter(l => {
             if (l.classId !== classId) return false;
-            const m = new Date(l.timestamp).getMonth() + 1;
-            return term.months.includes(m);
+            const d = getLogDate(l);
+            // Year-aware range match — see getTermLogs() comment.
+            if (d < term.startDate || d >= term.endDate) return false;
+            if (sinceDate && d < sinceDate) return false;
+            return true;
         }).map(l => getLogDate(l))
     );
 }
@@ -2917,7 +3294,7 @@ function openTermsModal(studentId, classId) {
     const student = students.find(s => s.id === studentId);
     document.getElementById('terms-modal-name').textContent = student ? student.name : 'Student';
     document.getElementById('terms-modal-meta').textContent = student && student.lrn ? `LRN: ${student.lrn}` : '';
-    renderTermsModalBody();
+    switchTermTab(1);
     document.getElementById('terms-modal-backdrop').classList.add('open');
     document.body.style.overflow = 'hidden';
 }
@@ -2932,7 +3309,9 @@ function renderTermsModalBody() {
     const body = document.getElementById('terms-modal-body');
     const term = TERMS.find(t => t.num === termsActiveTerm);
     const termLogs = getTermLogs(termsActiveStudentId, termsActiveClassId, termsActiveTerm);
-    const schoolDays = getSchoolDaysInTerm(termsActiveClassId, termsActiveTerm);
+    const student = students.find(s => s.id === termsActiveStudentId);
+    const enrolledDate = student ? (student.enrolledDate || null) : null;
+    const schoolDays = getSchoolDaysInTerm(termsActiveClassId, termsActiveTerm, enrolledDate);
 
     const arrivals = termLogs.filter(l => l.type === 'arrival');
     const departures = termLogs.filter(l => l.type === 'departure');
@@ -2946,6 +3325,7 @@ function renderTermsModalBody() {
     <div style="background:var(--bg); border-radius:8px; padding:0.6rem 0.75rem; margin-bottom:0.25rem;">
         <span style="font-size:0.78rem; font-weight:700; color:var(--text-muted);">${term.label} · ${term.range}</span>
         ${schoolDays.size ? `<span style="font-size:0.72rem; color:var(--text-muted); margin-left:8px;">${schoolDays.size} school day${schoolDays.size !== 1 ? 's' : ''} on record</span>` : ''}
+        ${enrolledDate ? `<span style="font-size:0.72rem; color:var(--text-muted); margin-left:8px;">· enrolled ${fmtShort(enrolledDate)}</span>` : ''}
     </div>
     <div class="term-stat-grid" style="grid-template-columns: repeat(4, 1fr);">
         <div class="term-stat-card arrival-card"><div class="ts-val">${arrivals.length}</div><div class="ts-lbl">Arrivals</div></div>
@@ -2969,7 +3349,7 @@ function renderTermsModalBody() {
                         const lateTag = l.isLate ? `<span class="badge badge-late" style="font-size:0.65rem;">⏰ Late</span>` : '';
                         return `<span class="badge badge-arrival">☀️ ${new Date(l.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>${lateTag}`;
                     }).join('')}
-                    ${dep.map(l => `<span class="badge badge-departure"> ${new Date(l.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>`).join('')}
+                    ${dep.map(l => `<span class="badge badge-departure">🌙 ${new Date(l.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>`).join('')}
                 </div>
             </div>`;
         });
@@ -2986,10 +3366,14 @@ function closeTermsModalDirect() { document.getElementById('terms-modal-backdrop
 // ── PREMIUM MODAL ACTIONS ───────────────────────────────────────────────
 
 // 1. "Call Parent" Modal
-function showParentContact(studentId) {
+// dateStr/isToday let the caller specify which day's absence this is
+// about, so the copy never says "today" when a teacher is reviewing a
+// past date in the Daily summary view.
+function showParentContact(studentId, dateStr, isToday) {
   const student = students.find(s => s.id === studentId);
   if (!student) return;
   const cls = classes.find(c => c.id === student.classId);
+  const dateLabel = isToday ? 'today' : (dateStr ? formatDate(dateStr) : 'on the selected date');
   
   document.getElementById('modal-title').textContent = '📞 Contact Guardian';
   
@@ -3011,7 +3395,7 @@ function showParentContact(studentId) {
     </div>
     <div class="instruction-block" style="margin-bottom:0;">
       <p style="font-size:0.85rem; color:var(--text); line-height:1.5; margin:0;">
-        💡 <strong>Reminder:</strong> Please call or text the guardian to inquire about the student's absence today. Record any feedback or reasons provided in your class logbook.
+        💡 <strong>Reminder:</strong> Please call or text the guardian to inquire about the student's absence ${dateLabel}. Record any feedback or reasons provided in your class logbook.
       </p>
     </div>
   `;
@@ -3036,11 +3420,15 @@ function showStudentRecord(studentId) {
     return d >= range.from && d <= range.to;
   });
 
-  // Get all school days for this class in the range
+  // Get all school days for this class in the range, excluding days
+  // before this student's enrollment date.
+  const enrolledDate = student.enrolledDate || null;
   const classLogs = logs.filter(l => {
     if (l.classId !== student.classId) return false;
     const d = l.localDate || getLogDate(l);
-    return d >= range.from && d <= range.to;
+    if (d < range.from || d > range.to) return false;
+    if (enrolledDate && d < enrolledDate) return false;
+    return true;
   });
   const schoolDays = [...new Set(classLogs.map(l => l.localDate || getLogDate(l)))].sort();
   
@@ -3065,6 +3453,7 @@ function showStudentRecord(studentId) {
       </div>
       <div style="font-size:0.8rem; color:var(--text-muted); margin-bottom:0.5rem;">
         Period: ${fmtShort(range.from)} – ${fmtShort(range.to)} (${schoolDays.length} school days)
+        ${enrolledDate ? ` · enrolled ${fmtShort(enrolledDate)}` : ''}
       </div>
     </div>
 
@@ -3123,6 +3512,7 @@ function openEditStudentModal(id) {
   document.getElementById('edit-student-name-input').value = student.name;
   document.getElementById('edit-student-lrn-input').value = student.lrn || '';
   document.getElementById('edit-student-guardian-input').value = student.guardian || '';
+  document.getElementById('edit-student-enrolled-input').value = student.enrolledDate || '';
   
   // Populate class dropdown
   const classOpts = `<option value="">— Choose a class —</option>` + 
@@ -3140,17 +3530,31 @@ async function saveEditStudent() {
   const name = document.getElementById('edit-student-name-input').value.trim();
   const lrn = document.getElementById('edit-student-lrn-input').value.trim();
   const guardian = document.getElementById('edit-student-guardian-input').value.trim();
+  const enrolledDate = document.getElementById('edit-student-enrolled-input').value || '';
   
-  if (!classId || !name) return showToast('Class and full name are required.');
+  if (!classId || !name) return showToast('Class and full name are required.', 'warn');
+
+  // Duplicate-LRN guard, same as addStudent() — checked against every
+  // OTHER student so editing a student's own unchanged LRN doesn't
+  // trigger a false-positive warning against itself.
+  if (lrn) {
+    const dupe = students.find(s => s.id !== id && s.lrn && s.lrn === lrn);
+    if (dupe) {
+      const proceed = confirm(`LRN ${lrn} is already registered to "${dupe.name}". Save anyway?`);
+      if (!proceed) return;
+    }
+  }
   
   const student = students.find(s => s.id === id);
   if (!student) return;
+  const previousClassId = student.classId;
   
   // Update student data (Logs are intentionally left untouched to preserve history)
   student.classId = classId;
   student.name = name;
   student.lrn = lrn;
   student.guardian = guardian;
+  student.enrolledDate = enrolledDate || student.enrolledDate || '';
   
   students.sort((a, b) => a.name.localeCompare(b.name));
   await saveStudents();
@@ -3159,7 +3563,17 @@ async function saveEditStudent() {
   renderStudents();
   renderClasses(); // Update student counts in Classes tab
   populateDropdowns();
-  showToast('Student updated successfully.');
+
+  // Moving a student to a new class leaves their existing log rows
+  // tagged with the OLD classId (preserving history as before), but
+  // every class-scoped view (roster modal, Terms tab) filters by the
+  // student's CURRENT classId — so without this notice, that history
+  // silently becomes unreachable in the UI with no indication why.
+  if (previousClassId && previousClassId !== classId) {
+    showToast('Student moved. Their attendance history before the move stays under the old class roster.', 'info');
+  } else {
+    showToast('Student updated successfully.', 'ok');
+  }
 }
 
 function closeEditStudentModal(e) { if (e.target === document.getElementById('edit-student-modal')) closeEditStudentModalDirect(); }
@@ -3186,7 +3600,7 @@ window.addEventListener('DOMContentLoaded', async () => {
       const syncUrl = localStorage.getItem('edu_sync_url');
       if (syncUrl) await dbSetSetting('sync_url', syncUrl);
       ['edu_classes','edu_students','edu_logs','edu_sync_url'].forEach(k => localStorage.removeItem(k));
-      showToast('Data migrated from old storage ✓');
+      showToast('Data migrated from old storage ✓', 'ok');
     }
   }
 
@@ -3203,84 +3617,42 @@ window.addEventListener('DOMContentLoaded', async () => {
     logs = await dbGetAll('logs');
   }
 
+  // Migrate students missing enrolledDate — default to the earliest
+  // attendance log on record for them, or today if they have none yet,
+  // so existing rosters don't suddenly show false absences for the
+  // entire history once enrollment-aware filtering is in place.
+  let needsStudentFix = false;
+  students = students.map(s => {
+    if (!s.enrolledDate) {
+      needsStudentFix = true;
+      const ownLogs = logs.filter(l => l.studentId === s.id).map(l => getLogDate(l)).sort();
+      return { ...s, enrolledDate: ownLogs[0] || todayStr() };
+    }
+    return s;
+  });
+  if (needsStudentFix) await dbPutAll('students', students);
+
   logs.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
   students.sort((a, b) => a.name.localeCompare(b.name));
 
   autoSyncEnabled = !!(await dbGetSetting('auto_sync'));
   schoolYearStart = await dbGetSetting('school_year_start') || '';
+  refreshTerms();
 
   populateDropdowns();
   initSummaryPeriod();
   checkAutoExport('boot');
   updatePWAInstallUI();
 
+  // Restore last-used scan mode (arrival/departure) so a teacher running
+  // an afternoon dismissal-only session doesn't have to re-flip this
+  // every time the app is reopened.
+  const savedMode = await dbGetSetting('last_scan_mode');
+  if (savedMode === 'arrival' || savedMode === 'departure') setMode(savedMode, false);
+
   // Show install banner after a short delay so it doesn't flash on load
   setTimeout(initInstallBanner, 1200);
 });
-
-// Show guardian contact info when "Call Parent" is clicked
-function showGuardianContact(studentId) {
-  const student = students.find(s => s.id === studentId);
-  if (!student) return;
-  
-  const cls = classes.find(c => c.id === student.classId)?.name || 'Unknown Class';
-  const guardianInfo = student.guardian || 'No guardian information available';
-  
-  alert(`📞 Contact Information\n\nStudent: ${student.name}\nClass: ${cls}\nLRN: ${student.lrn || 'N/A'}\n\nGuardian: ${guardianInfo}\n\nNote: Please update the student record with guardian contact details if not available.`);
-}
-
-// Show detailed attendance record when "View Record" is clicked
-function showStudentAttendance(studentId) {
-  const student = students.find(s => s.id === studentId);
-  if (!student) return;
-  
-  const cls = classes.find(c => c.id === student.classId)?.name || 'Unknown Class';
-  const range = getActiveDateRange();
-  if (!range) return;
-  
-  const studentLogs = logs.filter(l => {
-    if (l.studentId !== studentId) return false;
-    const d = getLogDate(l);
-    return d >= range.from && d <= range.to;
-  });
-  
-  const arrivals = studentLogs.filter(l => l.type === 'arrival');
-  const lates = arrivals.filter(l => l.isLate);
-  
-  const classLogs = logs.filter(l => {
-    if (l.classId !== student.classId) return false;
-    const d = getLogDate(l);
-    return d >= range.from && d <= range.to;
-  });
-  const activeDays = new Set(classLogs.map(l => getLogDate(l))).size;
-  const presentDays = new Set(arrivals.map(l => getLogDate(l))).size;
-  const absences = Math.max(0, activeDays - presentDays);
-  
-  let message = `📋 Attendance Record\n\n`;
-  message += `Student: ${student.name}\n`;
-  message += `Class: ${cls}\n`;
-  message += `LRN: ${student.lrn || 'N/A'}\n`;
-  message += `Period: ${range.from} to ${range.to}\n\n`;
-  message += `📊 Summary:\n`;
-  message += `• Total Arrivals: ${arrivals.length}\n`;
-  message += `• Total Lates: ${lates.length}\n`;
-  message += `• Total Absences: ${absences}\n`;
-  message += `• Attendance Rate: ${activeDays > 0 ? Math.round((presentDays / activeDays) * 100) : 0}%\n\n`;
-  
-  if (lates.length > 0) {
-    message += `⏰ Late Arrivals:\n`;
-    lates.slice(0, 5).forEach(l => {
-      const date = getLogDate(l);
-      const time = new Date(l.timestamp).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
-      message += `• ${date} at ${time}\n`;
-    });
-    if (lates.length > 5) {
-      message += `... and ${lates.length - 5} more\n`;
-    }
-  }
-  
-  alert(message);
-}
 </script>
 
 <script>
