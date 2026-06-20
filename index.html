@@ -2692,14 +2692,28 @@ async function syncSingleLog(log, originalTimestamp) {
   // re-included in the next bulk sync pass. Use the earlier of the
   // log's original timestamp and its new timestamp, in case the edit
   // moved the log backwards or forwards in time.
+  //
+  // IMPORTANT: only ever REWIND an existing watermark — never establish
+  // one for the first time here. If last_sync_time is unset, that means
+  // nothing has ever been synced yet (e.g. right after importing a
+  // backup into a fresh PWA), and getPendingLogs() already does the
+  // right thing in that case (sends everything). Setting a watermark
+  // here to "this one edited log's timestamp" would otherwise silently
+  // exclude every OTHER never-synced, non-edited log with an earlier
+  // timestamp — e.g. editing a single record in one class right after a
+  // fresh import could permanently drop an entire other class's history
+  // from ever syncing, since those logs have no needsSync flag to
+  // rescue them.
   const lastSync = await dbGetSetting('last_sync_time');
-  const candidateWatermarks = [originalTimestamp, log.timestamp].filter(Boolean);
-  if (candidateWatermarks.length) {
-    const earliestRelevant = candidateWatermarks.sort()[0];
-    // Only rewind — never advance — the watermark here.
-    if (!lastSync || earliestRelevant < lastSync) {
-      await dbSetSetting('last_sync_time', earliestRelevant);
-      updateAutoSyncLastLabel();
+  if (lastSync) {
+    const candidateWatermarks = [originalTimestamp, log.timestamp].filter(Boolean);
+    if (candidateWatermarks.length) {
+      const earliestRelevant = candidateWatermarks.sort()[0];
+      // Only rewind — never advance — the watermark here.
+      if (earliestRelevant < lastSync) {
+        await dbSetSetting('last_sync_time', earliestRelevant);
+        updateAutoSyncLastLabel();
+      }
     }
   }
 
