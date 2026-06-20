@@ -1863,29 +1863,36 @@ async function renderStudents() {
 }
 
 // ── LOGS ──────────────────────────────────────────────────────────────────
-function renderLog() {
-  const container = document.getElementById('logs-feed-container');
-  if (!logs.length) {
-    container.innerHTML = `<p class="empty" style="padding: 2rem 0;">No logs yet. Scan a student to get started!</p>`;
-    return;
-  }
+// ── LOGS (paginated / infinite scroll) ─────────────────────────────────────
+// Rendering the ENTIRE log history unconditionally (the original
+// implementation) is the actual cause of the app feeling slow after a full
+// term of use: toLocaleTimeString()/toLocaleDateString() are relatively
+// expensive Intl-backed calls, and the old code ran two of them per row
+// with no limit on row count — so the cost grew every single school day
+// and never came back down. Logs are already kept sorted newest-first
+// (see the `logs.sort()` calls after boot/scan/import), so "most recent
+// N" is just a cheap array slice — rendering a fixed-size page keeps the
+// Logs tab fast regardless of whether there are 100 logs or 100,000.
+const LOG_PAGE_SIZE = 60;
+let logRenderedCount = 0;
+let logScrollHandlerAttached = false;
 
-  container.innerHTML = logs.map(l => {
-    // Use localDate if available (for timezone accuracy), otherwise fallback to timestamp
-    const dateObj = l.localDate ? new Date(l.localDate + 'T00:00:00') : new Date(l.timestamp);
-    
-    // Format Time (e.g., 07:30 AM) and Date (e.g., Jun 19)
-    const timeStr = new Date(l.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const dateStr = dateObj.toLocaleDateString([], { month: 'short', day: 'numeric' });
+function buildLogRowHTML(l) {
+  // Use localDate if available (for timezone accuracy), otherwise fallback to timestamp
+  const dateObj = l.localDate ? new Date(l.localDate + 'T00:00:00') : new Date(l.timestamp);
 
-    const lateTag = (l.type === 'arrival' && l.isLate) 
-      ? `<span class="badge badge-late" style="font-size:0.65rem;">⏰ Late</span>` : '';
-    
-    const statusBadge = l.type === 'departure' 
-      ? `<span class="badge badge-departure" style="font-size:0.7rem;">🌙 Dismissed</span>` 
-      : `<span class="badge badge-arrival" style="font-size:0.7rem;">☀️ Arrived</span>`;
+  // Format Time (e.g., 07:30 AM) and Date (e.g., Jun 19)
+  const timeStr = new Date(l.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const dateStr = dateObj.toLocaleDateString([], { month: 'short', day: 'numeric' });
 
-    return `
+  const lateTag = (l.type === 'arrival' && l.isLate)
+    ? `<span class="badge badge-late" style="font-size:0.65rem;">⏰ Late</span>` : '';
+
+  const statusBadge = l.type === 'departure'
+    ? `<span class="badge badge-departure" style="font-size:0.7rem;">🌙 Dismissed</span>`
+    : `<span class="badge badge-arrival" style="font-size:0.7rem;">☀️ Arrived</span>`;
+
+  return `
     <div class="log-feed-item">
       <div class="log-feed-time">
         <span class="time">${timeStr}</span>
@@ -1900,7 +1907,54 @@ function renderLog() {
         <button class="btn outline sm" style="padding: 4px 8px; font-size: 0.75rem;" onclick="openEditLogModal(${l.id})">✏️</button>
       </div>
     </div>`;
-  }).join('');
+}
+
+// reset=true (default): re-render from the top — used when the Logs tab
+// is freshly opened (showPage) or after Clear All. reset=false: re-render
+// in place at the SAME page size the user had already scrolled to — used
+// after editing/deleting a single record, so fixing a typo doesn't dump
+// the teacher back to the top of a long list they were scrolled through.
+function renderLog(reset = true) {
+  const container = document.getElementById('logs-feed-container');
+  if (!logs.length) {
+    logRenderedCount = 0;
+    container.innerHTML = `<p class="empty" style="padding: 2rem 0;">No logs yet. Scan a student to get started!</p>`;
+    return;
+  }
+
+  if (reset) logRenderedCount = LOG_PAGE_SIZE;
+  // Defensive clamp: if logs shrank (e.g. a delete) below the previously
+  // rendered count, don't try to slice past the end of the array.
+  logRenderedCount = Math.min(logRenderedCount || LOG_PAGE_SIZE, logs.length);
+
+  const visible = logs.slice(0, logRenderedCount);
+  container.innerHTML = visible.map(buildLogRowHTML).join('');
+
+  if (reset) container.scrollTop = 0;
+  attachLogScrollHandler();
+}
+
+function attachLogScrollHandler() {
+  if (logScrollHandlerAttached) return;
+  const container = document.getElementById('logs-feed-container');
+  if (!container) return;
+  container.addEventListener('scroll', () => {
+    // Load the next page once the user scrolls within ~150px of the
+    // bottom of the already-rendered list.
+    const nearBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 150;
+    if (!nearBottom) return;
+    if (logRenderedCount >= logs.length) return;
+
+    const prevScrollTop = container.scrollTop;
+    logRenderedCount = Math.min(logRenderedCount + LOG_PAGE_SIZE, logs.length);
+    const visible = logs.slice(0, logRenderedCount);
+    container.innerHTML = visible.map(buildLogRowHTML).join('');
+    // Appending more rows below the fold doesn't move any content above
+    // the user's current scroll position, so just restore it directly —
+    // re-setting innerHTML resets scrollTop to 0 otherwise.
+    container.scrollTop = prevScrollTop;
+  });
+  logScrollHandlerAttached = true;
 }
 
 async function clearLogs() {
@@ -2508,7 +2562,7 @@ async function saveEditLog() {
 
     await dbPutAll('logs', [log]);
     closeEditLogModalDirect();
-    renderLog(); renderTodayList();
+    renderLog(false); renderTodayList();
     if (document.getElementById('page-summary').classList.contains('active')) renderSummary();
     if (document.getElementById('terms-modal-backdrop').classList.contains('open')) renderTermsModalBody();
     
@@ -2522,7 +2576,7 @@ async function deleteLogEntry() {
   logs = logs.filter(l => l.id !== logId);
   await dbDelete('logs', logId);
   closeEditLogModalDirect();
-  renderLog(); renderTodayList();
+  renderLog(false); renderTodayList();
   if (document.getElementById('page-summary').classList.contains('active')) renderSummary();
   if (document.getElementById('terms-modal-backdrop').classList.contains('open')) renderTermsModalBody();
   showToast('Record deleted.', 'ok');
