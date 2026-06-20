@@ -457,29 +457,34 @@
 }
 
 /* ── LOGS FEED (Mobile-First Design) ── */
-.log-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 0.85rem;
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    transition: background 0.15s;
+.log-feed-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.85rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+  gap: 1rem;
+  transition: background 0.15s;
 }
-.log-card:hover { background: var(--bg); }
-.log-card-time {
-    display: flex; flex-direction: column; align-items: flex-end; min-width: 60px;
+.log-feed-item:hover { background: var(--bg); }
+.log-feed-item:last-child { border-bottom: none; }
+
+.log-feed-time {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  min-width: 50px;
 }
-.log-card-time .time { font-weight: 700; font-size: 0.95rem; color: var(--text); line-height: 1.2; }
-.log-card-time .date { font-size: 0.72rem; color: var(--text-muted); }
-.log-card-info { flex: 1; min-width: 0; }
-.log-card-name { 
-    font-weight: 600; font-size: 0.95rem; 
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; 
-    display: flex; align-items: center; gap: 6px;
+.log-feed-time .time { font-weight: 700; font-size: 0.9rem; color: var(--text); line-height: 1.2; }
+.log-feed-time .date { font-size: 0.7rem; color: var(--text-muted); }
+
+.log-feed-info { flex: 1; min-width: 0; }
+.log-feed-name { 
+  font-weight: 600; font-size: 0.95rem; 
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; 
+  display: flex; align-items: center; gap: 6px;
 }
-.log-card-meta { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
+.log-feed-meta { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
 
 .log-feed-actions { display: flex; align-items: center; gap: 0.5rem; }
   </style>
@@ -665,7 +670,7 @@
         <button class="btn danger sm" onclick="clearLogs()">Clear all</button>
       </div>
       <!-- NEW: Premium Log Feed Container -->
-      <div id="logs-feed-container" style="display:flex; flex-direction:column; gap:0.75rem; max-height:65vh; overflow-y:auto; padding-right:4px;">
+      <div id="logs-feed-container" style="overflow-y:auto; max-height:65vh; border-radius:8px; border:1px solid var(--border); margin-top:0.5rem; padding: 0 0.5rem;">
         <!-- Content injected by JS -->
       </div>
     </div>
@@ -1660,9 +1665,10 @@ function renderLog() {
   }
 
   container.innerHTML = logs.map(l => {
-    // FIX: Use localDate to prevent UTC timezone drift in display
+    // Use localDate if available (for timezone accuracy), otherwise fallback to timestamp
     const dateObj = l.localDate ? new Date(l.localDate + 'T00:00:00') : new Date(l.timestamp);
     
+    // Format Time (e.g., 07:30 AM) and Date (e.g., Jun 19)
     const timeStr = new Date(l.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const dateStr = dateObj.toLocaleDateString([], { month: 'short', day: 'numeric' });
 
@@ -1671,21 +1677,21 @@ function renderLog() {
     
     const statusBadge = l.type === 'departure' 
       ? `<span class="badge badge-departure" style="font-size:0.7rem;">🌙 Dismissed</span>` 
-      : `<span class="badge badge-arrival" style="font-size:0.7rem;">☀️ Arrived</span>`;
+      : `<span class="badge badge-arrival" style="font-size:0.7rem;">️ Arrived</span>`;
 
     return `
-    <div class="log-card">
-      <div class="log-card-time">
+    <div class="log-feed-item">
+      <div class="log-feed-time">
         <span class="time">${timeStr}</span>
         <span class="date">${dateStr}</span>
       </div>
-      <div class="log-card-info">
-        <div class="log-card-name">${l.studentName} ${lateTag}</div>
-        <div class="log-card-meta">${l.className || 'Unknown Class'} · LRN ${l.studentLrn || 'N/A'}</div>
+      <div class="log-feed-info">
+        <div class="log-feed-name">${l.studentName} ${lateTag}</div>
+        <div class="log-feed-meta">${l.className || 'Unknown Class'} · LRN ${l.studentLrn || 'N/A'}</div>
       </div>
-      <div style="display:flex; align-items:center; gap:0.5rem;">
+      <div class="log-feed-actions">
         ${statusBadge}
-        <button class="btn outline sm" style="padding: 4px 8px; font-size: 0.75rem;" onclick="openEditLogModal(${l.id})">️</button>
+        <button class="btn outline sm" style="padding: 4px 8px; font-size: 0.75rem;" onclick="openEditLogModal(${l.id})">✏️</button>
       </div>
     </div>`;
   }).join('');
@@ -2279,8 +2285,6 @@ async function saveEditLog() {
     const localDateObj = new Date(y, mo - 1, d, h, mi, 0);
     
     log.timestamp = localDateObj.toISOString();
-    log.localDate = dateVal; // ADD THIS: Preserves the Philippine date for Summary/Terms tabs!
-    log.type  = type;
     log.type  = type;
     log.isLate = isLate;
     
