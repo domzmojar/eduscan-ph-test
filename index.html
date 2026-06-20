@@ -2679,14 +2679,46 @@ async function disableAutoSync() {
   showToast('Auto-sync disabled.', 'info');
 }
 
+// syncSingleLog now rewinds the watermark instead of pushing out-of-band.
+// This means an edited historical log gets picked up by the normal,
+// chunked, retrying syncToSheets() path instead of a fire-and-forget
+// fetch with no retry and no UI feedback on failure.
 async function syncSingleLog(log, originalTimestamp) {
-    if (!autoSyncEnabled) return;
-    const url = await dbGetSetting('sync_url');
-    if (!url) return;
-    
-    // Trigger the normal chunked/retrying sync path.
-    // The `needsSync` flag on the log object is all we need.
-    scheduleAutoSync();
+  if (!autoSyncEnabled) return;
+  const url = await dbGetSetting('sync_url');
+  if (!url) return;
+
+  // Rewind the watermark so this log (and anything after it) is
+  // re-included in the next bulk sync pass. Use the earlier of the
+  // log's original timestamp and its new timestamp, in case the edit
+  // moved the log backwards or forwards in time.
+  //
+  // IMPORTANT: only ever REWIND an existing watermark — never establish
+  // one for the first time here. If last_sync_time is unset, that means
+  // nothing has ever been synced yet (e.g. right after importing a
+  // backup into a fresh PWA), and getPendingLogs() already does the
+  // right thing in that case (sends everything). Setting a watermark
+  // here to "this one edited log's timestamp" would otherwise silently
+  // exclude every OTHER never-synced, non-edited log with an earlier
+  // timestamp — e.g. editing a single record in one class right after a
+  // fresh import could permanently drop an entire other class's history
+  // from ever syncing, since those logs have no needsSync flag to
+  // rescue them.
+  const lastSync = await dbGetSetting('last_sync_time');
+  if (lastSync) {
+    const candidateWatermarks = [originalTimestamp, log.timestamp].filter(Boolean);
+    if (candidateWatermarks.length) {
+      const earliestRelevant = candidateWatermarks.sort()[0];
+      // Only rewind — never advance — the watermark here.
+      if (earliestRelevant < lastSync) {
+        await dbSetSetting('last_sync_time', earliestRelevant);
+        updateAutoSyncLastLabel();
+      }
+    }
+  }
+
+  // Let the normal chunked/retrying sync path do the actual push.
+  scheduleAutoSync();
 }
 
 function scheduleAutoSync() {
@@ -3136,42 +3168,34 @@ async function importData(event) {
       importedStudents = newStudents.length;
     }
     if (payload.logs?.length) {
+      // Dedupe on the semantic identity of an attendance record — one
+      // arrival/departure per student, per class, per day — rather than
+      // on raw timestamp. Editing a log's time (saveEditLog) changes
+      // `timestamp` but not the underlying event, so a timestamp-based
+      // key would let an old backup re-insert a duplicate of an
+      // already-edited record.
       const recordKey = l => `${l.studentId}|${l.classId}|${l.localDate || getLogDate(l)}|${l.type}`;
       const existingKeys = new Set(logs.map(recordKey));
       const newLogs      = payload.logs.filter(l => !existingKeys.has(recordKey(l)));
-      
       for (const l of newLogs) {
-          const entry = { ...l }; 
-          delete entry.id;
-
-          // ── MIGRATION FIX: Repair old logs missing 'localDate' or non-standard timestamps ──
-          // If the log is from an old PWA version, it won't have localDate. 
-          // We calculate it now using Philippine Time so it matches the new format.
-          if (!entry.localDate && entry.timestamp) {
-              try {
-                  const d = new Date(entry.timestamp);
-                  const ph = new Date(d.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
-                  entry.localDate = ph.getFullYear() + '-' + 
-                                    String(ph.getMonth() + 1).padStart(2, '0') + '-' + 
-                                    String(ph.getDate()).padStart(2, '0');
-              } catch (e) { console.error('Failed to calculate localDate for old log', e); }
-          }
-          // Normalize timestamp to strict UTC ISO string to prevent GAS timezone mismatches
-          if (entry.timestamp) {
-              try {
-                  entry.timestamp = new Date(entry.timestamp).toISOString();
-              } catch (e) { /* keep original if it completely fails to parse */ }
-          }
-          // ── END OF MIGRATION FIX ──────────────────────────────────────────────────────────
-
-          const newId = await dbAdd('logs', entry);
-          entry.id = newId;
-          logs.push(entry);
-          existingKeys.add(recordKey(entry));
+        const entry = { ...l }; delete entry.id;
+        // Backfill localDate if missing (logs from an older PWA version
+        // before this field was introduced). Without this, an imported
+        // log keeps missing localDate forever — including through a
+        // later re-export, since export/import only spreads existing
+        // fields and never adds new ones. getLogDate() already computes
+        // the correct PH-time value from the timestamp as a read-time
+        // fallback, so backfilling it here just makes that permanent and
+        // keeps every log's schema consistent going forward.
+        if (!entry.localDate) entry.localDate = getLogDate(entry);
+        const newId = await dbAdd('logs', entry);
+        entry.id = newId;
+        logs.push(entry);
+        existingKeys.add(recordKey(entry));
       }
       logs.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
       importedLogs = newLogs.length;
-  }
+    }
     if (payload.settings?.syncUrl) await dbSetSetting('sync_url', payload.settings.syncUrl);
     populateDropdowns();
     msg.innerHTML = `<div class="sync-status ok">✅ Import complete: ${importedClasses} classes · ${importedStudents} students · ${importedLogs} logs added</div>`;
