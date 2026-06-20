@@ -804,6 +804,45 @@
         <button class="ag-logout-btn" onclick="logoutUser()">Sign out</button>
     </div>
 
+    <!-- SET NEW PASSWORD VIEW (shown after clicking a password-reset email link) -->
+    <div id="reset-password-view" class="ag-card" style="display:none;">
+        <div class="ag-brand">
+            <span class="ag-brand-icon" aria-hidden="true">
+                <svg width="20" height="20" viewBox="0 0 52 52" fill="none"><rect x="13" y="16" width="26" height="30" rx="3" fill="white" opacity="0.95"/><rect x="20" y="11" width="12" height="8" rx="2" fill="white" opacity="0.95"/><rect x="20" y="13" width="12" height="4" rx="1" fill="#1d4ed8"/><path d="M30 38 L33 41 L39 35" stroke="#10b981" stroke-width="2.5" stroke-linecap="round"/></svg>
+            </span>
+            <span>EduScan PH</span>
+        </div>
+        <div class="ag-title">Set a new password</div>
+        <div class="ag-subtitle">You're verified — choose a new password for your account.</div>
+
+        <div id="ag-reset-message" class="ag-msg" role="alert" aria-live="polite"></div>
+
+        <form id="ag-reset-form" novalidate>
+            <div class="ag-field">
+                <label for="ag-reset-password">New password</label>
+                <div class="ag-input-wrap">
+                    <input id="ag-reset-password" type="password" autocomplete="new-password" placeholder="At least 6 characters" required aria-describedby="ag-reset-password-err" aria-invalid="false">
+                    <button type="button" class="ag-pw-toggle" data-target="ag-reset-password" aria-label="Show password" aria-pressed="false">
+                        <svg class="ag-eye-open" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                        <svg class="ag-eye-closed" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a21.3 21.3 0 0 1 5.06-6.06"/><path d="M1 1l22 22"/><path d="M9.9 4.24A10.94 10.94 0 0 1 12 4c7 0 11 8 11 8a21.3 21.3 0 0 1-3.16 4.19"/></svg>
+                    </button>
+                </div>
+                <p id="ag-reset-password-err" class="ag-error"></p>
+            </div>
+            <div class="ag-field">
+                <label for="ag-reset-password-confirm">Confirm new password</label>
+                <div class="ag-input-wrap">
+                    <input id="ag-reset-password-confirm" type="password" autocomplete="new-password" placeholder="Re-enter your new password" required aria-describedby="ag-reset-password-confirm-err" aria-invalid="false">
+                </div>
+                <p id="ag-reset-password-confirm-err" class="ag-error"></p>
+            </div>
+            <button type="submit" class="ag-btn ag-btn-primary" id="ag-reset-btn">
+                <span class="ag-spinner" aria-hidden="true"></span>
+                <span class="ag-btn-text">Update password</span>
+            </button>
+        </form>
+    </div>
+
   </div>
 </div>
 
@@ -4093,8 +4132,19 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const authGate = document.getElementById('auth-gate');
 const loginView = document.getElementById('login-view');
 const expiredView = document.getElementById('expired-view');
+const resetPasswordView = document.getElementById('reset-password-view');
 
 const TRIAL_DAYS = 7;
+
+// Set when Supabase fires PASSWORD_RECOVERY (i.e. the person arrived via
+// a password-reset email link). While true, checkSubscriptionStatus()
+// must NOT run its normal logic — that would immediately drop a
+// recovery session straight into the main app (since the recovery link
+// IS a valid, signed-in session), bypassing the "set a new password"
+// step entirely. This is exactly the bug reported: the reset link
+// logged the person in but gave them nowhere to actually change their
+// password.
+let isPasswordRecovery = false;
 
 // ── UI HELPERS ──────────────────────────────────────────────────────────
 function agShowMessage(text, type) {
@@ -4252,7 +4302,23 @@ document.getElementById('ag-signup-form').addEventListener('submit', async (e) =
             return;
         }
 
-        // No session yet => Supabase project has email confirmation ON.
+        // Supabase intentionally avoids a loud "email already registered"
+        // error (it would let someone probe which emails have accounts).
+        // Instead, signing up again with an existing-but-unconfirmed email
+        // returns success with no session AND an empty identities array.
+        // A genuinely brand-new sign-up also has no session when email
+        // confirmation is on, but its identities array is populated — so
+        // checking identities.length is what tells these two cases apart.
+        if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+            agShowMessage('An account with this email already exists. Try signing in, or use "Forgot password?" if you don\'t remember your password.', 'info');
+            agSetLoading('ag-signup-btn', false);
+            agSwitchTab('signin');
+            document.getElementById('ag-signin-email').value = email;
+            return;
+        }
+
+        // No session yet => Supabase project has email confirmation ON,
+        // and this genuinely is a brand-new sign-up.
         if (!data.session) {
             agShowMessage('Account created! Check your email to confirm your address, then sign in.', 'success');
             agSetLoading('ag-signup-btn', false);
@@ -4347,6 +4413,68 @@ async function agForgotPassword() {
     }
 }
 
+// ── 3b. SET NEW PASSWORD (after clicking a reset-password email link) ──
+document.getElementById('ag-reset-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const pw = document.getElementById('ag-reset-password');
+    const pwConfirm = document.getElementById('ag-reset-password-confirm');
+    const pwErr = document.getElementById('ag-reset-password-err');
+    const pwConfirmErr = document.getElementById('ag-reset-password-confirm-err');
+
+    pwErr.textContent = ''; pwConfirmErr.textContent = '';
+    pw.setAttribute('aria-invalid', 'false'); pwConfirm.setAttribute('aria-invalid', 'false');
+
+    let ok = true;
+    if (!pw.value) {
+        pwErr.textContent = 'Enter a new password';
+        pw.setAttribute('aria-invalid', 'true'); ok = false;
+    } else if (pw.value.length < 6) {
+        pwErr.textContent = 'Password must be at least 6 characters';
+        pw.setAttribute('aria-invalid', 'true'); ok = false;
+    }
+    if (ok && pw.value !== pwConfirm.value) {
+        pwConfirmErr.textContent = 'Passwords do not match';
+        pwConfirm.setAttribute('aria-invalid', 'true'); ok = false;
+    }
+    if (!ok) return;
+
+    const msgEl = document.getElementById('ag-reset-message');
+    msgEl.className = 'ag-msg';
+    agSetLoading('ag-reset-btn', true);
+
+    try {
+        const { error } = await sb.auth.updateUser({ password: pw.value });
+        if (error) {
+            msgEl.textContent = error.message || 'Could not update password. Please try again.';
+            msgEl.className = 'ag-msg show error';
+            agSetLoading('ag-reset-btn', false);
+            return;
+        }
+
+        msgEl.textContent = 'Password updated! Taking you to sign in…';
+        msgEl.className = 'ag-msg show success';
+        agSetLoading('ag-reset-btn', false);
+
+        // The recovery session is single-purpose: once the password is
+        // changed, sign out of it and send the person to the normal sign
+        // in form with their now-updated password, rather than silently
+        // continuing to ride the temporary recovery session into the app.
+        setTimeout(async () => {
+            isPasswordRecovery = false;
+            await sb.auth.signOut();
+            resetPasswordView.style.display = 'none';
+            loginView.style.display = 'block';
+            agSwitchTab('signin');
+            document.getElementById('ag-signin-password').value = '';
+        }, 1500);
+    } catch (err) {
+        msgEl.textContent = 'Something went wrong. Check your connection and try again.';
+        msgEl.className = 'ag-msg show error';
+        agSetLoading('ag-reset-btn', false);
+    }
+});
+
 // ── 4. GOOGLE OAUTH ─────────────────────────────────────────────────────
 async function loginWithGoogle() {
     agShowMessage('', null);
@@ -4380,6 +4508,12 @@ function confirmLogout() {
 
 // ── 6. THE GATEKEEPER: Checks if user is allowed to use the app ────────
 async function checkSubscriptionStatus() {
+    // Don't run the normal access check while the person is in the middle
+    // of a password-recovery flow — showResetPasswordView() already has
+    // the gate open on the right screen; letting this function proceed
+    // would yank them straight into the main app instead.
+    if (isPasswordRecovery) return;
+
     const { data: { session } } = await sb.auth.getSession();
 
     // If no active online session, check our offline cache
@@ -4461,8 +4595,26 @@ window.addEventListener('DOMContentLoaded', () => {
     setTimeout(checkSubscriptionStatus, 500);
 });
 
-// Listen for auth state changes (e.g., when they return from Google login popup)
+function showResetPasswordView() {
+    isPasswordRecovery = true;
+    authGate.classList.add('active');
+    loginView.style.display = 'none';
+    expiredView.style.display = 'none';
+    resetPasswordView.style.display = 'block';
+}
+
+// Listen for auth state changes (e.g., when they return from Google login
+// popup, or click a password-reset email link).
 sb.auth.onAuthStateChange((event, session) => {
+    if (event === 'PASSWORD_RECOVERY') {
+        // Clicking a reset-password email link signs the person in with a
+        // temporary recovery session. Without this branch, the normal
+        // SIGNED_IN handling below would treat that as a real login and
+        // drop them straight into the main app — which is the bug
+        // reported: no way to actually type the new password.
+        showResetPasswordView();
+        return;
+    }
     if (event === 'SIGNED_IN' && session) {
         checkSubscriptionStatus();
     }
