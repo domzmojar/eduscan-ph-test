@@ -2679,53 +2679,14 @@ async function disableAutoSync() {
   showToast('Auto-sync disabled.', 'info');
 }
 
-// syncSingleLog no longer rewinds the watermark. 
-// Rewinding causes ALL subsequent logs (like Ichigo's) to be re-sent to GAS, 
-// which risks creating duplicates if GAS's row-matching has any micro-errors.
-// Instead, we rely entirely on the `needsSync` flag set by saveEditLog().
-// getPendingLogs() is already configured to pick up ANY log with `needsSync=true`,
-// regardless of the watermark. This guarantees only the edited log is sent.
 async function syncSingleLog(log, originalTimestamp) {
     if (!autoSyncEnabled) return;
     const url = await dbGetSetting('sync_url');
     if (!url) return;
-
+    
     // Trigger the normal chunked/retrying sync path.
     // The `needsSync` flag on the log object is all we need.
     scheduleAutoSync();
-}
-
-  // Rewind the watermark so this log (and anything after it) is
-  // re-included in the next bulk sync pass. Use the earlier of the
-  // log's original timestamp and its new timestamp, in case the edit
-  // moved the log backwards or forwards in time.
-  //
-  // IMPORTANT: only ever REWIND an existing watermark — never establish
-  // one for the first time here. If last_sync_time is unset, that means
-  // nothing has ever been synced yet (e.g. right after importing a
-  // backup into a fresh PWA), and getPendingLogs() already does the
-  // right thing in that case (sends everything). Setting a watermark
-  // here to "this one edited log's timestamp" would otherwise silently
-  // exclude every OTHER never-synced, non-edited log with an earlier
-  // timestamp — e.g. editing a single record in one class right after a
-  // fresh import could permanently drop an entire other class's history
-  // from ever syncing, since those logs have no needsSync flag to
-  // rescue them.
-  const lastSync = await dbGetSetting('last_sync_time');
-  if (lastSync) {
-    const candidateWatermarks = [originalTimestamp, log.timestamp].filter(Boolean);
-    if (candidateWatermarks.length) {
-      const earliestRelevant = candidateWatermarks.sort()[0];
-      // Only rewind — never advance — the watermark here.
-      if (earliestRelevant < lastSync) {
-        await dbSetSetting('last_sync_time', earliestRelevant);
-        updateAutoSyncLastLabel();
-      }
-    }
-  }
-
-  // Let the normal chunked/retrying sync path do the actual push.
-  scheduleAutoSync();
 }
 
 function scheduleAutoSync() {
