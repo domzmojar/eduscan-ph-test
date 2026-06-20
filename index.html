@@ -671,6 +671,7 @@
           <option value="">All classes</option>
         </select>
       </div>
+      <button class="btn outline full" id="download-all-qr-btn" onclick="downloadAllQR()" style="margin-bottom:0.85rem;">⬇ Download all QR codes</button>
       <div id="students-qr-container"></div>
     </div>
   </div>
@@ -1722,6 +1723,98 @@ async function deleteStudent(id) {
   await dbClear('students'); await dbPutAll('students', students);
   renderStudents(); renderClasses();
   showToast(logCount ? `Student removed. ${logCount} past attendance record${logCount !== 1 ? 's' : ''} kept in Logs.` : 'Student removed.', 'ok');
+}
+
+// ── BULK QR DOWNLOAD ─────────────────────────────────────────────────────
+// Downloads one PNG per student for whichever set is currently visible in
+// the Students tab — i.e. it respects the SAME class filter as the on-
+// screen grid (filter-class-select), so "All classes" downloads every
+// student and picking a specific class downloads only that roster. This
+// mirrors renderStudents()'s own filtering exactly rather than re-deriving
+// it, so the button never disagrees with what's on screen.
+//
+// Downloads are individual PNG files (not a zip) deliberately: a zip
+// would need a new CDN library, which breaks the app's offline-first
+// promise the moment a teacher tries this with no signal. Each file is
+// triggered with a small delay between downloads because mobile browsers
+// (notably Android Chrome) treat a tight loop of programmatic downloads
+// as spam and silently drop all but the first few.
+let qrDownloadInProgress = false;
+
+async function downloadAllQR() {
+  if (qrDownloadInProgress) return;
+
+  const filterVal = document.getElementById('filter-class-select').value;
+  const list = filterVal ? students.filter(s => s.classId === filterVal) : students;
+
+  if (!list.length) return showToast('No students to download.', 'warn');
+
+  const btn = document.getElementById('download-all-qr-btn');
+  qrDownloadInProgress = true;
+  btn.disabled = true;
+
+  // Generate any missing QR codes OFFLINE before downloading anything.
+  // renderStudents() does this too, but a bulk export must never fall
+  // back to the network QR API (api.qrserver.com) the way the on-screen
+  // <img> tag does — a teacher exporting QR codes with no signal would
+  // otherwise silently get broken images with no warning.
+  let needsSave = false;
+  let genFailures = 0;
+  for (const student of list) {
+    if (!student.qrDataUrl) {
+      if (typeof QRCode === 'undefined') { genFailures++; continue; }
+      try {
+        const qrPayload = JSON.stringify({ eduscan: true, id: student.id });
+        student.qrDataUrl = await QRCode.toDataURL(qrPayload, { width: 160, margin: 1 });
+        needsSave = true;
+      } catch (e) {
+        console.error('Failed to generate QR for', student.name, e);
+        genFailures++;
+      }
+    }
+  }
+  if (needsSave) await saveStudents();
+
+  const downloadable = list.filter(s => s.qrDataUrl);
+  if (!downloadable.length) {
+    qrDownloadInProgress = false;
+    btn.disabled = false;
+    return showToast('Could not generate any QR codes offline.', 'err');
+  }
+
+  const className = filterVal ? (classes.find(c => c.id === filterVal)?.name || 'Class') : 'All Classes';
+  showToast(`Downloading ${downloadable.length} QR code${downloadable.length !== 1 ? 's' : ''}…`, 'info');
+
+  // Build a filesystem-safe filename per student: strip characters that
+  // are invalid (or awkward) across Windows/Android/iOS filesystems, and
+  // include LRN when available since teachers commonly sort/search a
+  // folder of printed QR codes by LRN rather than by full name.
+  const safeName = s => {
+    const base = (s.lrn ? `${s.name}_${s.lrn}` : s.name).replace(/[\\/:*?"<>|]+/g, '').trim();
+    return base || s.id;
+  };
+
+  for (let i = 0; i < downloadable.length; i++) {
+    const s = downloadable[i];
+    btn.textContent = `Downloading ${i + 1}/${downloadable.length}…`;
+    try {
+      const resp = await fetch(s.qrDataUrl);
+      const blob = await resp.blob();
+      triggerDownload(blob, `QR_${safeName(s)}.png`);
+    } catch (e) {
+      console.error('Failed to download QR for', s.name, e);
+    }
+    // Pace downloads so the browser doesn't treat this as download spam
+    // and start silently dropping files after the first few.
+    if (i < downloadable.length - 1) await new Promise(r => setTimeout(r, 350));
+  }
+
+  btn.disabled = false;
+  btn.textContent = '⬇ Download all QR codes';
+  qrDownloadInProgress = false;
+
+  const skippedMsg = genFailures ? ` (${genFailures} skipped — QR library unavailable)` : '';
+  showToast(`Downloaded ${downloadable.length} QR code${downloadable.length !== 1 ? 's' : ''} for ${className}.${skippedMsg}`, genFailures ? 'warn' : 'ok');
 }
 
 async function renderStudents() {
