@@ -3136,24 +3136,36 @@ async function importData(event) {
       importedStudents = newStudents.length;
     }
     if (payload.logs?.length) {
-      // Dedupe on the semantic identity of an attendance record — one
-      // arrival/departure per student, per class, per day — rather than
-      // on raw timestamp. Editing a log's time (saveEditLog) changes
-      // `timestamp` but not the underlying event, so a timestamp-based
-      // key would let an old backup re-insert a duplicate of an
-      // already-edited record.
-      const recordKey = l => `${l.studentId}|${l.classId}|${l.localDate || getLogDate(l)}|${l.type}`;
-      const existingKeys = new Set(logs.map(recordKey));
-      const newLogs      = payload.logs.filter(l => !existingKeys.has(recordKey(l)));
-      for (const l of newLogs) {
-        const entry = { ...l }; delete entry.id;
-        const newId = await dbAdd('logs', entry);
-        entry.id = newId;
-        logs.push(entry);
-        existingKeys.add(recordKey(entry));
-      }
-      logs.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
-      importedLogs = newLogs.length;
+        // Dedupe on the semantic identity of an attendance record
+        const recordKey = l => `${l.studentId}|${l.classId}|${l.localDate || getLogDate(l)}|${l.type}`;
+        const existingKeys = new Set(logs.map(recordKey));
+        
+        // MIGRATION FIX: Repair old logs missing 'localDate' BEFORE importing
+        const repairedLogs = payload.logs.map(l => {
+            if (!l.localDate) {
+                // Calculate PH-time date from timestamp for old logs
+                const d = new Date(l.timestamp);
+                const ph = new Date(d.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+                l.localDate = ph.getFullYear() + '-' + 
+                              String(ph.getMonth() + 1).padStart(2, '0') + '-' + 
+                              String(ph.getDate()).padStart(2, '0');
+            }
+            return l;
+        });
+
+        const newLogs = repairedLogs.filter(l => !existingKeys.has(recordKey(l)));
+        
+        for (const l of newLogs) {
+            const entry = { ...l }; 
+            delete entry.id;
+            const newId = await dbAdd('logs', entry);
+            entry.id = newId;
+            logs.push(entry);
+            existingKeys.add(recordKey(entry));
+        }
+        
+        logs.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+        importedLogs = newLogs.length;
     }
     if (payload.settings?.syncUrl) await dbSetSetting('sync_url', payload.settings.syncUrl);
     populateDropdowns();
