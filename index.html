@@ -988,6 +988,36 @@
   </div>
 </div>
 
+<!-- EDIT STUDENT MODAL -->
+<div class="modal-backdrop" id="edit-student-modal" onclick="closeEditStudentModal(event)">
+  <div class="modal-sheet">
+    <div class="modal-header">
+      <span class="modal-title">Edit Student</span>
+      <button class="modal-close" onclick="closeEditStudentModalDirect()">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="edit-student-id">
+      <div class="form-group">
+        <label for="edit-student-class-select">Class / section</label>
+        <select id="edit-student-class-select"></select>
+      </div>
+      <div class="form-group">
+        <label for="edit-student-name-input">Full name</label>
+        <input type="text" id="edit-student-name-input">
+      </div>
+      <div class="form-group">
+        <label for="edit-student-lrn-input">LRN (Learner Reference Number)</label>
+        <input type="text" id="edit-student-lrn-input" maxlength="12">
+      </div>
+      <div class="form-group">
+        <label for="edit-student-guardian-input">Guardian name</label>
+        <input type="text" id="edit-student-guardian-input">
+      </div>
+      <button class="btn full" onclick="saveEditStudent()">Save changes</button>
+    </div>
+  </div>
+</div>
+
 <!-- EDIT LOG MODAL -->
 <div class="modal-backdrop" id="edit-log-modal" onclick="closeEditLogModal(event)">
   <div class="modal-sheet">
@@ -1614,7 +1644,10 @@ async function renderStudents() {
         ${s.lrn ? `<span class="qr-lrn">LRN: ${s.lrn}</span>` : ''}
         <img src="${qrUrl}" alt="QR for ${s.name}" style="width:100%;max-width:120px;height:auto;border:1px solid #eee;padding:3px;background:#fff;border-radius:4px;">
         ${s.guardian ? `<span class="qr-meta" style="margin-top:0.3rem;">👤 ${s.guardian}</span>` : ''}
-        <button class="btn danger sm" style="margin-top:0.5rem;" onclick="deleteStudent('${s.id}')">Remove</button>
+        <div style="display:flex; gap:0.4rem; width:100%; margin-top:0.5rem;">
+          <button class="btn outline sm" style="flex:1;" onclick="openEditStudentModal('${s.id}')">Edit</button>
+          <button class="btn danger sm" style="flex:1;" onclick="deleteStudent('${s.id}')">Remove</button>
+        </div>
       </div>`;
   }).join('');
 }
@@ -3080,6 +3113,57 @@ function showStudentRecord(studentId) {
   document.getElementById('modal-backdrop').classList.add('open');
   document.body.style.overflow = 'hidden';
 }
+
+// ── EDIT STUDENT ─────────────────────────────────────────────────────────
+function openEditStudentModal(id) {
+  const student = students.find(s => s.id === id);
+  if (!student) return;
+  
+  document.getElementById('edit-student-id').value = id;
+  document.getElementById('edit-student-name-input').value = student.name;
+  document.getElementById('edit-student-lrn-input').value = student.lrn || '';
+  document.getElementById('edit-student-guardian-input').value = student.guardian || '';
+  
+  // Populate class dropdown
+  const classOpts = `<option value="">— Choose a class —</option>` + 
+    classes.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+  document.getElementById('edit-student-class-select').innerHTML = classOpts;
+  document.getElementById('edit-student-class-select').value = student.classId;
+  
+  document.getElementById('edit-student-modal').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+async function saveEditStudent() {
+  const id = document.getElementById('edit-student-id').value;
+  const classId = document.getElementById('edit-student-class-select').value;
+  const name = document.getElementById('edit-student-name-input').value.trim();
+  const lrn = document.getElementById('edit-student-lrn-input').value.trim();
+  const guardian = document.getElementById('edit-student-guardian-input').value.trim();
+  
+  if (!classId || !name) return showToast('Class and full name are required.');
+  
+  const student = students.find(s => s.id === id);
+  if (!student) return;
+  
+  // Update student data (Logs are intentionally left untouched to preserve history)
+  student.classId = classId;
+  student.name = name;
+  student.lrn = lrn;
+  student.guardian = guardian;
+  
+  students.sort((a, b) => a.name.localeCompare(b.name));
+  await saveStudents();
+  
+  closeEditStudentModalDirect();
+  renderStudents();
+  renderClasses(); // Update student counts in Classes tab
+  populateDropdowns();
+  showToast('Student updated successfully.');
+}
+
+function closeEditStudentModal(e) { if (e.target === document.getElementById('edit-student-modal')) closeEditStudentModalDirect(); }
+function closeEditStudentModalDirect() { document.getElementById('edit-student-modal').classList.remove('open'); document.body.style.overflow = ''; }
 
 // ── BOOT ──────────────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', async () => {
