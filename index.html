@@ -2720,14 +2720,32 @@ function getActiveClasses() {
 
 async function getPendingLogs() {
     const lastSync = await dbGetSetting('last_sync_time');
-    // Filter logs that haven't crossed the sync watermark yet
-    let pending = lastSync ? logs.filter(l => l.timestamp > lastSync) : [...logs];
+    // A log is pending if its timestamp is past the watermark, OR it's
+    // explicitly flagged needsSync (set by saveEditLog on every edit).
+    // The needsSync flag matters because editing a log WITHOUT changing
+    // its date/time (e.g. toggling "late" on/off) leaves log.timestamp
+    // unchanged — syncSingleLog() then rewinds the watermark to exactly
+    // that timestamp, which a strict `>` comparison still excludes. Without
+    // this OR, that class of edit would be flagged needsSync, sit in
+    // IndexedDB correctly, and never actually reach the spreadsheet —
+    // silently, with no error, since syncToSheets() just sees 0 pending
+    // logs and reports "already synced".
+    let pending = lastSync
+      ? logs.filter(l => l.timestamp > lastSync || l.needsSync)
+      : [...logs];
     // CRITICAL: Sort chronologically so chunking processes oldest logs first
     return pending.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
 }
 
 // In our watermark architecture, we don't delete logs; we advance the watermark.
+// Forward-only by construction: a caller passing an older timestamp than
+// what's already stored is a no-op, not a regression. This is a deliberate
+// safety net — see the chunkMaxTimestamp comment in syncToSheets() for the
+// scenario (an older edited-but-timestamp-unchanged log) this guards against.
 async function advanceSyncWatermark(timestamp) {
+    if (!timestamp) return;
+    const current = await dbGetSetting('last_sync_time');
+    if (current && timestamp <= current) return;
     await dbSetSetting('last_sync_time', timestamp);
     updateAutoSyncLastLabel();
 }
@@ -2823,8 +2841,19 @@ async function syncToSheets(silent = false) {
                 if (result.success) {
                     totalAdded += result.added || 0;
                     totalUpdated += result.updated || 0;
-                    // Advance watermark to the last log in this successful chunk
-                    lastSuccessfulTimestamp = chunk[chunk.length - 1].timestamp;
+                    // Advance watermark to the LATEST timestamp seen so far,
+                    // never just "the chunk's last entry". Since
+                    // getPendingLogs() can include an older log that was
+                    // edited without its timestamp changing (needsSync=true
+                    // but timestamp <= current watermark), that log can sort
+                    // earlier in the chunk than logs already past the
+                    // watermark — naively taking chunk[chunk.length-1] in
+                    // that case would move the watermark BACKWARD and cause
+                    // already-synced logs to be needlessly re-sent next time.
+                    const chunkMaxTimestamp = chunk.reduce((max, l) => l.timestamp > max ? l.timestamp : max, chunk[0].timestamp);
+                    if (!lastSuccessfulTimestamp || chunkMaxTimestamp > lastSuccessfulTimestamp) {
+                      lastSuccessfulTimestamp = chunkMaxTimestamp;
+                    }
                     success = true;
                     await clearSyncFlags(chunk);
                 } else {
