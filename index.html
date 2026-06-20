@@ -455,6 +455,38 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* ── LOGS FEED (Mobile-First Design) ── */
+.log-feed-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.85rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+  gap: 1rem;
+  transition: background 0.15s;
+}
+.log-feed-item:hover { background: var(--bg); }
+.log-feed-item:last-child { border-bottom: none; }
+
+.log-feed-time {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  min-width: 50px;
+}
+.log-feed-time .time { font-weight: 700; font-size: 0.9rem; color: var(--text); line-height: 1.2; }
+.log-feed-time .date { font-size: 0.7rem; color: var(--text-muted); }
+
+.log-feed-info { flex: 1; min-width: 0; }
+.log-feed-name { 
+  font-weight: 600; font-size: 0.95rem; 
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; 
+  display: flex; align-items: center; gap: 6px;
+}
+.log-feed-meta { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
+
+.log-feed-actions { display: flex; align-items: center; gap: 0.5rem; }
   </style>
 </head>
 <body>
@@ -636,13 +668,9 @@
         <h2 style="margin:0;">Attendance log</h2>
         <button class="btn danger sm" onclick="clearLogs()">Clear all</button>
       </div>
-      <div style="overflow-x:auto; overflow-y:auto; max-height:65vh; border-radius:8px; border:1px solid var(--border); margin-top:0.5rem;">
-        <table style="margin-top:0; min-width:480px;">
-          <thead style="position:sticky; top:0; z-index:1;">
-            <tr><th>Time</th><th>Type</th><th>Class</th><th>Student</th><th>LRN</th><th></th></tr>
-          </thead>
-          <tbody id="logs-table-body"></tbody>
-        </table>
+      <!-- NEW: Premium Log Feed Container -->
+      <div id="logs-feed-container" style="overflow-y:auto; max-height:65vh; border-radius:8px; border:1px solid var(--border); margin-top:0.5rem; padding: 0 0.5rem;">
+        <!-- Content injected by JS -->
       </div>
     </div>
   </div>
@@ -1593,25 +1621,42 @@ async function renderStudents() {
 
 // ── LOGS ──────────────────────────────────────────────────────────────────
 function renderLog() {
-  const tbody = document.getElementById('logs-table-body');
+  const container = document.getElementById('logs-feed-container');
   if (!logs.length) {
-    tbody.innerHTML = `<tr><td colspan="6" class="empty">No logs yet.</td></tr>`;
+    container.innerHTML = `<p class="empty" style="padding: 2rem 0;">No logs yet. Scan a student to get started!</p>`;
     return;
   }
-  tbody.innerHTML = logs.map(l => {
-    const lateTag = (l.type === 'arrival' && l.isLate)
-      ? ` <span class="badge badge-late" style="font-size:0.68rem;">⏰ Late</span>` : '';
+
+  container.innerHTML = logs.map(l => {
+    // Use localDate if available (for timezone accuracy), otherwise fallback to timestamp
+    const dateObj = l.localDate ? new Date(l.localDate + 'T00:00:00') : new Date(l.timestamp);
+    
+    // Format Time (e.g., 07:30 AM) and Date (e.g., Jun 19)
+    const timeStr = new Date(l.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const dateStr = dateObj.toLocaleDateString([], { month: 'short', day: 'numeric' });
+
+    const lateTag = (l.type === 'arrival' && l.isLate) 
+      ? `<span class="badge badge-late" style="font-size:0.65rem;">⏰ Late</span>` : '';
+    
+    const statusBadge = l.type === 'departure' 
+      ? `<span class="badge badge-departure" style="font-size:0.7rem;">🌙 Dismissed</span>` 
+      : `<span class="badge badge-arrival" style="font-size:0.7rem;">️ Arrived</span>`;
+
     return `
-    <tr>
-      <td style="color:var(--text-muted);font-size:0.78rem;white-space:nowrap;">
-        ${new Date(l.timestamp).toLocaleString([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}
-      </td>
-      <td><span class="badge badge-${l.type || 'arrival'}">${l.type === 'departure' ? '🌙 Dep.' : '☀️ Arr.'}</span>${lateTag}</td>
-      <td><span class="badge badge-class" style="font-size:0.7rem;">${l.className || '—'}</span></td>
-      <td><strong>${l.studentName}</strong></td>
-      <td style="font-size:0.78rem;color:var(--text-muted);font-family:monospace;">${l.studentLrn || '—'}</td>
-      <td style="text-align:right;"><button class="btn outline sm" onclick="openEditLogModal(${l.id})">✏️</button></td>
-    </tr>`;
+    <div class="log-feed-item">
+      <div class="log-feed-time">
+        <span class="time">${timeStr}</span>
+        <span class="date">${dateStr}</span>
+      </div>
+      <div class="log-feed-info">
+        <div class="log-feed-name">${l.studentName} ${lateTag}</div>
+        <div class="log-feed-meta">${l.className || 'Unknown Class'} · LRN ${l.studentLrn || 'N/A'}</div>
+      </div>
+      <div class="log-feed-actions">
+        ${statusBadge}
+        <button class="btn outline sm" style="padding: 4px 8px; font-size: 0.75rem;" onclick="openEditLogModal(${l.id})">✏️</button>
+      </div>
+    </div>`;
   }).join('');
 }
 
