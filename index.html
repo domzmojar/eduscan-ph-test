@@ -2285,6 +2285,7 @@ async function saveEditLog() {
     const localDateObj = new Date(y, mo - 1, d, h, mi, 0);
     
     log.timestamp = localDateObj.toISOString();
+    log.localDate = dateVal;
     log.type  = type;
     log.isLate = isLate;
     
