@@ -2603,8 +2603,8 @@ async function saveSyncUrl() {
     msg.innerHTML = `<div class="sync-status info">Testing connection…</div>`;
     
     try {
-        const resp   = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'ping' }) });
-        const result = await resp.json();
+        const pingResp = await gasPost(url, { action: 'ping' });
+        const result   = JSON.parse(pingResp);
         
         if (result.pong || result.success) {
             msg.innerHTML = `<div class="sync-status ok">✅ Connected! Auto-sync enabled.</div>`;
@@ -2613,7 +2613,7 @@ async function saveSyncUrl() {
             msg.innerHTML = `<div class="sync-status err">Script error: ${result.error || 'Unknown error'}</div>`;
         }
     } catch(e) {
-        msg.innerHTML = `<div class="sync-status err">Could not reach the server. Check your internet connection.</div>`;
+        msg.innerHTML = `<div class="sync-status err">Could not reach the server. ${e.message}</div>`;
     }
 }
 
@@ -2666,9 +2666,11 @@ function getActiveClasses() {
 
 async function getPendingLogs() {
     const lastSync = await dbGetSetting('last_sync_time');
-    // Filter logs that haven't crossed the sync watermark yet
-    let pending = lastSync ? logs.filter(l => l.timestamp > lastSync) : [...logs];
-    // CRITICAL: Sort chronologically so chunking processes oldest logs first
+    // Use >= so logs whose timestamp equals the watermark are also included
+    // (e.g. when timestamps share the same millisecond, or when editing a log
+    // rewound the watermark to its own timestamp).
+    let pending = lastSync ? logs.filter(l => l.timestamp >= lastSync) : [...logs];
+    // Sort chronologically so chunking processes oldest logs first
     return pending.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
 }
 
@@ -2695,6 +2697,31 @@ async function clearSyncFlags(syncedLogs) {
     }
   });
   if (changed) await dbPutAll('logs', logs.filter(l => syncedIds.has(l.id)));
+}
+
+// ── GAS POST VIA XMLHttpRequest ───────────────────────────────────────────
+// Google Apps Script web apps have a CSRF redirect that converts fetch POST
+// -> GET (losing the body). XMLHttpRequest handles this redirect flow more
+// reliably by keeping the connection alive through the redirect chain.
+function gasPost(url, payload) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', url, true);
+    xhr.setRequestHeader('Content-Type', 'text/plain;charset=utf-8');
+    xhr.onreadystatechange = () => {
+      if (xhr.readyState === 4) {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(xhr.responseText);
+        } else {
+          reject(new Error(`HTTP ${xhr.status}: ${xhr.statusText || 'Unknown'}`));
+        }
+      }
+    };
+    xhr.onerror = () => reject(new Error('Network error — check internet connection'));
+    xhr.ontimeout = () => reject(new Error('Request timed out'));
+    xhr.timeout = 30000;
+    xhr.send(JSON.stringify(payload));
+  });
 }
 
 // ── OPTIMIZED SYNC FUNCTION (Chunking + Retry) ────────────────────────────
@@ -2756,15 +2783,22 @@ async function syncToSheets(silent = false) {
                     schoolYearStart: schoolYearStart || ''
                 };
 
-                const resp = await fetch(url, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                    body: JSON.stringify(payload)
-                });
+                // GAS web apps deployed as "Anyone" respond with
+                // Access-Control-Allow-Origin: *, which forbids credentialed
+                // cross-origin requests. credentials: 'include' would cause
+                // a CORS block. Without explicit credentials, the GAS CSRF
+                // cookie is not sent cross-origin, so each POST may trigger
+                // a GET redirect that loses the body.
+                //
+                // The fix: Use XMLHttpRequest which handles the GAS redirect
+                // flow more reliably than fetch (preserving the POST body
+                // even through Google's CSRF infrastructure layer).
+                const respText = await gasPost(url, payload);
 
-                if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
-
-                const result = await resp.json();
+                let result;
+                try { result = JSON.parse(respText); } catch (e) {
+                    throw new Error('GAS returned non-JSON: ' + respText.slice(0, 200));
+                }
 
                 if (result.success) {
                     totalAdded += result.added || 0;
@@ -3642,6 +3676,10 @@ window.addEventListener('DOMContentLoaded', async () => {
   populateDropdowns();
   initSummaryPeriod();
   checkAutoExport('boot');
+  // Boot-time sync: push any unsynced logs from a previous session when
+  // the app reopens. Without this, logs queued before a page refresh would
+  // sit in IndexedDB forever until the teacher scans another student.
+  if (autoSyncEnabled) scheduleAutoSync();
   updatePWAInstallUI();
 
   // Restore last-used scan mode (arrival/departure) so a teacher running
