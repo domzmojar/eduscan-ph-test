@@ -1573,15 +1573,28 @@ async function addClass() {
 }
 
 async function removeClass(id) {
-  if (!confirm('Delete this class and all its student and log data?')) return;
+  const cls = classes.find(c => c.id === id);
+  const studentCount = students.filter(s => s.classId === id).length;
+  const logCount = logs.filter(l => l.classId === id).length;
+  const warningDetail = (studentCount || logCount)
+    ? ` This removes ${studentCount} student${studentCount !== 1 ? 's' : ''} from active rosters. Their ${logCount} attendance record${logCount !== 1 ? 's' : ''} will be KEPT (visible in Logs/exports) but will no longer appear in Summary, Terms, or chart views, since those are scoped to currently-active classes.`
+    : '';
+  if (!confirm(`Delete "${cls ? cls.name : 'this class'}"?${warningDetail}`)) return;
+
+  // Detach the class and its students from the live roster, but do NOT
+  // delete log rows. Attendance logs are the school's record of who was
+  // present on a given day — destroying them on a routine class deletion
+  // (e.g. a teacher fixing a typo'd class name via delete-and-recreate)
+  // would silently erase historical attendance. Each log already carries
+  // its own denormalized studentName/className/studentLrn snapshot, so
+  // the Logs feed and exports keep working correctly for these records
+  // even after the parent class/student is gone.
   classes  = classes.filter(c => c.id !== id);
   students = students.filter(s => s.classId !== id);
-  logs     = logs.filter(l => l.classId !== id);
   await dbClear('classes');  await dbPutAll('classes',  classes);
   await dbClear('students'); await dbPutAll('students', students);
-  await dbClear('logs');     await dbPutAll('logs',     logs);
   renderClasses(); populateDropdowns();
-  showToast('Class deleted.', 'ok');
+  showToast(logCount ? `Class deleted. ${logCount} past attendance record${logCount !== 1 ? 's' : ''} kept in Logs.` : 'Class deleted.', 'ok');
 }
 
 function renderClasses() {
@@ -1693,13 +1706,22 @@ async function addStudent() {
 }
 
 async function deleteStudent(id) {
-  if (!confirm('Remove this student?')) return;
+  const student = students.find(s => s.id === id);
+  const logCount = logs.filter(l => l.studentId === id).length;
+  const warningDetail = logCount
+    ? ` Their ${logCount} attendance record${logCount !== 1 ? 's' : ''} will be KEPT (visible in Logs/exports) but will no longer appear in Summary, Terms, or chart views, since those are scoped to currently-enrolled students.`
+    : '';
+  if (!confirm(`Remove ${student ? student.name : 'this student'}?${warningDetail}`)) return;
+
+  // Detach the student from the live roster, but do NOT delete their log
+  // rows — see the matching comment in removeClass() for why. Each log
+  // already carries its own denormalized studentName/studentLrn/className
+  // snapshot, so historical attendance for a removed student (e.g. one
+  // who transferred out) stays intact in the Logs feed and exports.
   students = students.filter(s => s.id !== id);
-  logs     = logs.filter(l => l.studentId !== id);
   await dbClear('students'); await dbPutAll('students', students);
-  await dbClear('logs');     await dbPutAll('logs',     logs);
   renderStudents(); renderClasses();
-  showToast('Student removed.', 'ok');
+  showToast(logCount ? `Student removed. ${logCount} past attendance record${logCount !== 1 ? 's' : ''} kept in Logs.` : 'Student removed.', 'ok');
 }
 
 async function renderStudents() {
@@ -2015,9 +2037,16 @@ function renderActionableList(range, logsInRange) {
       const arrivals = sLogs.filter(l => l.type === 'arrival');
       const lates = arrivals.filter(l => l.isLate);
       
+      // "School day" = any day this class had at least one log entry
+      // (arrival or departure) within the range, restricted to days on
+      // or after the student's own enrollment date. getLogDate(l) is the
+      // single source of truth for a log's calendar day (it already
+      // prefers l.localDate internally) — call it directly rather than
+      // re-deriving the same fallback inline, which a previous version
+      // of this code did redundantly.
       const classLogs = logsInRange.filter(l => l.classId === s.classId && (!s.enrolledDate || getLogDate(l) >= s.enrolledDate));
-      const activeDays = new Set(classLogs.map(l => l.localDate || getLogDate(l))).size;
-      const presentDays = new Set(arrivals.map(l => l.localDate || getLogDate(l))).size;
+      const activeDays = new Set(classLogs.map(l => getLogDate(l))).size;
+      const presentDays = new Set(arrivals.map(l => getLogDate(l))).size;
       const absences = Math.max(0, activeDays - presentDays);
       
       if (absences >= 3 || lates.length >= 3) {
@@ -2320,22 +2349,24 @@ function onEditLogTypeChange() {
 function openEditLogModal(logId) {
     const log = logs.find(l => l.id === logId);
     if (!log) return showToast('Record not found.', 'err');
-    const ts = new Date(log.timestamp);
-    
-    // FIX: Extract Date and Time using LOCAL time methods, not UTC
-    const localDate = ts.getFullYear() + '-' + 
-                      String(ts.getMonth() + 1).padStart(2, '0') + '-' + 
-                      String(ts.getDate()).padStart(2, '0');
-                      
-    const localTime = String(ts.getHours()).padStart(2, '0') + ':' + 
-                      String(ts.getMinutes()).padStart(2, '0');
+
+    // Derive the editable date/time fields in PHILIPPINE TIME, not the
+    // device's own OS timezone. Every other date boundary in this app
+    // (todayStr, sameDay, getLogDate, nowPHTime) is explicitly pinned to
+    // Asia/Manila — using the device's local getFullYear()/getHours()
+    // here meant editing a log on a misconfigured device (OS timezone
+    // != UTC+8) could silently shift it to the wrong calendar day
+    // relative to every other view that reads localDate.
+    const phDate = new Date(new Date(log.timestamp).toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+    const localDate = getLogDate(log); // PH-time date string, consistent with the rest of the app
+    const localTime = String(phDate.getHours()).padStart(2, '0') + ':' +
+                      String(phDate.getMinutes()).padStart(2, '0');
 
     document.getElementById('edit-log-id').value                = logId;
     document.getElementById('edit-log-original-timestamp').value = log.timestamp;
     document.getElementById('edit-log-student-name').textContent = log.studentName + (log.studentLrn ? ` · LRN ${log.studentLrn}` : '');
     document.getElementById('edit-log-type').value    = log.type || 'arrival';
     
-    // Use the local variables instead of toISOString()
     document.getElementById('edit-log-time').value    = localTime;
     document.getElementById('edit-log-date').value    = localDate;
     
@@ -2343,6 +2374,16 @@ function openEditLogModal(logId) {
     onEditLogTypeChange();
     document.getElementById('edit-log-modal').classList.add('open');
     document.body.style.overflow = 'hidden';
+}
+
+// Converts a PH-local "wall clock" date+time into the equivalent UTC ISO
+// timestamp, since the Philippines has a single fixed UTC+8 offset with
+// no DST. This is what lets editing a log build a correct `timestamp`
+// regardless of the device's own OS timezone — the device's offset is
+// never consulted here.
+function phLocalToISOString(y, mo, d, h, mi) {
+  const utcMillis = Date.UTC(y, mo - 1, d, h, mi, 0) - (8 * 60 * 60 * 1000);
+  return new Date(utcMillis).toISOString();
 }
 
 async function saveEditLog() {
@@ -2357,12 +2398,13 @@ async function saveEditLog() {
     const log = logs.find(l => l.id === logId);
     if (!log) return;
 
-    // FIX: Parse the date and time strictly as LOCAL time to prevent UTC drift
+    // Build the new timestamp from the entered date+time as PHILIPPINE
+    // TIME (UTC+8 fixed offset), not the device's own local timezone —
+    // see phLocalToISOString() and the openEditLogModal() comment above.
     const [y, mo, d] = dateVal.split('-').map(Number);
     const [h, mi] = timeVal.split(':').map(Number);
-    const localDateObj = new Date(y, mo - 1, d, h, mi, 0);
-    
-    log.timestamp = localDateObj.toISOString();
+
+    log.timestamp = phLocalToISOString(y, mo, d, h, mi);
     log.localDate = dateVal;
     log.type  = type;
     log.isLate = isLate;
@@ -2607,9 +2649,18 @@ async function syncToSheets(silent = false) {
         while (!success && retries <= MAX_RETRIES) {
             try {
                 const payload = {
-                    action: 'sync', // Matches GAS v7 requirement
+                    action: 'sync', // Matches GAS v8 requirement
                     logs: chunk,
-                    activeClasses: getActiveClasses()
+                    activeClasses: getActiveClasses(),
+                    // Lets the spreadsheet compute the SAME year-aware term
+                    // boundaries as the app (see computeTermsFromStartDate /
+                    // defaultTermsForYear). Without this, GAS falls back to
+                    // its own hardcoded Jun-Sep/Oct-Dec/Jan-Mar calendar,
+                    // which can silently disagree with a school's configured
+                    // start date and — more importantly — has no year
+                    // component, so it merges multiple school years' worth
+                    // of attendance into the same "Term 1" bucket.
+                    schoolYearStart: schoolYearStart || ''
                 };
 
                 const resp = await fetch(url, {
@@ -2965,49 +3016,89 @@ function triggerDownload(blob, filename) {
 }
 
 // ── TERMS ────────────────────────────────────────────────────────────────
-// Default DepEd-aligned 3-term layout, used as a fallback ONLY when no
-// school year start date has been configured. When a start date IS set,
-// computeTermsFromStartDate() below derives the real term boundaries from
-// it, so the "School Year Calendar" control on the Terms page actually
-// does what its label promises instead of being silently ignored.
-const DEFAULT_TERMS = [
-    { num: 1, label: 'Term 1', months: [6, 7, 8, 9], range: 'Jun – Sep' },
-    { num: 2, label: 'Term 2', months: [10, 11, 12], range: 'Oct – Dec' },
-    { num: 3, label: 'Term 3', months: [1, 2, 3], range: 'Jan – Mar' }
-];
+// Terms are matched against logs using explicit [startDate, endDate)
+// boundaries (YYYY-MM-DD strings, compared against getLogDate(l)) rather
+// than bare 1-12 month numbers. A bare-month match (the original design)
+// has no year component, so a student's June 2026 and June 2027 arrivals
+// would both land in "Term 1" forever — silently merging every school
+// year's attendance the first time the app carries over into a second
+// year. Anchoring each term to a real date range fixes that while still
+// allowing terms to wrap across a Dec→Jan year boundary.
+//
+// DEFAULT_TERMS_FOR_YEAR(startYear) is the DepEd-aligned fallback (Jun-Sep
+// / Oct-Dec / Jan-Mar) used ONLY when no school year start date has been
+// configured, anchored to a specific calendar year so it still produces
+// real date boundaries instead of repeating months forever.
+function defaultTermsForYear(startYear) {
+  return [
+    { num: 1, label: 'Term 1', startDate: `${startYear}-06-01`,     endDate: `${startYear}-10-01`,     range: 'Jun – Sep' },
+    { num: 2, label: 'Term 2', startDate: `${startYear}-10-01`,     endDate: `${startYear + 1}-01-01`, range: 'Oct – Dec' },
+    { num: 3, label: 'Term 3', startDate: `${startYear + 1}-01-01`, endDate: `${startYear + 1}-04-01`, range: 'Jan – Mar' },
+  ];
+}
 
 // Builds a 3-term calendar from an explicit "first day of classes" date,
 // using the same ~4/3/3-month DepEd split as the default, just anchored
-// to the configured start month instead of always being June. Each term
-// is described as a {months: [...]} set (wrapping across year boundaries)
-// so the rest of the Terms logic (getTermLogs, getSchoolDaysInTerm) can
-// keep working unchanged off month numbers.
+// to the configured start date instead of always being June 1st. Each
+// term is described by a real [startDate, endDate) range so matching
+// logs against it is unambiguous across year boundaries and across
+// repeated school years.
 function computeTermsFromStartDate(startDateStr) {
-  const startMonth = parseInt(startDateStr.split('-')[1], 10); // 1-12
   const monthName = m => new Date(2000, m - 1, 1).toLocaleDateString([], { month: 'short' });
+  // Add `months` whole calendar months to a YYYY-MM-DD string, returning
+  // a YYYY-MM-DD string. Used to derive each term boundary from the
+  // configured start date without drifting through Date's local timezone.
+  const addMonths = (dateStr, months) => {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const totalMonths = (m - 1) + months;
+    const newYear  = y + Math.floor(totalMonths / 12);
+    const newMonth = (totalMonths % 12) + 1;
+    return `${newYear}-${String(newMonth).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  };
+  const startMonthNum = parseInt(startDateStr.split('-')[1], 10);
   const wrap = m => ((m - 1) % 12) + 1;
 
-  const t1Months = [0,1,2,3].map(i => wrap(startMonth + i));
-  const t2Months = [4,5,6].map(i => wrap(startMonth + i));
-  const t3Months = [7,8,9].map(i => wrap(startMonth + i));
+  const t1Start = startDateStr,        t1End = addMonths(startDateStr, 4);
+  const t2Start = t1End,                t2End = addMonths(startDateStr, 7);
+  const t3Start = t2End,                t3End = addMonths(startDateStr, 10);
 
-  const rangeLabel = months => `${monthName(months[0])} – ${monthName(months[months.length - 1])}`;
+  const labelFor = (offset, span) => {
+    const first = wrap(startMonthNum + offset);
+    const last  = wrap(startMonthNum + offset + span - 1);
+    return `${monthName(first)} – ${monthName(last)}`;
+  };
 
   return [
-    { num: 1, label: 'Term 1', months: t1Months, range: rangeLabel(t1Months) },
-    { num: 2, label: 'Term 2', months: t2Months, range: rangeLabel(t2Months) },
-    { num: 3, label: 'Term 3', months: t3Months, range: rangeLabel(t3Months) },
+    { num: 1, label: 'Term 1', startDate: t1Start, endDate: t1End, range: labelFor(0, 4) },
+    { num: 2, label: 'Term 2', startDate: t2Start, endDate: t2End, range: labelFor(4, 3) },
+    { num: 3, label: 'Term 3', startDate: t3Start, endDate: t3End, range: labelFor(7, 3) },
   ];
 }
 
 // Active TERMS — recomputed by refreshTerms() whenever schoolYearStart
-// changes (on boot and on saveSchoolYearStart()). Everything else in the
-// app (getTermLogs, getSchoolDaysInTerm, the Terms modal tab labels)
-// reads from this variable rather than a hardcoded constant.
-let TERMS = DEFAULT_TERMS;
+// changes (on boot and on saveSchoolYearStart()), or when the active log
+// set spans a year refreshTerms() didn't anchor to (see refreshTerms()).
+// Everything else in the app (getTermLogs, getSchoolDaysInTerm, the Terms
+// modal tab labels) reads from this variable rather than a hardcoded
+// constant.
+let TERMS = defaultTermsForYear(new Date().getFullYear());
 
 function refreshTerms() {
-  TERMS = schoolYearStart ? computeTermsFromStartDate(schoolYearStart) : DEFAULT_TERMS;
+  if (schoolYearStart) {
+    TERMS = computeTermsFromStartDate(schoolYearStart);
+  } else {
+    // No explicit school year configured: anchor the default DepEd
+    // calendar to whichever year covers "today" (Philippine time) so the
+    // active term boundaries track the real current school year instead
+    // of a single fixed year baked in at load time.
+    const todayY = parseInt(todayStr().split('-')[0], 10);
+    const todayM = parseInt(todayStr().split('-')[1], 10);
+    // If we're in Jan-May, "today" falls in a school year that STARTED
+    // the previous calendar year (e.g. Term 3 of the 2025-26 year runs
+    // Jan-Mar 2026, anchored to startYear 2025).
+    const anchorYear = todayM < 6 ? todayY - 1 : todayY;
+    TERMS = defaultTermsForYear(anchorYear);
+  }
   // Keep the static descriptive text and the term-tab range labels in the
   // Terms modal in sync with whatever calendar is actually active.
   const desc = document.getElementById('terms-calendar-desc');
@@ -3077,11 +3168,12 @@ function getTermLogs(studentId, classId, termNum) {
     const term = TERMS.find(t => t.num === termNum);
     return logs.filter(l => {
         if (l.studentId !== studentId || l.classId !== classId) return false;
-        // Use getLogMonth() (Philippine-time, localDate-driven) instead of
-        // new Date(l.timestamp).getMonth() — see getLogMonth() comment for
-        // why those two can disagree for an edited log.
-        const m = getLogMonth(l);
-        return term.months.includes(m);
+        // Match against the term's actual [startDate, endDate) range
+        // (year-aware) rather than a bare 1-12 month number — a bare
+        // month match would also pull in the same calendar month from
+        // every other school year a class has ever been used in.
+        const d = getLogDate(l);
+        return d >= term.startDate && d < term.endDate;
     });
 }
 
@@ -3093,9 +3185,10 @@ function getSchoolDaysInTerm(classId, termNum, sinceDate) {
     return new Set(
         logs.filter(l => {
             if (l.classId !== classId) return false;
-            const m = getLogMonth(l);
-            if (!term.months.includes(m)) return false;
-            if (sinceDate && getLogDate(l) < sinceDate) return false;
+            const d = getLogDate(l);
+            // Year-aware range match — see getTermLogs() comment.
+            if (d < term.startDate || d >= term.endDate) return false;
+            if (sinceDate && d < sinceDate) return false;
             return true;
         }).map(l => getLogDate(l))
     );
