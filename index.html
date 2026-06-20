@@ -578,9 +578,10 @@
 
       <div id="scan-result-box"></div>
 
-      <div id="today-scan-list" style="margin-top:0.9rem; display:none;">
-        <p style="font-size:0.78rem; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:0.4rem;">Scanned today</p>
-        <div id="today-scan-items"></div>
+      <!-- NEW: Compact Progress Counter (Replaces the long list) -->
+      <div id="scan-progress-container" style="display:none; margin-top:1rem; background:var(--bg); border-radius:10px; padding:0.85rem; text-align:center; border:1px solid var(--border);">
+        <div style="font-size:0.7rem; color:var(--text-muted); font-weight:700; text-transform:uppercase; letter-spacing:0.05em;">Session Progress</div>
+        <div id="scan-progress-text" style="font-size:1.6rem; font-weight:800; color:var(--primary); margin-top:0.25rem; line-height:1;">0 / 0</div>
       </div>
     </div>
   </div>
@@ -1456,28 +1457,31 @@ function showFeedback(type, title, body) {
 
 // ── TODAY LIST ────────────────────────────────────────────────────────────
 function renderTodayList() {
-  const box   = document.getElementById('today-scan-list');
-  const items = document.getElementById('today-scan-items');
-  if (!currentClassId) { box.style.display = 'none'; return; }
-
-  const today    = todayStr();
+  const container = document.getElementById('scan-progress-container');
+  const textEl = document.getElementById('scan-progress-text');
+  
+  if (!currentClassId) { container.style.display = 'none'; return; }
+  
+  const today = todayStr();
   const todayLog = logs.filter(l => l.classId === currentClassId && sameDay(l.timestamp, today));
-  if (!todayLog.length) { box.style.display = 'none'; return; }
-
-  box.style.display = 'block';
-  items.innerHTML = todayLog.map(l => {
-    const lateTag = (l.type === 'arrival' && l.isLate)
-      ? `<span class="badge badge-late" style="font-size:0.68rem;">⏰ Late</span>` : '';
-    return `
-    <div class="today-item">
-      <span>${l.studentName}${l.studentLrn ? ' <span style="color:var(--text-muted);font-size:0.75rem;">· ' + l.studentLrn + '</span>' : ''}</span>
-      <div style="display:flex; align-items:center; gap:5px;">
-        ${lateTag}
-        <span style="color:var(--text-muted); font-size:0.76rem;">${new Date(l.timestamp).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</span>
-        <span class="badge badge-${l.type}">${l.type === 'arrival' ? '☀️ Arrival' : '🌙 Departure'}</span>
-      </div>
-    </div>`;
-  }).join('');
+  
+  // Count unique students scanned today for this class
+  const uniqueScanned = new Set(todayLog.map(l => l.studentId)).size;
+  const totalStudents = students.filter(s => s.classId === currentClassId).length;
+  
+  if (uniqueScanned > 0 || totalStudents > 0) {
+    container.style.display = 'block';
+    textEl.textContent = `${uniqueScanned} / ${totalStudents}`;
+    
+    // Visual feedback: Turns green when the whole class is scanned!
+    if (uniqueScanned === totalStudents && totalStudents > 0) {
+      textEl.style.color = 'var(--success)';
+    } else {
+      textEl.style.color = 'var(--primary)';
+    }
+  } else {
+    container.style.display = 'none';
+  }
 }
 
 // ── CLASSES ───────────────────────────────────────────────────────────────
