@@ -4302,6 +4302,13 @@ document.getElementById('ag-signup-form').addEventListener('submit', async (e) =
             return;
         }
 
+        // TEMP DIAGNOSTIC — remove once #1 is confirmed fixed. Open
+        // DevTools Console (F12 → Console tab) before signing up with an
+        // existing email, then check what this actually prints.
+        console.log('SIGNUP DEBUG — data.session:', data.session);
+        console.log('SIGNUP DEBUG — data.user:', data.user);
+        console.log('SIGNUP DEBUG — identities:', data.user ? data.user.identities : 'no user object');
+
         // Supabase intentionally avoids a loud "email already registered"
         // error (it would let someone probe which emails have accounts).
         // Instead, signing up again with an existing-but-unconfirmed email
@@ -4336,8 +4343,16 @@ document.getElementById('ag-signup-form').addEventListener('submit', async (e) =
             email: email,
             is_lifetime: false,
             trial_ends_at: trialEndsAt
-        });
-        if (profileError) console.error('Profile creation error:', profileError);
+        }, { onConflict: 'id' });
+
+        if (profileError) {
+            // Don't silently swallow this — if profile creation fails
+            // (almost always an RLS policy issue), checkSubscriptionStatus()
+            // will catch and retry it on the next check, but the person
+            // should still see that something needs attention rather than
+            // assuming signup fully succeeded.
+            console.error('Profile creation error:', profileError);
+        }
 
         agSetLoading('ag-signup-btn', false);
         checkSubscriptionStatus();
@@ -4550,21 +4565,33 @@ async function checkSubscriptionStatus() {
                 authGate.classList.remove('active'); // ✅ ACCESS GRANTED
                 return;
             }
-        } else if (error && error.code === 'PGRST116') {
-            // No profile row yet for this session (e.g. a Google sign-in
-            // happening for the first time, or signUp() ran but the
-            // profile insert above failed) — create a fresh trial
-            // profile now rather than locking the person out.
+        } else {
+            // No profile row yet for this session — covers Google sign-in
+            // happening for the first time, signUp() running but its own
+            // profile insert failing, AND any shape of "no row found"
+            // response. Different Supabase client versions/RLS setups can
+            // return this as either { error: {code: 'PGRST116'}, data:
+            // null } OR as { error: null, data: null } — checking only
+            // for the PGRST116 code missed the second case entirely and
+            // silently fell through to "trial expired" with no profile
+            // ever created, which is exactly the bug being fixed here.
+            console.warn('No profile row found for this user — creating one now.', error);
             const trialEndsAt = new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000).toISOString();
-            const { error: createError } = await sb.from('profiles').upsert({
+            const { data: created, error: createError } = await sb.from('profiles').upsert({
                 id: session.user.id,
-                full_name: session.user.user_metadata?.full_name || session.user.email,
+                full_name: session.user.user_metadata?.full_name || session.user.user_metadata?.name || session.user.email,
                 email: session.user.email,
                 is_lifetime: false,
                 trial_ends_at: trialEndsAt
-            });
-            if (!createError) {
-                localStorage.setItem('eduscan_auth_cache', JSON.stringify({
+            }, { onConflict: 'id' }).select().single();
+
+            if (createError) {
+                // Surface the actual reason in the console — almost always
+                // an RLS policy rejecting the insert/update. Worth checking
+                // here first if this branch is ever hit again.
+                console.error('Profile auto-creation failed:', createError);
+            } else {
+                localStorage.setItem('eduscan_auth_cache', JSON.stringify(created || {
                     is_lifetime: false, trial_ends_at: trialEndsAt
                 }));
                 authGate.classList.remove('active');
@@ -4606,6 +4633,11 @@ function showResetPasswordView() {
 // Listen for auth state changes (e.g., when they return from Google login
 // popup, or click a password-reset email link).
 sb.auth.onAuthStateChange((event, session) => {
+    // TEMP DIAGNOSTIC — remove once #2 is confirmed fixed. Open DevTools
+    // Console (F12 → Console tab) BEFORE clicking the reset-password email
+    // link, then check what event name actually prints when the page loads.
+    console.log('AUTH EVENT DEBUG:', event, session ? '(session present)' : '(no session)');
+
     if (event === 'PASSWORD_RECOVERY') {
         // Clicking a reset-password email link signs the person in with a
         // temporary recovery session. Without this branch, the normal
