@@ -3136,37 +3136,42 @@ async function importData(event) {
       importedStudents = newStudents.length;
     }
     if (payload.logs?.length) {
-        // Dedupe on the semantic identity of an attendance record
-        const recordKey = l => `${l.studentId}|${l.classId}|${l.localDate || getLogDate(l)}|${l.type}`;
-        const existingKeys = new Set(logs.map(recordKey));
-        
-        // MIGRATION FIX: Repair old logs missing 'localDate' BEFORE importing
-        const repairedLogs = payload.logs.map(l => {
-            if (!l.localDate) {
-                // Calculate PH-time date from timestamp for old logs
-                const d = new Date(l.timestamp);
-                const ph = new Date(d.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
-                l.localDate = ph.getFullYear() + '-' + 
-                              String(ph.getMonth() + 1).padStart(2, '0') + '-' + 
-                              String(ph.getDate()).padStart(2, '0');
-            }
-            return l;
-        });
+      const recordKey = l => `${l.studentId}|${l.classId}|${l.localDate || getLogDate(l)}|${l.type}`;
+      const existingKeys = new Set(logs.map(recordKey));
+      const newLogs      = payload.logs.filter(l => !existingKeys.has(recordKey(l)));
+      
+      for (const l of newLogs) {
+          const entry = { ...l }; 
+          delete entry.id;
 
-        const newLogs = repairedLogs.filter(l => !existingKeys.has(recordKey(l)));
-        
-        for (const l of newLogs) {
-            const entry = { ...l }; 
-            delete entry.id;
-            const newId = await dbAdd('logs', entry);
-            entry.id = newId;
-            logs.push(entry);
-            existingKeys.add(recordKey(entry));
-        }
-        
-        logs.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
-        importedLogs = newLogs.length;
-    }
+          // ── MIGRATION FIX: Repair old logs missing 'localDate' or non-standard timestamps ──
+          // If the log is from an old PWA version, it won't have localDate. 
+          // We calculate it now using Philippine Time so it matches the new format.
+          if (!entry.localDate && entry.timestamp) {
+              try {
+                  const d = new Date(entry.timestamp);
+                  const ph = new Date(d.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+                  entry.localDate = ph.getFullYear() + '-' + 
+                                    String(ph.getMonth() + 1).padStart(2, '0') + '-' + 
+                                    String(ph.getDate()).padStart(2, '0');
+              } catch (e) { console.error('Failed to calculate localDate for old log', e); }
+          }
+          // Normalize timestamp to strict UTC ISO string to prevent GAS timezone mismatches
+          if (entry.timestamp) {
+              try {
+                  entry.timestamp = new Date(entry.timestamp).toISOString();
+              } catch (e) { /* keep original if it completely fails to parse */ }
+          }
+          // ── END OF MIGRATION FIX ──────────────────────────────────────────────────────────
+
+          const newId = await dbAdd('logs', entry);
+          entry.id = newId;
+          logs.push(entry);
+          existingKeys.add(recordKey(entry));
+      }
+      logs.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+      importedLogs = newLogs.length;
+  }
     if (payload.settings?.syncUrl) await dbSetSetting('sync_url', payload.settings.syncUrl);
     populateDropdowns();
     msg.innerHTML = `<div class="sync-status ok">✅ Import complete: ${importedClasses} classes · ${importedStudents} students · ${importedLogs} logs added</div>`;
