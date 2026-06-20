@@ -2679,14 +2679,21 @@ async function disableAutoSync() {
   showToast('Auto-sync disabled.', 'info');
 }
 
-// syncSingleLog now rewinds the watermark instead of pushing out-of-band.
-// This means an edited historical log gets picked up by the normal,
-// chunked, retrying syncToSheets() path instead of a fire-and-forget
-// fetch with no retry and no UI feedback on failure.
+// syncSingleLog no longer rewinds the watermark. 
+// Rewinding causes ALL subsequent logs (like Ichigo's) to be re-sent to GAS, 
+// which risks creating duplicates if GAS's row-matching has any micro-errors.
+// Instead, we rely entirely on the `needsSync` flag set by saveEditLog().
+// getPendingLogs() is already configured to pick up ANY log with `needsSync=true`,
+// regardless of the watermark. This guarantees only the edited log is sent.
 async function syncSingleLog(log, originalTimestamp) {
-  if (!autoSyncEnabled) return;
-  const url = await dbGetSetting('sync_url');
-  if (!url) return;
+    if (!autoSyncEnabled) return;
+    const url = await dbGetSetting('sync_url');
+    if (!url) return;
+
+    // Trigger the normal chunked/retrying sync path.
+    // The `needsSync` flag on the log object is all we need.
+    scheduleAutoSync();
+}
 
   // Rewind the watermark so this log (and anything after it) is
   // re-included in the next bulk sync pass. Use the earlier of the
