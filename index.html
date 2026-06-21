@@ -4199,6 +4199,7 @@ const resetPasswordView = document.getElementById('reset-password-view');
 // root cause of the reported logout failure.
 let fb, auth, fsDb, googleProvider;
 let isPasswordRecovery = false;
+let firebaseInitFailed = false;
 
 // readyPromise resolves once Firebase is fully initialized. Every
 // window-exposed function below awaits this FIRST, before touching fb/
@@ -4211,14 +4212,46 @@ let isPasswordRecovery = false;
 // even run far enough to start listening for it, the event was lost
 // forever and initFirebase() never ran — silently breaking every auth
 // button on the page, which is exactly what was reported.
-const readyPromise = window.__firebaseReady.then((F) => {
-    fb = F;
-    const app = F.initializeApp(firebaseConfig);
-    auth = F.getAuth(app);
-    fsDb = F.getFirestore(app);
-    googleProvider = new F.GoogleAuthProvider();
-    return F;
-});
+//
+// DEFENSIVE GUARD: window.__firebaseReady is set by the <script
+// type="module"> in <head>. If that module fails for ANY reason — one
+// of its three import statements gets blocked (ad blocker, network
+// blip, CDN hiccup, a CSP rule on whatever host this is deployed to,
+// etc.) — the WHOLE module silently never runs, window.__firebaseReady
+// is simply never created, and calling .then() on undefined throws a
+// TypeError right here. That crash previously took down everything
+// below it in this script block too, including every window.X function
+// the HTML's onclick="" handlers call — which is why "Cannot read
+// properties of undefined (reading 'then')" and "confirmLogout is not
+// defined" showed up together. Guarding this one line means a Firebase
+// load failure now degrades to a visible error message instead of
+// silently breaking every button on the page.
+let readyPromise;
+if (window.__firebaseReady && typeof window.__firebaseReady.then === 'function') {
+    readyPromise = window.__firebaseReady.then((F) => {
+        fb = F;
+        const app = F.initializeApp(firebaseConfig);
+        auth = F.getAuth(app);
+        fsDb = F.getFirestore(app);
+        googleProvider = new F.GoogleAuthProvider();
+        return F;
+    }).catch((err) => {
+        console.error('Firebase initialization failed:', err);
+        firebaseInitFailed = true;
+        agShowMessage('Could not load sign-in. Check your internet connection and refresh the page.', 'error');
+        throw err;
+    });
+} else {
+    console.error('window.__firebaseReady was never set — the Firebase module script in <head> did not run. This usually means one of its CDN imports (gstatic.com) was blocked by the network, an ad blocker, or a content-security-policy on this host.');
+    firebaseInitFailed = true;
+    readyPromise = Promise.reject(new Error('Firebase module failed to load'));
+    // Surface this visibly once the DOM (and agShowMessage's target
+    // element) is definitely available, rather than assuming it already
+    // is at this exact point in page load.
+    document.addEventListener('DOMContentLoaded', () => {
+        agShowMessage('Could not load sign-in. Check your internet connection and refresh the page.', 'error');
+    });
+}
 
 // ── UI HELPERS (unchanged) ──────────────────────────────────────────────
 function agShowMessage(text, type) {
@@ -4402,9 +4435,10 @@ document.getElementById('ag-signup-form').addEventListener('submit', async (e) =
 
     agShowMessage('', null);
     agSetLoading('ag-signup-btn', true);
-    await readyPromise; // ensure fb/auth/fsDb exist no matter how early this fires
 
     try {
+        await readyPromise; // ensure fb/auth/fsDb exist no matter how early this fires
+
         // Unlike Supabase, Firebase throws a loud, specific
         // auth/email-already-in-use error for a duplicate email — no
         // more guessing at response shape to detect this case.
@@ -4435,9 +4469,9 @@ document.getElementById('ag-signin-form').addEventListener('submit', async (e) =
 
     agShowMessage('', null);
     agSetLoading('ag-signin-btn', true);
-    await readyPromise;
 
     try {
+        await readyPromise;
         await fb.signInWithEmailAndPassword(auth, email, password);
 
         try {
@@ -4465,8 +4499,8 @@ window.agForgotPassword = async function agForgotPassword() {
         return;
     }
     agShowMessage('Sending reset link…', 'info');
-    await readyPromise;
     try {
+        await readyPromise;
         await fb.sendPasswordResetEmail(auth, email);
         agShowMessage(`Password reset link sent to ${email}. Check your inbox.`, 'success');
     } catch (err) {
@@ -4511,9 +4545,9 @@ document.getElementById('ag-reset-form').addEventListener('submit', async (e) =>
     const msgEl = document.getElementById('ag-reset-message');
     msgEl.className = 'ag-msg';
     agSetLoading('ag-reset-btn', true);
-    await readyPromise;
 
     try {
+        await readyPromise;
         // updatePassword() works when the person already has a live
         // session (e.g. they're still signed in elsewhere). If they
         // arrived purely via the email link with no active session,
@@ -4552,8 +4586,8 @@ document.getElementById('ag-reset-form').addEventListener('submit', async (e) =>
 // Google provider in the Firebase Console).
 window.loginWithGoogle = async function loginWithGoogle() {
     agShowMessage('', null);
-    await readyPromise;
     try {
+        await readyPromise;
         const result = await fb.signInWithPopup(auth, googleProvider);
         // First-time Google sign-in: no profile doc yet, create one now.
         const existing = await getProfile(result.user.uid);
@@ -4572,11 +4606,21 @@ window.loginWithGoogle = async function loginWithGoogle() {
 // failed silently if clicked before initFirebase() had run (see the
 // readyPromise comment above) — awaiting readyPromise here guarantees
 // fb.signOut is always callable, no matter when the button is clicked.
+// Wrapped in try/catch so that if readyPromise itself REJECTS (Firebase's
+// module failed to load entirely — see the defensive guard around
+// readyPromise's declaration), the person sees a clear message instead
+// of an uncaught error that, by crashing this function, would also have
+// prevented window.confirmLogout from being defined in the first place.
 window.logoutUser = async function logoutUser() {
-    await readyPromise;
-    await fb.signOut(auth);
-    localStorage.removeItem('eduscan_auth_cache');
-    window.location.reload();
+    try {
+        await readyPromise;
+        await fb.signOut(auth);
+        localStorage.removeItem('eduscan_auth_cache');
+        window.location.reload();
+    } catch (err) {
+        console.error('Logout failed:', err);
+        agShowMessage('Could not sign out — check your connection and try again, or just close the app.', 'error');
+    }
 };
 
 window.confirmLogout = function confirmLogout() {
@@ -4588,7 +4632,19 @@ window.confirmLogout = function confirmLogout() {
 // ── 6. THE GATEKEEPER: Checks if user is allowed to use the app ─────────
 async function checkSubscriptionStatus() {
     if (isPasswordRecovery) return;
-    await readyPromise; // defensive — auth/fsDb must exist before reading auth.currentUser
+
+    try {
+        await readyPromise; // auth/fsDb must exist before reading auth.currentUser
+    } catch (err) {
+        // Firebase's module never loaded at all — show sign-in rather
+        // than silently hanging with neither the app nor the login card
+        // visible. agShowMessage() already surfaced the underlying
+        // reason when readyPromise was first constructed.
+        authGate.classList.add('active');
+        loginView.style.display = 'block';
+        expiredView.style.display = 'none';
+        return;
+    }
 
     const user = auth.currentUser;
 
