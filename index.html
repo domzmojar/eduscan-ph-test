@@ -3906,6 +3906,62 @@ function initSupabase() {
     });
 }
 
+// ── AUTH UI HELPERS & VALIDATION ────────────────────────────────────────────
+function showLogin() {
+    hideAuthForms();
+    document.getElementById('loginForm').classList.remove('hidden');
+    clearAuthAlerts();
+}
+
+function showSignup() {
+    hideAuthForms();
+    document.getElementById('signupForm').classList.remove('hidden');
+    clearAuthAlerts();
+}
+
+function showResetPassword() {
+    hideAuthForms();
+    document.getElementById('resetPasswordForm').classList.remove('hidden');
+    clearAuthAlerts();
+}
+
+function clearAuthAlerts() {
+    document.querySelectorAll('#auth-overlay .alert').forEach(a => a.classList.remove('show'));
+    document.querySelectorAll('#auth-overlay input').forEach(i => i.classList.remove('error'));
+    document.querySelectorAll('#auth-overlay .error-message').forEach(m => m.classList.remove('show'));
+}
+
+function checkPasswordStrength(password, fillId, textId) {
+    const fill = document.getElementById(fillId);
+    const text = document.getElementById(textId);
+    if (!fill || !text) return;
+    
+    let strength = 0;
+    if (password.length >= 8) strength++;
+    if (password.match(/[a-z]/) && password.match(/[A-Z]/)) strength++;
+    if (password.match(/[0-9]/)) strength++;
+    if (password.match(/[^a-zA-Z0-9]/)) strength++;
+    
+    fill.className = 'strength-fill';
+    if (strength <= 1) { 
+        fill.classList.add('weak'); 
+        text.textContent = 'Weak password'; 
+        text.style.color = '#ef4444'; 
+    } else if (strength <= 3) { 
+        fill.classList.add('medium'); 
+        text.textContent = 'Medium strength'; 
+        text.style.color = '#f59e0b'; 
+    } else { 
+        fill.classList.add('strong'); 
+        text.textContent = 'Strong password'; 
+        text.style.color = '#10b981'; 
+    }
+}
+
+function isValidEmail(email) { 
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email); 
+}
+
 function showNewPasswordForm() {
     hideAuthForms();
     document.getElementById('newPasswordForm').classList.remove('hidden');
