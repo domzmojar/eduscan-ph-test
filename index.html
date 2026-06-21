@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -3876,7 +3875,7 @@ function closeEditStudentModalDirect() { document.getElementById('edit-student-m
 const SUPABASE_URL = 'https://sbltuuhwcdsooitnbxgo.supabase.co'; 
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNibHR1dWh3Y2Rzb29pdG5ieGdvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIwMzI1NjgsImV4cCI6MjA5NzYwODU2OH0.hmA5C3GWFMr0RpHnJ7M2nDlYBM80mQMPZhG6Xt7spQE';
 
-let supabase = null;
+let supabaseClient = null;
 
 function initSupabase() {
 // SAFETY CHECK: Ensure the Supabase SDK actually loaded from the CDN
@@ -3892,7 +3891,7 @@ document.getElementById('auth-overlay').classList.add('hidden');
 return;
 }
 
-supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     
     // Centralized UI updater
     function updateAuthUI(session) {
@@ -3912,7 +3911,7 @@ supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     }
 
     // Listen for Auth State Changes
-    supabase.auth.onAuthStateChange((event, session) => {
+    supabaseClient.auth.onAuthStateChange((event, session) => {
         if (event === 'PASSWORD_RECOVERY') {
             // User clicked the reset link in their email
             document.getElementById('auth-overlay').classList.remove('hidden');
@@ -3996,7 +3995,7 @@ function hideAuthForms() {
 // 1. LOGIN
 async function handleLogin(event) {
     event.preventDefault();
-    if (!supabase) return showToast('Auth not configured. Check Supabase keys.', 'err');
+    if (!supabaseClient) return showToast('Auth not configured. Check Supabase keys.', 'err');
     
     clearAuthAlerts();
     const email = document.getElementById('loginEmail').value.trim();
@@ -4009,7 +4008,7 @@ async function handleLogin(event) {
     loginBtn.disabled = true;
     loginBtn.innerHTML = '<div class="spinner"></div><span>Signing in...</span>';
 
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
 
     if (error) {
         document.getElementById('loginErrorText').textContent = error.message === 'Invalid login credentials' ? 'Invalid Email or Password.' : error.message;
@@ -4025,7 +4024,7 @@ async function handleLogin(event) {
 // 2. SIGNUP
 async function handleSignup(event) {
     event.preventDefault();
-    if (!supabase) return showToast('Auth not configured.', 'err');
+    if (!supabaseClient) return showToast('Auth not configured.', 'err');
 
     clearAuthAlerts();
     const name = document.getElementById('signupName').value.trim();
@@ -4043,7 +4042,7 @@ async function handleSignup(event) {
     signupBtn.disabled = true;
     signupBtn.innerHTML = '<div class="spinner"></div><span>Creating account...</span>';
 
-    const { data, error } = await supabase.auth.signUp({
+    const { data, error } = await supabaseClient.auth.signUp({
         email,
         password,
         options: {
@@ -4072,7 +4071,7 @@ async function handleSignup(event) {
 // 3. RESET PASSWORD (Sends Email)
 async function handleResetPassword(event) {
     event.preventDefault();
-    if (!supabase) return showToast('Auth not configured.', 'err');
+    if (!supabaseClient) return showToast('Auth not configured.', 'err');
 
     clearAuthAlerts();
     const email = document.getElementById('resetEmail').value.trim();
@@ -4083,7 +4082,7 @@ async function handleResetPassword(event) {
     resetBtn.disabled = true;
     resetBtn.innerHTML = '<div class="spinner"></div><span>Sending...</span>';
 
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
         redirectTo: window.location.origin + window.location.pathname 
     });
 
@@ -4101,7 +4100,7 @@ async function handleResetPassword(event) {
 // 4. UPDATE PASSWORD (After clicking email link)
 async function handleNewPassword(event) {
     event.preventDefault();
-    if (!supabase) return;
+    if (!supabaseClient) return;
 
     const newPassword = document.getElementById('newPassword').value;
     const confirmPassword = document.getElementById('confirmNewPassword').value;
@@ -4117,7 +4116,7 @@ async function handleNewPassword(event) {
     btn.disabled = true;
     btn.innerHTML = '<div class="spinner"></div><span>Updating...</span>';
 
-    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    const { error } = await supabaseClient.auth.updateUser({ password: newPassword });
 
     btn.disabled = false;
     btn.innerHTML = '<span>Update Password</span>';
@@ -4134,9 +4133,9 @@ async function handleNewPassword(event) {
 
 // 5. LOGOUT
 function handleLogout() {
-    if (!supabase) return;
+    if (!supabaseClient) return;
     if (confirm('Are you sure you want to logout?')) {
-        supabase.auth.signOut();
+        supabaseClient.auth.signOut();
         // onAuthStateChange handles UI updates
     }
 }
