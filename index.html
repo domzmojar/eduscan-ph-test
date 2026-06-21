@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -11,52 +12,9 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="EduScan PH">
   <link rel="apple-touch-icon" href="/icon-192-any.png">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-    import {
-      getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
-      signInWithPopup, GoogleAuthProvider, sendPasswordResetEmail,
-      updatePassword, signOut, onAuthStateChanged, updateProfile,
-      verifyPasswordResetCode, confirmPasswordReset
-    } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-    import {
-      getFirestore, doc, getDoc, setDoc
-    } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-
-    // Expose what the rest of the page's plain <script> blocks need, since
-    // those aren't ES modules and can't use `import` themselves. This is
-    // the standard bridge pattern for mixing a modular Firebase SDK with
-    // a non-module page script.
-    //
-    // window.__firebaseReady is a PROMISE, not an event. A plain
-    // 'firebase-ready' event (the original approach) has a real race
-    // condition: <script type="module"> loads asynchronously per the
-    // HTML spec, so if this module finishes and dispatches its event
-    // BEFORE the later <script> down in <body> has even run far enough
-    // to call addEventListener for it, the event fires into nobody and
-    // is lost forever — silently. That's exactly what caused the logout
-    // button (and every other auth function) to do nothing: the
-    // functions were never actually attached to window because
-    // initFirebase() never ran. A Promise has no such window — code can
-    // await it at ANY time, before or after it resolves, and always gets
-    // the result correctly.
-    window.__firebaseReady = new Promise((resolve) => {
-      window.__firebase = {
-        initializeApp, getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
-        signInWithPopup, GoogleAuthProvider, sendPasswordResetEmail,
-        updatePassword, signOut, onAuthStateChanged, updateProfile,
-        verifyPasswordResetCode, confirmPasswordReset,
-        getFirestore, doc, getDoc, setDoc
-      };
-      resolve(window.__firebase);
-    });
-  </script>
 
   <style>
     :root {
@@ -535,354 +493,163 @@
 
 .log-feed-actions { display: flex; align-items: center; gap: 0.5rem; }
 
-/* ── AUTH GATE & LOGIN UI (Glass / Calm Check-in style) ── */
-#auth-gate {
-    --teal: #00A896;
-    --teal-hover: #009182;
-    --teal-ring: rgba(0, 168, 150, 0.35);
-    --ag-text-primary: rgba(255, 255, 255, 0.96);
-    --ag-text-secondary: rgba(255, 255, 255, 0.72);
-    --ag-text-tertiary: rgba(255, 255, 255, 0.55);
-    --glass-bg: rgba(255, 255, 255, 0.10);
-    --glass-border: rgba(255, 255, 255, 0.22);
-    --input-bg: rgba(255, 255, 255, 0.08);
-    --input-border: rgba(255, 255, 255, 0.18);
-    --ag-error: #ff7b7b;
-    display: none;
+/* ── AUTH SYSTEM OVERLAY ── */
+#auth-overlay {
     position: fixed; inset: 0; z-index: 9999;
-    background:
-      radial-gradient(circle at 15% 15%, rgba(0,168,150,0.35), transparent 45%),
-      radial-gradient(circle at 85% 25%, rgba(29,78,216,0.35), transparent 50%),
-      radial-gradient(circle at 50% 90%, rgba(124,58,237,0.25), transparent 55%),
-      linear-gradient(160deg, #0b1215 0%, #0e1a22 45%, #0b1215 100%);
-    flex-direction: column; align-items: center; justify-content: center;
-    font-family: 'Poppins', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    padding: 24px;
-    overflow-y: auto;
-}
-#auth-gate.active { display: flex; }
-#auth-gate .ag-wrap { width: 100%; max-width: 400px; margin: auto; }
-
-.ag-card {
-    width: 100%;
-    background: var(--glass-bg);
-    border: 1px solid var(--glass-border);
-    border-radius: 20px;
-    backdrop-filter: blur(18px);
-    -webkit-backdrop-filter: blur(18px);
-    box-shadow: 0 25px 50px -12px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.1);
-    padding: 32px 28px 28px;
-    text-align: left;
-    animation: agRise 0.5s ease-out;
-    color: var(--ag-text-primary);
-}
-@keyframes agRise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
-
-.ag-brand {
-    display: flex; align-items: center; gap: 10px;
-    margin-bottom: 22px; color: var(--ag-text-secondary);
-    font-size: 13px; font-weight: 600; letter-spacing: 0.3px; text-transform: uppercase;
-}
-.ag-brand-icon {
-    width: 36px; height: 36px; border-radius: 10px; flex-shrink: 0;
-    background: linear-gradient(145deg,#1d4ed8,#3b82f6);
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     display: flex; align-items: center; justify-content: center;
-    box-shadow: 0 2px 10px rgba(29,78,216,0.4);
+    padding: 20px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 }
-.ag-title { font-size: 26px; font-weight: 700; line-height: 1.2; margin-bottom: 4px; color: #fff; }
-.ag-subtitle { font-size: 13.5px; color: var(--ag-text-secondary); margin-bottom: 24px; }
+#auth-overlay.hidden { display: none !important; }
+#auth-overlay .auth-container {
+    background: #fff; border-radius: 16px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+    width: 100%; max-width: 420px; padding: 32px;
+    animation: authSlideUp 0.3s ease-out;
+    max-height: 90vh; overflow-y: auto;
+}
+@keyframes authSlideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+#auth-overlay .auth-header { text-align: center; margin-bottom: 24px; }
+#auth-overlay .auth-logo {
+    width: 64px; height: 64px; margin: 0 auto 16px;
+    background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+    border-radius: 16px; display: flex; align-items: center; justify-content: center;
+    font-size: 32px;
+}
+#auth-overlay .auth-header h1 { color: #111827; font-size: 24px; font-weight: 700; margin-bottom: 4px; }
+#auth-overlay .auth-header p { color: #6b7280; font-size: 14px; }
+#auth-overlay .current-date { text-align: center; color: #6b7280; font-size: 14px; margin-bottom: 24px; padding: 8px; background: #f9fafb; border-radius: 8px; }
+#auth-overlay .form-group { margin-bottom: 16px; }
+#auth-overlay label { display: block; color: #111827; font-size: 14px; font-weight: 500; margin-bottom: 6px; text-transform: none; letter-spacing: normal; }
+#auth-overlay input[type="text"],
+#auth-overlay input[type="email"],
+#auth-overlay input[type="password"] {
+    width: 100%; padding: 12px 16px; border: 2px solid #e5e7eb;
+    border-radius: 10px; font-size: 15px; transition: all 0.2s; background: #fff; color: #111827;
+}
+#auth-overlay input:focus { outline: none; border-color: #4f46e5; box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1); }
+#auth-overlay input.error { border-color: #ef4444; }
+#auth-overlay .error-message { color: #ef4444; font-size: 13px; margin-top: 6px; display: none; }
+#auth-overlay .error-message.show { display: block; animation: authShake 0.5s; }
+@keyframes authShake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
+#auth-overlay .form-options { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; font-size: 14px; }
+#auth-overlay .remember-me { display: flex; align-items: center; gap: 8px; color: #6b7280; cursor: pointer; }
+#auth-overlay .remember-me input { width: 16px; height: 16px; accent-color: #4f46e5; }
+#auth-overlay .forgot-password { color: #4f46e5; text-decoration: none; font-weight: 500; cursor: pointer; background: none; border: none; font-size: 14px; padding: 0; }
+#auth-overlay .btn { width: 100%; padding: 14px; border: none; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px; }
+#auth-overlay .btn-primary { background: #4f46e5; color: white; }
+#auth-overlay .btn-primary:hover { background: #4338ca; transform: translateY(-1px); box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+#auth-overlay .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+#auth-overlay .btn-secondary { background: #f9fafb; color: #111827; border: 2px solid #e5e7eb; }
+#auth-overlay .btn-secondary:hover { background: #e5e7eb; }
+#auth-overlay .divider { display: flex; align-items: center; margin: 20px 0; color: #6b7280; font-size: 14px; }
+#auth-overlay .divider::before, #auth-overlay .divider::after { content: ''; flex: 1; height: 1px; background: #e5e7eb; }
+#auth-overlay .divider span { padding: 0 16px; }
+#auth-overlay .auth-switch { text-align: center; margin-top: 20px; color: #6b7280; font-size: 14px; }
+#auth-overlay .auth-switch a, #auth-overlay .back-link { color: #4f46e5; text-decoration: none; font-weight: 600; cursor: pointer; background: none; border: none; font-size: 14px; padding: 0; }
+#auth-overlay .auth-switch a:hover, #auth-overlay .back-link:hover { text-decoration: underline; }
+#auth-overlay .alert { padding: 12px 16px; border-radius: 10px; margin-bottom: 16px; font-size: 14px; display: none; align-items: center; gap: 10px; }
+#auth-overlay .alert.show { display: flex; animation: authSlideDown 0.3s ease-out; }
+@keyframes authSlideDown { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+#auth-overlay .alert-success { background: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; }
+#auth-overlay .alert-error { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+#auth-overlay .hidden { display: none !important; }
+#auth-overlay .password-strength { margin-top: 8px; }
+#auth-overlay .strength-bar { height: 4px; background: #e5e7eb; border-radius: 2px; overflow: hidden; margin-bottom: 4px; }
+#auth-overlay .strength-fill { height: 100%; width: 0; transition: all 0.3s; border-radius: 2px; }
+#auth-overlay .strength-fill.weak { width: 33%; background: #ef4444; }
+#auth-overlay .strength-fill.medium { width: 66%; background: #f59e0b; }
+#auth-overlay .strength-fill.strong { width: 100%; background: #10b981; }
+#auth-overlay .strength-text { font-size: 12px; color: #6b7280; }
+#auth-overlay .back-link { display: inline-flex; align-items: center; gap: 6px; color: #6b7280; margin-bottom: 16px; }
+#auth-overlay .spinner { width: 20px; height: 20px; border: 2px solid rgba(255,255,255,0.3); border-radius: 50%; border-top-color: white; animation: authSpin 0.8s linear infinite; }
+@keyframes authSpin { to { transform: rotate(360deg); } }
+#auth-overlay .checkmark { width: 20px; height: 20px; border-radius: 50%; background: #10b981; display: flex; align-items: center; justify-content: center; color: white; font-size: 12px; flex-shrink: 0; }
 
-.ag-tabs {
-    display: flex; gap: 4px; background: rgba(255,255,255,0.06);
-    border: 1px solid var(--glass-border); border-radius: 12px; padding: 4px; margin-bottom: 22px;
+/* Logout Button in Header */
+#logout-btn {
+    background: none; border: 1px solid var(--border); color: var(--text-muted);
+    padding: 6px 12px; border-radius: 8px; font-size: 0.8rem; font-weight: 600;
+    cursor: pointer; transition: all 0.15s; display: none; align-items: center; gap: 4px;
 }
-.ag-tab {
-    flex: 1; padding: 0.55rem 0.5rem; border: none; border-radius: 9px;
-    background: transparent; color: var(--ag-text-secondary);
-    font-family: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer;
-    transition: background 0.18s, color 0.18s;
-}
-.ag-tab.active { background: var(--teal); color: #fff; box-shadow: 0 4px 12px rgba(0,168,150,0.3); }
-.ag-tab:not(.active):hover { background: rgba(255,255,255,0.08); color: #fff; }
-
-.ag-field { margin-bottom: 14px; position: relative; }
-.ag-field label {
-    display: block; font-size: 12.5px; color: var(--ag-text-secondary);
-    margin-bottom: 7px; font-weight: 500; text-transform: none; letter-spacing: 0;
-}
-.ag-input-wrap { position: relative; }
-.ag-card input[type="text"],
-.ag-card input[type="password"],
-.ag-card input[type="email"] {
-    width: 100%; height: 46px; padding: 0 44px 0 14px;
-    background: var(--input-bg); border: 1px solid var(--input-border);
-    border-radius: 11px; color: #fff; font-size: 14.5px;
-    font-family: inherit; outline: none;
-    transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
-}
-.ag-card input::placeholder { color: var(--ag-text-tertiary); }
-.ag-card input:hover { background: rgba(255,255,255,0.1); }
-.ag-card input:focus {
-    border-color: var(--teal); box-shadow: 0 0 0 3px var(--teal-ring);
-    background: rgba(255,255,255,0.12);
-}
-.ag-card input[aria-invalid="true"] {
-    border-color: var(--ag-error); box-shadow: 0 0 0 3px rgba(255,123,123,0.25);
-}
-.ag-error {
-    min-height: 16px; font-size: 11.5px; color: var(--ag-error);
-    margin-top: 5px; padding-left: 2px;
-}
-.ag-pw-toggle {
-    position: absolute; right: 5px; top: 50%; transform: translateY(-50%);
-    width: 34px; height: 34px; display: grid; place-items: center;
-    background: transparent; border: none; color: var(--ag-text-tertiary);
-    cursor: pointer; border-radius: 8px; transition: color 0.2s, background 0.2s;
-}
-.ag-pw-toggle:hover { color: #fff; background: rgba(255,255,255,0.08); }
-
-.ag-row {
-    display: flex; align-items: center; justify-content: space-between;
-    margin: 10px 0 18px; gap: 12px;
-}
-.ag-check {
-    display: flex; align-items: center; gap: 7px; font-size: 12.5px;
-    color: var(--ag-text-secondary); cursor: pointer; user-select: none;
-}
-.ag-check input { width: 15px; height: 15px; accent-color: var(--teal); cursor: pointer; }
-.ag-link {
-    font-size: 12.5px; color: #fff; text-decoration: none; opacity: 0.85;
-    transition: opacity 0.2s, color 0.2s; background: none; border: none; cursor: pointer; font-family: inherit;
-}
-.ag-link:hover { opacity: 1; color: #7ee8dc; }
-
-.ag-btn {
-    width: 100%; height: 47px; border-radius: 12px; border: 1px solid transparent;
-    font-size: 14.5px; font-weight: 600; font-family: inherit; cursor: pointer;
-    position: relative; display: flex; align-items: center; justify-content: center; gap: 10px;
-    transition: transform 0.15s ease, background 0.2s, box-shadow 0.2s, opacity 0.2s;
-}
-.ag-btn-primary { background: var(--teal); color: #fff; box-shadow: 0 8px 20px rgba(0,168,150,0.25); }
-.ag-btn-primary:hover { background: var(--teal-hover); transform: translateY(-1px); box-shadow: 0 12px 24px rgba(0,168,150,0.3); }
-.ag-btn-primary:active { transform: translateY(0); }
-.ag-btn[disabled] { opacity: 0.7; cursor: not-allowed; transform: none; }
-
-.ag-spinner {
-    width: 18px; height: 18px; border: 2.5px solid rgba(255,255,255,0.35);
-    border-top-color: #fff; border-radius: 50%; animation: agSpin 0.8s linear infinite;
-    display: none; position: absolute;
-}
-.ag-btn.loading .ag-spinner { display: block; }
-.ag-btn.loading .ag-btn-text { visibility: hidden; }
-@keyframes agSpin { to { transform: rotate(360deg); } }
-
-.ag-divider {
-    display: flex; align-items: center; gap: 12px; margin: 18px 0;
-    color: var(--ag-text-tertiary); font-size: 11.5px; text-transform: lowercase;
-}
-.ag-divider::before, .ag-divider::after {
-    content: ""; height: 1px; flex: 1;
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
-}
-
-.ag-btn-secondary {
-    background: rgba(255,255,255,0.06); border-color: var(--glass-border);
-    color: #fff; backdrop-filter: blur(6px);
-}
-.ag-btn-secondary:hover { background: rgba(255,255,255,0.12); transform: translateY(-1px); }
-.ag-btn-secondary svg { width: 18px; height: 18px; flex-shrink: 0; }
-
-.ag-foot { text-align: center; margin-top: 20px; font-size: 11.5px; color: var(--ag-text-tertiary); }
-.ag-trial-badge {
-    display: flex; align-items: center; justify-content: center; gap: 6px;
-    margin-top: 18px; padding: 0.5rem 0.8rem;
-    background: rgba(0,168,150,0.15); color: #7ee8dc; border: 1px solid rgba(0,168,150,0.35);
-    border-radius: 20px; font-size: 12.5px; font-weight: 600;
-}
-
-.ag-msg {
-    font-size: 12.5px; border-radius: 9px; padding: 0.6rem 0.8rem;
-    margin-bottom: 14px; line-height: 1.4; display: none;
-}
-.ag-msg.show { display: block; }
-.ag-msg.success { background: rgba(0,168,150,0.15); border: 1px solid rgba(0,168,150,0.35); color: #7ee8dc; }
-.ag-msg.error { background: rgba(255,123,123,0.12); border: 1px solid rgba(255,123,123,0.3); color: var(--ag-error); }
-.ag-msg.info { background: rgba(255,255,255,0.08); border: 1px solid var(--glass-border); color: var(--ag-text-secondary); }
-
-/* Expired view */
-.ag-expired-icon { font-size: 2.75rem; margin-bottom: 0.75rem; text-align: center; }
-.ag-expired-title { font-size: 1.25rem; font-weight: 700; color: #fff; margin-bottom: 0.5rem; text-align: center; }
-.ag-expired-text { font-size: 0.85rem; color: var(--ag-text-secondary); line-height: 1.55; margin-bottom: 1.4rem; text-align: center; }
-.ag-logout-btn {
-    width: 100%; padding: 0.75rem 1.5rem; background: rgba(255,255,255,0.08);
-    color: #fff; border: 1px solid var(--glass-border); border-radius: 11px;
-    font-weight: 600; font-size: 14px; cursor: pointer; font-family: inherit;
-    transition: background 0.2s;
-}
-.ag-logout-btn:hover { background: rgba(255,255,255,0.14); }
-
-@media (max-width: 430px) {
-    .ag-card { padding: 26px 20px 22px; border-radius: 18px; }
-    .ag-title { font-size: 22px; }
-}
+#logout-btn:hover { background: var(--danger-bg); color: var(--danger); border-color: var(--danger-border); }
   </style>
 </head>
 <body>
-
-<!-- AUTHENTICATION GATE (Blocks app if not logged in or trial expired) -->
-<div id="auth-gate">
-  <div class="ag-wrap">
-
-    <!-- LOGIN / SIGNUP VIEW -->
-    <div id="login-view" class="ag-card">
-        <div class="ag-brand">
-            <span class="ag-brand-icon" aria-hidden="true">
-                <svg width="20" height="20" viewBox="0 0 52 52" fill="none"><rect x="13" y="16" width="26" height="30" rx="3" fill="white" opacity="0.95"/><rect x="20" y="11" width="12" height="8" rx="2" fill="white" opacity="0.95"/><rect x="20" y="13" width="12" height="4" rx="1" fill="#1d4ed8"/><path d="M30 38 L33 41 L39 35" stroke="#10b981" stroke-width="2.5" stroke-linecap="round"/></svg>
-            </span>
-            <span>EduScan PH</span>
+<!-- AUTH OVERLAY -->
+<div id="auth-overlay" class="hidden">
+    <div class="auth-container">
+        <!-- LOGIN FORM -->
+        <div id="loginForm">
+            <div class="auth-header">
+                <div class="auth-logo">📚</div>
+                <h1>Welcome back</h1>
+                <p>EduScan PH Attendance System</p>
+            </div>
+            <div class="current-date" id="auth-current-date">Loading date…</div>
+            <div class="alert alert-error" id="loginError"><span>⚠️</span><span id="loginErrorText">Invalid credentials.</span></div>
+            <div class="alert alert-success" id="loginSuccess"><span class="checkmark">✓</span><span>Login successful! Redirecting…</span></div>
+            <form onsubmit="handleLogin(event)">
+                <div class="form-group">
+                    <label for="loginEmail">Employee ID or Email</label>
+                    <input type="text" id="loginEmail" placeholder="Enter your ID or email" autocomplete="username" required>
+                    <div class="error-message" id="loginEmailError">Please enter your Employee ID or Email</div>
+                </div>
+                <div class="form-group">
+                    <label for="loginPassword">Password</label>
+                    <input type="password" id="loginPassword" placeholder="Enter your password" autocomplete="current-password" required>
+                    <div class="error-message" id="loginPasswordError">Please enter your password</div>
+                </div>
+                <div class="form-options">
+                    <label class="remember-me"><input type="checkbox" id="rememberMe"><span>Remember me</span></label>
+                    <button type="button" class="forgot-password" onclick="showResetPassword()">Forgot password?</button>
+                </div>
+                <button type="submit" class="btn btn-primary" id="loginBtn"><span>Sign In</span></button>
+            </form>
+            <div class="divider"><span>or</span></div>
+            <button class="btn btn-secondary" onclick="signInWithMicrosoft()"><span>🔷</span><span>Sign in with Microsoft</span></button>
+            <div class="auth-switch">Don't have an account? <a onclick="showSignup()">Sign up</a></div>
         </div>
 
-        <div class="ag-tabs">
-            <button type="button" class="ag-tab active" id="ag-tab-signin" onclick="agSwitchTab('signin')">Sign in</button>
-            <button type="button" class="ag-tab" id="ag-tab-signup" onclick="agSwitchTab('signup')">Create account</button>
+        <!-- SIGNUP FORM -->
+        <div id="signupForm" class="hidden">
+            <button class="back-link" onclick="showLogin()">← Back to login</button>
+            <div class="auth-header">
+                <div class="auth-logo">🎓</div>
+                <h1>Create account</h1>
+                <p>Join EduScan PH today</p>
+            </div>
+            <div class="alert alert-success" id="signupSuccess"><span class="checkmark">✓</span><span>Account created! Please login.</span></div>
+            <div class="alert alert-error" id="signupError"><span>⚠️</span><span id="signupErrorText">Error.</span></div>
+            <form onsubmit="handleSignup(event)">
+                <div class="form-group"><label for="signupName">Full Name</label><input type="text" id="signupName" placeholder="Enter your full name" required></div>
+                <div class="form-group"><label for="signupEmail">Email Address</label><input type="email" id="signupEmail" placeholder="you@example.com" autocomplete="email" required><div class="error-message" id="signupEmailError">Please enter a valid email</div></div>
+                <div class="form-group"><label for="signupEmployeeId">Employee ID</label><input type="text" id="signupEmployeeId" placeholder="Enter your employee ID" required></div>
+                <div class="form-group"><label for="signupPassword">Password</label><input type="password" id="signupPassword" placeholder="Create a password" oninput="checkPasswordStrength(this.value, 'strengthFill', 'strengthText')" required><div class="password-strength"><div class="strength-bar"><div class="strength-fill" id="strengthFill"></div></div><div class="strength-text" id="strengthText">Password strength</div></div></div>
+                <div class="form-group"><label for="signupConfirmPassword">Confirm Password</label><input type="password" id="signupConfirmPassword" placeholder="Confirm your password" required><div class="error-message" id="signupConfirmError">Passwords do not match</div></div>
+                <button type="submit" class="btn btn-primary" id="signupBtn"><span>Create Account</span></button>
+            </form>
+            <div class="auth-switch">Already have an account? <a onclick="showLogin()">Sign in</a></div>
         </div>
 
-        <div id="ag-title-signin">
-            <div class="ag-title">Welcome back</div>
-            <div class="ag-subtitle">Sign in to continue tracking attendance.</div>
+        <!-- RESET PASSWORD FORM -->
+        <div id="resetPasswordForm" class="hidden">
+            <button class="back-link" onclick="showLogin()">← Back to login</button>
+            <div class="auth-header">
+                <div class="auth-logo">🔐</div>
+                <h1>Reset password</h1>
+                <p>Enter your email to receive reset instructions</p>
+            </div>
+            <div class="alert alert-success" id="resetSuccess"><span class="checkmark">✓</span><span>Reset link sent! Check your email.</span></div>
+            <div class="alert alert-error" id="resetError"><span>⚠️</span><span id="resetErrorText">Email not found.</span></div>
+            <form onsubmit="handleResetPassword(event)">
+                <div class="form-group"><label for="resetEmail">Email Address</label><input type="email" id="resetEmail" placeholder="Enter your email" autocomplete="email" required><div class="error-message" id="resetEmailError">Please enter a valid email</div></div>
+                <button type="submit" class="btn btn-primary" id="resetBtn"><span>Send Reset Link</span></button>
+            </form>
+            <div class="auth-switch">Remember your password? <a onclick="showLogin()">Sign in</a></div>
         </div>
-        <div id="ag-title-signup" style="display:none;">
-            <div class="ag-title">Create your account</div>
-            <div class="ag-subtitle">Start your 7-day free trial — no card needed.</div>
-        </div>
-
-        <div id="ag-message" class="ag-msg" role="alert" aria-live="polite"></div>
-
-        <!-- SIGN IN FORM -->
-        <form id="ag-signin-form" novalidate>
-            <div class="ag-field">
-                <label for="ag-signin-email">Email</label>
-                <div class="ag-input-wrap">
-                    <input id="ag-signin-email" type="email" inputmode="email" autocomplete="username" placeholder="you@example.com" required aria-describedby="ag-signin-email-err" aria-invalid="false">
-                </div>
-                <p id="ag-signin-email-err" class="ag-error"></p>
-            </div>
-            <div class="ag-field">
-                <label for="ag-signin-password">Password</label>
-                <div class="ag-input-wrap">
-                    <input id="ag-signin-password" type="password" autocomplete="current-password" placeholder="••••••••" required aria-describedby="ag-signin-password-err" aria-invalid="false">
-                    <button type="button" class="ag-pw-toggle" data-target="ag-signin-password" aria-label="Show password" aria-pressed="false">
-                        <svg class="ag-eye-open" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                        <svg class="ag-eye-closed" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a21.3 21.3 0 0 1 5.06-6.06"/><path d="M1 1l22 22"/><path d="M9.9 4.24A10.94 10.94 0 0 1 12 4c7 0 11 8 11 8a21.3 21.3 0 0 1-3.16 4.19"/></svg>
-                    </button>
-                </div>
-                <p id="ag-signin-password-err" class="ag-error"></p>
-            </div>
-            <div class="ag-row">
-                <label class="ag-check">
-                    <input type="checkbox" id="ag-remember">
-                    <span>Remember me</span>
-                </label>
-                <button type="button" class="ag-link" id="ag-forgot-link" onclick="agForgotPassword()">Forgot password?</button>
-            </div>
-            <button type="submit" class="ag-btn ag-btn-primary" id="ag-signin-btn">
-                <span class="ag-spinner" aria-hidden="true"></span>
-                <span class="ag-btn-text">Sign in</span>
-            </button>
-        </form>
-
-        <!-- SIGN UP FORM -->
-        <form id="ag-signup-form" novalidate style="display:none;">
-            <div class="ag-field">
-                <label for="ag-signup-name">Full name</label>
-                <div class="ag-input-wrap">
-                    <input id="ag-signup-name" type="text" autocomplete="name" placeholder="e.g. Maria Santos" required aria-describedby="ag-signup-name-err" aria-invalid="false">
-                </div>
-                <p id="ag-signup-name-err" class="ag-error"></p>
-            </div>
-            <div class="ag-field">
-                <label for="ag-signup-email">Email</label>
-                <div class="ag-input-wrap">
-                    <input id="ag-signup-email" type="email" inputmode="email" autocomplete="username" placeholder="you@example.com" required aria-describedby="ag-signup-email-err" aria-invalid="false">
-                </div>
-                <p id="ag-signup-email-err" class="ag-error"></p>
-            </div>
-            <div class="ag-field">
-                <label for="ag-signup-password">Password</label>
-                <div class="ag-input-wrap">
-                    <input id="ag-signup-password" type="password" autocomplete="new-password" placeholder="At least 6 characters" required aria-describedby="ag-signup-password-err" aria-invalid="false">
-                    <button type="button" class="ag-pw-toggle" data-target="ag-signup-password" aria-label="Show password" aria-pressed="false">
-                        <svg class="ag-eye-open" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                        <svg class="ag-eye-closed" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a21.3 21.3 0 0 1 5.06-6.06"/><path d="M1 1l22 22"/><path d="M9.9 4.24A10.94 10.94 0 0 1 12 4c7 0 11 8 11 8a21.3 21.3 0 0 1-3.16 4.19"/></svg>
-                    </button>
-                </div>
-                <p id="ag-signup-password-err" class="ag-error"></p>
-            </div>
-            <button type="submit" class="ag-btn ag-btn-primary" id="ag-signup-btn">
-                <span class="ag-spinner" aria-hidden="true"></span>
-                <span class="ag-btn-text">Create account</span>
-            </button>
-        </form>
-
-        <div class="ag-divider" aria-hidden="true">or</div>
-
-        <button type="button" class="ag-btn ag-btn-secondary" id="ag-google-btn" onclick="loginWithGoogle()">
-            <svg viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
-            <span>Continue with Google</span>
-        </button>
-
-        <div class="ag-trial-badge">✨ 7-Day Free Trial Included</div>
-        <p class="ag-foot" id="ag-foot-text">By continuing, you agree to use EduScan PH for legitimate school attendance tracking.</p>
     </div>
-
-    <!-- EXPIRED VIEW -->
-    <div id="expired-view" class="ag-card" style="display:none;">
-        <div class="ag-expired-icon">⏳</div>
-        <div class="ag-expired-title">Trial Expired</div>
-        <div class="ag-expired-text">Your 7-day free trial has ended. Please contact the administrator to activate your lifetime access.</div>
-        <button class="ag-logout-btn" onclick="logoutUser()">Sign out</button>
-    </div>
-
-    <!-- SET NEW PASSWORD VIEW (shown after clicking a password-reset email link) -->
-    <div id="reset-password-view" class="ag-card" style="display:none;">
-        <div class="ag-brand">
-            <span class="ag-brand-icon" aria-hidden="true">
-                <svg width="20" height="20" viewBox="0 0 52 52" fill="none"><rect x="13" y="16" width="26" height="30" rx="3" fill="white" opacity="0.95"/><rect x="20" y="11" width="12" height="8" rx="2" fill="white" opacity="0.95"/><rect x="20" y="13" width="12" height="4" rx="1" fill="#1d4ed8"/><path d="M30 38 L33 41 L39 35" stroke="#10b981" stroke-width="2.5" stroke-linecap="round"/></svg>
-            </span>
-            <span>EduScan PH</span>
-        </div>
-        <div class="ag-title">Set a new password</div>
-        <div class="ag-subtitle">You're verified — choose a new password for your account.</div>
-
-        <div id="ag-reset-message" class="ag-msg" role="alert" aria-live="polite"></div>
-
-        <form id="ag-reset-form" novalidate>
-            <div class="ag-field">
-                <label for="ag-reset-password">New password</label>
-                <div class="ag-input-wrap">
-                    <input id="ag-reset-password" type="password" autocomplete="new-password" placeholder="At least 6 characters" required aria-describedby="ag-reset-password-err" aria-invalid="false">
-                    <button type="button" class="ag-pw-toggle" data-target="ag-reset-password" aria-label="Show password" aria-pressed="false">
-                        <svg class="ag-eye-open" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                        <svg class="ag-eye-closed" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a21.3 21.3 0 0 1 5.06-6.06"/><path d="M1 1l22 22"/><path d="M9.9 4.24A10.94 10.94 0 0 1 12 4c7 0 11 8 11 8a21.3 21.3 0 0 1-3.16 4.19"/></svg>
-                    </button>
-                </div>
-                <p id="ag-reset-password-err" class="ag-error"></p>
-            </div>
-            <div class="ag-field">
-                <label for="ag-reset-password-confirm">Confirm new password</label>
-                <div class="ag-input-wrap">
-                    <input id="ag-reset-password-confirm" type="password" autocomplete="new-password" placeholder="Re-enter your new password" required aria-describedby="ag-reset-password-confirm-err" aria-invalid="false">
-                </div>
-                <p id="ag-reset-password-confirm-err" class="ag-error"></p>
-            </div>
-            <button type="submit" class="ag-btn ag-btn-primary" id="ag-reset-btn">
-                <span class="ag-spinner" aria-hidden="true"></span>
-                <span class="ag-btn-text">Update password</span>
-            </button>
-        </form>
-    </div>
-
-  </div>
 </div>
 
 <header style="display:flex; align-items:center; justify-content:space-between; padding: 0.65rem 1rem;">
@@ -903,16 +670,14 @@
       <div style="font-size:0.7rem; color:var(--text-muted); line-height:1;">Offline-first attendance tracker</div>
     </div>
   </div>
-  <button id="header-logout-btn" onclick="confirmLogout()" title="Sign out" aria-label="Sign out"
-    style="background:transparent; border:1px solid var(--border); border-radius:8px; width:36px; height:36px; display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--text-muted); flex-shrink:0; transition:background 0.15s, color 0.15s;"
-    onmouseover="this.style.background='var(--danger-bg)'; this.style.color='var(--danger)';"
-    onmouseout="this.style.background='transparent'; this.style.color='var(--text-muted)';">
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-      <polyline points="16 17 21 12 16 7"/>
-      <line x1="21" y1="12" x2="9" y2="12"/>
-    </svg>
-  </button>
+</header>
+
+<header style="display:flex; align-items:center; justify-content:space-between; padding: 0.65rem 1rem;">
+    <div style="display:flex; align-items:center; gap:10px;">
+        <!-- ... your existing logo and text ... -->
+    </div>
+    <!-- ADD THIS LOGOUT BUTTON -->
+    <button id="logout-btn" onclick="handleLogout()">🚪 Logout</button>
 </header>
 
 <nav>
@@ -4085,9 +3850,194 @@ async function saveEditStudent() {
 function closeEditStudentModal(e) { if (e.target === document.getElementById('edit-student-modal')) closeEditStudentModalDirect(); }
 function closeEditStudentModalDirect() { document.getElementById('edit-student-modal').classList.remove('open'); document.body.style.overflow = ''; }
 
+// ── AUTH SYSTEM ─────────────────────────────────────────────────────────────
+function updateAuthDate() {
+    const el = document.getElementById('auth-current-date');
+    if (el) {
+        const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+        el.textContent = new Date().toLocaleDateString('en-US', options);
+    }
+}
+
+function showLogin() {
+    hideAuthForms();
+    document.getElementById('loginForm').classList.remove('hidden');
+    clearAuthAlerts();
+}
+function showSignup() {
+    hideAuthForms();
+    document.getElementById('signupForm').classList.remove('hidden');
+    clearAuthAlerts();
+}
+function showResetPassword() {
+    hideAuthForms();
+    document.getElementById('resetPasswordForm').classList.remove('hidden');
+    clearAuthAlerts();
+}
+function hideAuthForms() {
+    ['loginForm', 'signupForm', 'resetPasswordForm'].forEach(id => {
+        document.getElementById(id).classList.add('hidden');
+    });
+}
+function clearAuthAlerts() {
+    document.querySelectorAll('#auth-overlay .alert').forEach(a => a.classList.remove('show'));
+    document.querySelectorAll('#auth-overlay input').forEach(i => i.classList.remove('error'));
+    document.querySelectorAll('#auth-overlay .error-message').forEach(m => m.classList.remove('show'));
+}
+
+function checkPasswordStrength(password, fillId, textId) {
+    const fill = document.getElementById(fillId);
+    const text = document.getElementById(textId);
+    let strength = 0;
+    if (password.length >= 8) strength++;
+    if (password.match(/[a-z]/) && password.match(/[A-Z]/)) strength++;
+    if (password.match(/[0-9]/)) strength++;
+    if (password.match(/[^a-zA-Z0-9]/)) strength++;
+    
+    fill.className = 'strength-fill';
+    if (strength <= 1) { fill.classList.add('weak'); text.textContent = 'Weak password'; text.style.color = '#ef4444'; }
+    else if (strength <= 3) { fill.classList.add('medium'); text.textContent = 'Medium strength'; text.style.color = '#f59e0b'; }
+    else { fill.classList.add('strong'); text.textContent = 'Strong password'; text.style.color = '#10b981'; }
+}
+
+function isValidEmail(email) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email); }
+
+async function handleLogin(event) {
+    event.preventDefault();
+    clearAuthAlerts();
+    const email = document.getElementById('loginEmail').value.trim();
+    const password = document.getElementById('loginPassword').value;
+    const rememberMe = document.getElementById('rememberMe').checked;
+    const loginBtn = document.getElementById('loginBtn');
+
+    if (!email) { document.getElementById('loginEmail').classList.add('error'); document.getElementById('loginEmailError').classList.add('show'); return; }
+    if (!password) { document.getElementById('loginPassword').classList.add('error'); document.getElementById('loginPasswordError').classList.add('show'); return; }
+
+    loginBtn.disabled = true;
+    loginBtn.innerHTML = '<div class="spinner"></div><span>Signing in...</span>';
+
+    setTimeout(() => {
+        const users = JSON.parse(localStorage.getItem('eduscan_users') || '[]');
+        const user = users.find(u => (u.email === email || u.employeeId === email) && u.password === password);
+
+        if (user) {
+            const sessionData = { isLoggedIn: true, user: { id: user.id, name: user.name, email: user.email, employeeId: user.employeeId }, loginTime: new Date().toISOString() };
+            if (rememberMe) localStorage.setItem('eduscan_session', JSON.stringify(sessionData));
+            else sessionStorage.setItem('eduscan_session', JSON.stringify(sessionData));
+
+            document.getElementById('loginSuccess').classList.add('show');
+            setTimeout(() => {
+                document.getElementById('auth-overlay').classList.add('hidden');
+                document.getElementById('logout-btn').style.display = 'flex';
+                showToast(`Welcome, ${user.name}!`, 'ok');
+            }, 800);
+        } else {
+            document.getElementById('loginErrorText').textContent = 'Invalid Employee ID/Email or Password.';
+            document.getElementById('loginError').classList.add('show');
+            document.getElementById('loginEmail').classList.add('error');
+            document.getElementById('loginPassword').classList.add('error');
+            loginBtn.disabled = false;
+            loginBtn.innerHTML = '<span>Sign In</span>';
+        }
+    }, 800);
+}
+
+async function handleSignup(event) {
+    event.preventDefault();
+    clearAuthAlerts();
+    const name = document.getElementById('signupName').value.trim();
+    const email = document.getElementById('signupEmail').value.trim();
+    const employeeId = document.getElementById('signupEmployeeId').value.trim();
+    const password = document.getElementById('signupPassword').value;
+    const confirmPassword = document.getElementById('signupConfirmPassword').value;
+    const signupBtn = document.getElementById('signupBtn');
+
+    if (!name || !employeeId) return;
+    if (!isValidEmail(email)) { document.getElementById('signupEmail').classList.add('error'); document.getElementById('signupEmailError').classList.add('show'); return; }
+    if (password !== confirmPassword) { document.getElementById('signupConfirmPassword').classList.add('error'); document.getElementById('signupConfirmError').classList.add('show'); return; }
+    if (password.length < 6) { alert('Password must be at least 6 characters long'); return; }
+
+    signupBtn.disabled = true;
+    signupBtn.innerHTML = '<div class="spinner"></div><span>Creating account...</span>';
+
+    setTimeout(() => {
+        const users = JSON.parse(localStorage.getItem('eduscan_users') || '[]');
+        if (users.find(u => u.email === email || u.employeeId === employeeId)) {
+            document.getElementById('signupErrorText').textContent = 'Email or Employee ID already registered.';
+            document.getElementById('signupError').classList.add('show');
+            signupBtn.disabled = false;
+            signupBtn.innerHTML = '<span>Create Account</span>';
+            return;
+        }
+
+        users.push({ id: Date.now().toString(), name, email, employeeId, password, createdAt: new Date().toISOString() });
+        localStorage.setItem('eduscan_users', JSON.stringify(users));
+
+        document.getElementById('signupSuccess').classList.add('show');
+        setTimeout(() => { showLogin(); document.getElementById('loginEmail').value = email; }, 1500);
+    }, 800);
+}
+
+async function handleResetPassword(event) {
+    event.preventDefault();
+    clearAuthAlerts();
+    const email = document.getElementById('resetEmail').value.trim();
+    const resetBtn = document.getElementById('resetBtn');
+
+    if (!isValidEmail(email)) { document.getElementById('resetEmail').classList.add('error'); document.getElementById('resetEmailError').classList.add('show'); return; }
+
+    resetBtn.disabled = true;
+    resetBtn.innerHTML = '<div class="spinner"></div><span>Sending...</span>';
+
+    setTimeout(() => {
+        document.getElementById('resetSuccess').classList.add('show');
+        resetBtn.disabled = false;
+        resetBtn.innerHTML = '<span>Send Reset Link</span>';
+    }, 800);
+}
+
+function signInWithMicrosoft() {
+    showToast('Microsoft SSO integration coming soon.', 'info');
+}
+
+function handleLogout() {
+    if (confirm('Are you sure you want to logout?')) {
+        localStorage.removeItem('eduscan_session');
+        sessionStorage.removeItem('eduscan_session');
+        document.getElementById('auth-overlay').classList.remove('hidden');
+        document.getElementById('logout-btn').style.display = 'none';
+        showLogin();
+        document.getElementById('loginEmail').value = '';
+        document.getElementById('loginPassword').value = '';
+        showToast('Logged out successfully.', 'info');
+    }
+}
+
+function checkAuthSession() {
+    const session = localStorage.getItem('eduscan_session') || sessionStorage.getItem('eduscan_session');
+    if (session) {
+        try {
+            const data = JSON.parse(session);
+            if (data.isLoggedIn) {
+                document.getElementById('auth-overlay').classList.add('hidden');
+                document.getElementById('logout-btn').style.display = 'flex';
+                return true;
+            }
+        } catch(e) {}
+    }
+    document.getElementById('auth-overlay').classList.remove('hidden');
+    document.getElementById('logout-btn').style.display = 'none';
+    updateAuthDate();
+    return false;
+}
+
 // ── BOOT ──────────────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', async () => {
-  await openDB();
+    // ── AUTH CHECK (Added) ──
+    const isLoggedIn = checkAuthSession();
+    // The app continues to load data in the background so it's ready when they log in
+    
+    await openDB();
 
   // Migrate from localStorage if IDB is empty
   const existingClasses = await dbGetAll('classes');
@@ -4159,648 +4109,6 @@ window.addEventListener('DOMContentLoaded', async () => {
   // Show install banner after a short delay so it doesn't flash on load
   setTimeout(initInstallBanner, 1200);
 });
-</script>
-
-<script>
-// ── FIREBASE AUTH & TRIAL GATE ──────────────────────────────────────────
-const firebaseConfig = {
-  apiKey: "AIzaSyDnzWyIRsBkdUQOr7ojAf1Lx6F6hmmQZAE",
-  authDomain: "eduscan-ph.firebaseapp.com",
-  projectId: "eduscan-ph",
-  storageBucket: "eduscan-ph.firebasestorage.app",
-  messagingSenderId: "741562148163",
-  appId: "1:741562148163:web:eaff9d53e2c08aa114bbf6",
-  measurementId: "G-44YHWR9QNP"
-};
-
-const TRIAL_DAYS = 7;
-const authGate = document.getElementById('auth-gate');
-const loginView = document.getElementById('login-view');
-const expiredView = document.getElementById('expired-view');
-const resetPasswordView = document.getElementById('reset-password-view');
-
-// Firebase's modular SDK only works as ES modules, but the rest of this
-// page (and all its inline onclick="" handlers in the HTML) are plain,
-// non-module script — onclick="" can't see anything declared inside a
-// <script type="module">. So every function the HTML calls directly
-// (loginWithGoogle, logoutUser, agForgotPassword, confirmLogout) is
-// defined here on `window` explicitly, and the actual Firebase calls are
-// routed through window.__firebase (set up by the module script earlier
-// in <head>). Everything else below is unchanged from before — same
-// validation, same UI state machine, same screens.
-// IMPORTANT: this is named `fsDb` (Firestore DB), NOT `db` — the main
-// app already declares `let db` at the top of its own script block for
-// its IndexedDB connection (see openDB() near line 1512). Separate
-// non-module <script> tags share ONE global scope in the browser, so a
-// second top-level `let db` here collided with that declaration and
-// threw "Identifier 'db' has already been declared" — which silently
-// aborted this entire script block, meaning logoutUser/confirmLogout/
-// every Firebase function never got defined at all. That's the actual
-// root cause of the reported logout failure.
-let fb, auth, fsDb, googleProvider;
-let isPasswordRecovery = false;
-let firebaseInitFailed = false;
-
-// readyPromise resolves once Firebase is fully initialized. Every
-// window-exposed function below awaits this FIRST, before touching fb/
-// auth/db — so it doesn't matter whether the person clicks logout (or
-// anything else) one millisecond after page load or ten minutes later;
-// there's no window where the button "does nothing" because the
-// underlying objects aren't ready yet. This replaces the old
-// event-listener approach, which had a real missed-event race: if the
-// module script's 'firebase-ready' event fired before this script had
-// even run far enough to start listening for it, the event was lost
-// forever and initFirebase() never ran — silently breaking every auth
-// button on the page, which is exactly what was reported.
-//
-// DEFENSIVE GUARD: window.__firebaseReady is set by the <script
-// type="module"> in <head>. If that module fails for ANY reason — one
-// of its three import statements gets blocked (ad blocker, network
-// blip, CDN hiccup, a CSP rule on whatever host this is deployed to,
-// etc.) — the WHOLE module silently never runs, window.__firebaseReady
-// is simply never created, and calling .then() on undefined throws a
-// TypeError right here. That crash previously took down everything
-// below it in this script block too, including every window.X function
-// the HTML's onclick="" handlers call — which is why "Cannot read
-// properties of undefined (reading 'then')" and "confirmLogout is not
-// defined" showed up together. Guarding this one line means a Firebase
-// load failure now degrades to a visible error message instead of
-// silently breaking every button on the page.
-let readyPromise;
-if (window.__firebaseReady && typeof window.__firebaseReady.then === 'function') {
-    readyPromise = window.__firebaseReady.then((F) => {
-        fb = F;
-        const app = F.initializeApp(firebaseConfig);
-        auth = F.getAuth(app);
-        fsDb = F.getFirestore(app);
-        googleProvider = new F.GoogleAuthProvider();
-        return F;
-    }).catch((err) => {
-        console.error('Firebase initialization failed:', err);
-        firebaseInitFailed = true;
-        agShowMessage('Could not load sign-in. Check your internet connection and refresh the page.', 'error');
-        throw err;
-    });
-} else {
-    console.error('window.__firebaseReady was never set — the Firebase module script in <head> did not run. This usually means one of its CDN imports (gstatic.com) was blocked by the network, an ad blocker, or a content-security-policy on this host.');
-    firebaseInitFailed = true;
-    readyPromise = Promise.reject(new Error('Firebase module failed to load'));
-    // Surface this visibly once the DOM (and agShowMessage's target
-    // element) is definitely available, rather than assuming it already
-    // is at this exact point in page load.
-    document.addEventListener('DOMContentLoaded', () => {
-        agShowMessage('Could not load sign-in. Check your internet connection and refresh the page.', 'error');
-    });
-}
-
-// ── UI HELPERS (unchanged) ──────────────────────────────────────────────
-function agShowMessage(text, type) {
-    const el = document.getElementById('ag-message');
-    if (!text) { el.className = 'ag-msg'; el.textContent = ''; return; }
-    el.textContent = text;
-    el.className = 'ag-msg show ' + type;
-}
-
-function agClearFieldErrors(formId) {
-    document.querySelectorAll('#' + formId + ' input').forEach(inp => inp.setAttribute('aria-invalid', 'false'));
-    document.querySelectorAll('#' + formId + ' .ag-error').forEach(e => e.textContent = '');
-}
-
-function agSwitchTab(tab) {
-    const isSignin = tab === 'signin';
-    document.getElementById('ag-tab-signin').classList.toggle('active', isSignin);
-    document.getElementById('ag-tab-signup').classList.toggle('active', !isSignin);
-    document.getElementById('ag-signin-form').style.display = isSignin ? 'block' : 'none';
-    document.getElementById('ag-signup-form').style.display = isSignin ? 'none' : 'block';
-    document.getElementById('ag-title-signin').style.display = isSignin ? 'block' : 'none';
-    document.getElementById('ag-title-signup').style.display = isSignin ? 'none' : 'block';
-    agShowMessage('', null);
-    agClearFieldErrors('ag-signin-form');
-    agClearFieldErrors('ag-signup-form');
-}
-
-function agSetLoading(btnId, loading) {
-    const btn = document.getElementById(btnId);
-    btn.disabled = loading;
-    btn.classList.toggle('loading', loading);
-    btn.setAttribute('aria-busy', String(loading));
-}
-
-document.querySelectorAll('.ag-pw-toggle').forEach(btn => {
-    btn.addEventListener('click', () => {
-        const targetId = btn.getAttribute('data-target');
-        const input = document.getElementById(targetId);
-        const isPw = input.type === 'password';
-        input.type = isPw ? 'text' : 'password';
-        btn.setAttribute('aria-pressed', String(isPw));
-        btn.setAttribute('aria-label', isPw ? 'Hide password' : 'Show password');
-        btn.querySelector('.ag-eye-open').style.display = isPw ? 'none' : 'block';
-        btn.querySelector('.ag-eye-closed').style.display = isPw ? 'block' : 'none';
-        input.focus();
-    });
-});
-
-document.querySelectorAll('.ag-card input').forEach(inp => {
-    inp.addEventListener('input', () => {
-        inp.setAttribute('aria-invalid', 'false');
-        const errEl = document.getElementById(inp.id + '-err');
-        if (errEl) errEl.textContent = '';
-    });
-});
-
-try {
-    const rememberedEmail = localStorage.getItem('eduscan_remembered_email');
-    if (rememberedEmail) {
-        document.getElementById('ag-signin-email').value = rememberedEmail;
-        document.getElementById('ag-remember').checked = true;
-    }
-} catch (e) {}
-
-// ── VALIDATION (unchanged) ───────────────────────────────────────────────
-function agValidateEmail(value) {
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
-}
-
-function agValidateSignin() {
-    let ok = true;
-    agClearFieldErrors('ag-signin-form');
-    const email = document.getElementById('ag-signin-email');
-    const pw = document.getElementById('ag-signin-password');
-
-    if (!email.value.trim()) {
-        document.getElementById('ag-signin-email-err').textContent = 'Enter your email address';
-        email.setAttribute('aria-invalid', 'true'); ok = false;
-    } else if (!agValidateEmail(email.value)) {
-        document.getElementById('ag-signin-email-err').textContent = 'Enter a valid email address';
-        email.setAttribute('aria-invalid', 'true'); ok = false;
-    }
-    if (!pw.value) {
-        document.getElementById('ag-signin-password-err').textContent = 'Enter your password';
-        pw.setAttribute('aria-invalid', 'true'); ok = false;
-    }
-    return ok;
-}
-
-function agValidateSignup() {
-    let ok = true;
-    agClearFieldErrors('ag-signup-form');
-    const name = document.getElementById('ag-signup-name');
-    const email = document.getElementById('ag-signup-email');
-    const pw = document.getElementById('ag-signup-password');
-
-    if (!name.value.trim()) {
-        document.getElementById('ag-signup-name-err').textContent = 'Enter your full name';
-        name.setAttribute('aria-invalid', 'true'); ok = false;
-    }
-    if (!email.value.trim()) {
-        document.getElementById('ag-signup-email-err').textContent = 'Enter your email address';
-        email.setAttribute('aria-invalid', 'true'); ok = false;
-    } else if (!agValidateEmail(email.value)) {
-        document.getElementById('ag-signup-email-err').textContent = 'Enter a valid email address';
-        email.setAttribute('aria-invalid', 'true'); ok = false;
-    }
-    if (!pw.value) {
-        document.getElementById('ag-signup-password-err').textContent = 'Choose a password';
-        pw.setAttribute('aria-invalid', 'true'); ok = false;
-    } else if (pw.value.length < 6) {
-        document.getElementById('ag-signup-password-err').textContent = 'Password must be at least 6 characters';
-        pw.setAttribute('aria-invalid', 'true'); ok = false;
-    }
-    return ok;
-}
-
-// Maps Firebase's auth error codes to plain-language messages. Firebase
-// always gives a `.code` like "auth/email-already-in-use" — much more
-// reliable to switch on than parsing `.message` text, which is what the
-// Supabase version had to do.
-function agFriendlyAuthError(error) {
-    const code = error && error.code;
-    switch (code) {
-        case 'auth/email-already-in-use':
-            return 'An account with this email already exists. Try signing in, or use "Forgot password?" if you don\'t remember your password.';
-        case 'auth/invalid-email':
-            return 'Enter a valid email address.';
-        case 'auth/weak-password':
-            return 'Password must be at least 6 characters.';
-        case 'auth/user-not-found':
-        case 'auth/wrong-password':
-        case 'auth/invalid-credential':
-            return 'Incorrect email or password.';
-        case 'auth/too-many-requests':
-            return 'Too many attempts. Please wait a moment and try again.';
-        case 'auth/popup-closed-by-user':
-            return 'Google sign-in was closed before finishing. Please try again.';
-        case 'auth/network-request-failed':
-            return 'Network error. Check your connection and try again.';
-        default:
-            return (error && error.message) || 'Something went wrong. Please try again.';
-    }
-}
-
-// ── FIRESTORE PROFILE HELPERS ────────────────────────────────────────────
-// One document per user in the `profiles` collection, keyed by their
-// Firebase Auth UID — the direct equivalent of the old Supabase
-// `profiles` table keyed by `id`.
-async function getProfile(uid) {
-    const ref = fb.doc(fsDb, 'profiles', uid);
-    const snap = await fb.getDoc(ref);
-    return snap.exists() ? snap.data() : null;
-}
-
-async function createProfile(user, fullName) {
-    const trialEndsAt = new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000).toISOString();
-    const profile = {
-        full_name: fullName || user.displayName || user.email,
-        email: user.email,
-        is_lifetime: false,
-        trial_ends_at: trialEndsAt,
-        created_at: new Date().toISOString()
-    };
-    await fb.setDoc(fb.doc(fsDb, 'profiles', user.uid), profile);
-    return profile;
-}
-
-// ── 1. SIGN UP (email + password) ──────────────────────────────────────
-document.getElementById('ag-signup-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    if (!agValidateSignup()) {
-        const firstInvalid = e.target.querySelector('[aria-invalid="true"]');
-        firstInvalid && firstInvalid.focus();
-        return;
-    }
-
-    const name = document.getElementById('ag-signup-name').value.trim();
-    const email = document.getElementById('ag-signup-email').value.trim();
-    const password = document.getElementById('ag-signup-password').value;
-
-    agShowMessage('', null);
-    agSetLoading('ag-signup-btn', true);
-
-    try {
-        await readyPromise; // ensure fb/auth/fsDb exist no matter how early this fires
-
-        // Unlike Supabase, Firebase throws a loud, specific
-        // auth/email-already-in-use error for a duplicate email — no
-        // more guessing at response shape to detect this case.
-        const cred = await fb.createUserWithEmailAndPassword(auth, email, password);
-        await fb.updateProfile(cred.user, { displayName: name });
-        await createProfile(cred.user, name);
-
-        agSetLoading('ag-signup-btn', false);
-        checkSubscriptionStatus();
-    } catch (err) {
-        agShowMessage(agFriendlyAuthError(err), 'error');
-        agSetLoading('ag-signup-btn', false);
-    }
-});
-
-// ── 2. SIGN IN (email + password) ──────────────────────────────────────
-document.getElementById('ag-signin-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    if (!agValidateSignin()) {
-        const firstInvalid = e.target.querySelector('[aria-invalid="true"]');
-        firstInvalid && firstInvalid.focus();
-        return;
-    }
-
-    const email = document.getElementById('ag-signin-email').value.trim();
-    const password = document.getElementById('ag-signin-password').value;
-    const remember = document.getElementById('ag-remember').checked;
-
-    agShowMessage('', null);
-    agSetLoading('ag-signin-btn', true);
-
-    try {
-        await readyPromise;
-        await fb.signInWithEmailAndPassword(auth, email, password);
-
-        try {
-            if (remember) localStorage.setItem('eduscan_remembered_email', email);
-            else localStorage.removeItem('eduscan_remembered_email');
-        } catch (e) {}
-
-        agSetLoading('ag-signin-btn', false);
-        checkSubscriptionStatus();
-    } catch (err) {
-        agShowMessage(agFriendlyAuthError(err), 'error');
-        agSetLoading('ag-signin-btn', false);
-    }
-});
-
-// ── 3. FORGOT PASSWORD ──────────────────────────────────────────────────
-// Firebase sends this email through Google's own infrastructure — no
-// separate SMTP setup, and no low-volume rate-limit wall like Supabase's
-// default mailer.
-window.agForgotPassword = async function agForgotPassword() {
-    const email = document.getElementById('ag-signin-email').value.trim();
-    if (!email || !agValidateEmail(email)) {
-        agShowMessage('Enter your email above first, then tap "Forgot password?" again.', 'info');
-        document.getElementById('ag-signin-email').focus();
-        return;
-    }
-    agShowMessage('Sending reset link…', 'info');
-    try {
-        await readyPromise;
-        await fb.sendPasswordResetEmail(auth, email);
-        agShowMessage(`Password reset link sent to ${email}. Check your inbox.`, 'success');
-    } catch (err) {
-        agShowMessage(agFriendlyAuthError(err), 'error');
-    }
-};
-
-// ── 3b. SET NEW PASSWORD ─────────────────────────────────────────────────
-// Firebase's reset-password email link does NOT sign the person into
-// this page the way Supabase's did — it opens Firebase's own hosted
-// "reset password" page by default. To keep the reset experience inside
-// EduScan PH's own UI, the reset email's action link is configured to
-// land back on this page with an oobCode (the verification code) in the
-// URL, which this form then submits via verifyPasswordResetCode +
-// confirmPasswordReset. See the setup note below the script for the one
-// Firebase Console setting this depends on.
-document.getElementById('ag-reset-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-
-    const pw = document.getElementById('ag-reset-password');
-    const pwConfirm = document.getElementById('ag-reset-password-confirm');
-    const pwErr = document.getElementById('ag-reset-password-err');
-    const pwConfirmErr = document.getElementById('ag-reset-password-confirm-err');
-
-    pwErr.textContent = ''; pwConfirmErr.textContent = '';
-    pw.setAttribute('aria-invalid', 'false'); pwConfirm.setAttribute('aria-invalid', 'false');
-
-    let ok = true;
-    if (!pw.value) {
-        pwErr.textContent = 'Enter a new password';
-        pw.setAttribute('aria-invalid', 'true'); ok = false;
-    } else if (pw.value.length < 6) {
-        pwErr.textContent = 'Password must be at least 6 characters';
-        pw.setAttribute('aria-invalid', 'true'); ok = false;
-    }
-    if (ok && pw.value !== pwConfirm.value) {
-        pwConfirmErr.textContent = 'Passwords do not match';
-        pwConfirm.setAttribute('aria-invalid', 'true'); ok = false;
-    }
-    if (!ok) return;
-
-    const msgEl = document.getElementById('ag-reset-message');
-    msgEl.className = 'ag-msg';
-    agSetLoading('ag-reset-btn', true);
-
-    try {
-        await readyPromise;
-        // updatePassword() works when the person already has a live
-        // session (e.g. they're still signed in elsewhere). If they
-        // arrived purely via the email link with no active session,
-        // Firebase's confirmPasswordReset + oobCode path (wired in
-        // handlePasswordResetLink below) is what actually applies here —
-        // this call is the fallback for an already-authenticated update.
-        if (auth.currentUser) {
-            await fb.updatePassword(auth.currentUser, pw.value);
-        } else {
-            throw { code: 'auth/no-current-user' };
-        }
-
-        msgEl.textContent = 'Password updated! Taking you to sign in…';
-        msgEl.className = 'ag-msg show success';
-        agSetLoading('ag-reset-btn', false);
-
-        setTimeout(async () => {
-            isPasswordRecovery = false;
-            await fb.signOut(auth);
-            resetPasswordView.style.display = 'none';
-            loginView.style.display = 'block';
-            agSwitchTab('signin');
-            document.getElementById('ag-signin-password').value = '';
-        }, 1500);
-    } catch (err) {
-        msgEl.textContent = agFriendlyAuthError(err);
-        msgEl.className = 'ag-msg show error';
-        agSetLoading('ag-reset-btn', false);
-    }
-});
-
-// ── 4. GOOGLE OAUTH ──────────────────────────────────────────────────────
-// Firebase's signInWithPopup handles the entire OAuth dance internally —
-// no manual redirect_uri configuration in Google Cloud Console needed
-// (Firebase registers its own callback automatically when you enable the
-// Google provider in the Firebase Console).
-window.loginWithGoogle = async function loginWithGoogle() {
-    agShowMessage('', null);
-    try {
-        await readyPromise;
-        const result = await fb.signInWithPopup(auth, googleProvider);
-        // First-time Google sign-in: no profile doc yet, create one now.
-        const existing = await getProfile(result.user.uid);
-        if (!existing) {
-            await createProfile(result.user, result.user.displayName);
-        }
-        checkSubscriptionStatus();
-    } catch (err) {
-        console.error('Login error:', err);
-        agShowMessage(agFriendlyAuthError(err), 'error');
-    }
-};
-
-// ── 5. LOGOUT ─────────────────────────────────────────────────────────────
-// This is the function the header's sign-out button calls. It previously
-// failed silently if clicked before initFirebase() had run (see the
-// readyPromise comment above) — awaiting readyPromise here guarantees
-// fb.signOut is always callable, no matter when the button is clicked.
-// Wrapped in try/catch so that if readyPromise itself REJECTS (Firebase's
-// module failed to load entirely — see the defensive guard around
-// readyPromise's declaration), the person sees a clear message instead
-// of an uncaught error that, by crashing this function, would also have
-// prevented window.confirmLogout from being defined in the first place.
-window.logoutUser = async function logoutUser() {
-    console.log('LOGOUT DEBUG: function called');
-    try {
-        console.log('LOGOUT DEBUG: awaiting readyPromise...');
-        await readyPromise;
-        console.log('LOGOUT DEBUG: readyPromise resolved, calling fb.signOut...');
-        await fb.signOut(auth);
-        console.log('LOGOUT DEBUG: signOut succeeded, clearing cache...');
-        localStorage.removeItem('eduscan_auth_cache');
-        console.log('LOGOUT DEBUG: cache cleared, reloading page now...');
-        window.location.reload();
-    } catch (err) {
-        console.error('LOGOUT DEBUG: caught an error, this is why it stopped:', err);
-        agShowMessage('Could not sign out — check your connection and try again, or just close the app.', 'error');
-    }
-};
-
-window.confirmLogout = function confirmLogout() {
-    if (confirm('Sign out of EduScan PH?\n\nYour classes, students, and attendance logs stay saved on this device — signing out only ends your current session.')) {
-        logoutUser();
-    }
-};
-
-// ── 6. THE GATEKEEPER: Checks if user is allowed to use the app ─────────
-async function checkSubscriptionStatus() {
-    if (isPasswordRecovery) return;
-
-    try {
-        await readyPromise; // auth/fsDb must exist before reading auth.currentUser
-    } catch (err) {
-        // Firebase's module never loaded at all — show sign-in rather
-        // than silently hanging with neither the app nor the login card
-        // visible. agShowMessage() already surfaced the underlying
-        // reason when readyPromise was first constructed.
-        console.log('GATE DEBUG: readyPromise rejected, showing login');
-        authGate.classList.add('active');
-        loginView.style.display = 'block';
-        expiredView.style.display = 'none';
-        return;
-    }
-
-    const user = auth.currentUser;
-    console.log('GATE DEBUG: auth.currentUser is', user ? ('signed in as ' + user.email) : 'null (signed out)');
-
-    if (!user) {
-        const cached = localStorage.getItem('eduscan_auth_cache');
-        console.log('GATE DEBUG: no user — cached profile in localStorage:', cached);
-        if (cached) {
-            const profile = JSON.parse(cached);
-            const stillValid = profile.is_lifetime || new Date(profile.trial_ends_at) > new Date();
-            console.log('GATE DEBUG: cached profile still valid?', stillValid, profile);
-            if (stillValid) {
-                console.log('GATE DEBUG: granting access from stale cache despite no live user — THIS would be the bug if seen right after logout');
-                authGate.classList.remove('active');
-                return;
-            }
-        }
-        console.log('GATE DEBUG: showing login screen (correct post-logout behavior)');
-        authGate.classList.add('active');
-        loginView.style.display = 'block';
-        expiredView.style.display = 'none';
-        return;
-    }
-
-    try {
-        let profile = await getProfile(user.uid);
-
-        if (!profile) {
-            // No profile doc yet — covers Google sign-in's first run, or
-            // a signup whose profile-create step failed for some reason.
-            // Create one now rather than locking the person out.
-            console.warn('No profile found for this user — creating one now.');
-            profile = await createProfile(user, user.displayName);
-        }
-
-        localStorage.setItem('eduscan_auth_cache', JSON.stringify(profile));
-
-        if (profile.is_lifetime || new Date(profile.trial_ends_at) > new Date()) {
-            authGate.classList.remove('active'); // ✅ ACCESS GRANTED
-            return;
-        }
-    } catch (e) {
-        console.warn('Offline or fetch failed, relying on local cache.', e);
-        const cached = localStorage.getItem('eduscan_auth_cache');
-        if (cached) {
-            const profile = JSON.parse(cached);
-            if (profile.is_lifetime || new Date(profile.trial_ends_at) > new Date()) {
-                authGate.classList.remove('active');
-                return;
-            }
-        }
-    }
-
-    // Trial expired or no valid cache
-    authGate.classList.add('active');
-    loginView.style.display = 'none';
-    expiredView.style.display = 'block'; // ❌ ACCESS DENIED
-}
-
-function showResetPasswordView() {
-    isPasswordRecovery = true;
-    authGate.classList.add('active');
-    loginView.style.display = 'none';
-    expiredView.style.display = 'none';
-    resetPasswordView.style.display = 'block';
-}
-
-// ── AUTH STATE LISTENER ───────────────────────────────────────────────────
-function wireUpAuthListenersAndRunGate() {
-    fb.onAuthStateChanged(auth, (user) => {
-        if (isPasswordRecovery) return; // see showResetPasswordView()
-        if (user) checkSubscriptionStatus();
-        else checkSubscriptionStatus();
-    });
-
-    // If this page load is a password-reset email link, Firebase puts a
-    // `mode=resetPassword` + `oobCode=...` pair in the URL query string
-    // (this requires the reset email's action URL to point back at this
-    // page — see the setup note at the bottom of this file). Detect that
-    // BEFORE the normal auth-state check runs, so the person sees the
-    // "set new password" screen instead of the main app or sign-in form.
-    handlePasswordResetLink();
-
-    setTimeout(checkSubscriptionStatus, 500);
-}
-
-// Kick off the gate as soon as Firebase finishes initializing — this is
-// the one and only place wireUpAuthListenersAndRunGate() is called from,
-// driven by the race-free readyPromise rather than the old event-based
-// approach.
-readyPromise.then(wireUpAuthListenersAndRunGate);
-
-async function handlePasswordResetLink() {
-    const params = new URLSearchParams(window.location.search);
-    const mode = params.get('mode');
-    const oobCode = params.get('oobCode');
-    if (mode !== 'resetPassword' || !oobCode) return;
-
-    try {
-        // Confirms the code is valid and gets the associated email, but
-        // doesn't change the password yet — that happens in the form
-        // submit handler below via confirmPasswordReset.
-        const { verifyPasswordResetCode, confirmPasswordReset } = window.__firebase;
-        const email = await verifyPasswordResetCode(auth, oobCode);
-        showResetPasswordView();
-
-        // Re-wire the reset form's submit handler specifically for this
-        // oobCode flow (no active session exists yet at this point, so
-        // the normal updatePassword() path in the form handler above
-        // can't run — this needs confirmPasswordReset instead, which
-        // works purely off the emailed code).
-        const form = document.getElementById('ag-reset-form');
-        const newHandler = async (e) => {
-            e.preventDefault();
-            const pw = document.getElementById('ag-reset-password').value;
-            const pwConfirm = document.getElementById('ag-reset-password-confirm').value;
-            const msgEl = document.getElementById('ag-reset-message');
-
-            if (!pw || pw.length < 6) {
-                document.getElementById('ag-reset-password-err').textContent = 'Password must be at least 6 characters';
-                document.getElementById('ag-reset-password').setAttribute('aria-invalid', 'true');
-                return;
-            }
-            if (pw !== pwConfirm) {
-                document.getElementById('ag-reset-password-confirm-err').textContent = 'Passwords do not match';
-                document.getElementById('ag-reset-password-confirm').setAttribute('aria-invalid', 'true');
-                return;
-            }
-
-            agSetLoading('ag-reset-btn', true);
-            try {
-                await confirmPasswordReset(auth, oobCode, pw);
-                msgEl.textContent = `Password updated for ${email}! Taking you to sign in…`;
-                msgEl.className = 'ag-msg show success';
-                agSetLoading('ag-reset-btn', false);
-                setTimeout(() => {
-                    isPasswordRecovery = false;
-                    window.location.href = window.location.origin + window.location.pathname;
-                }, 1500);
-            } catch (err) {
-                msgEl.textContent = agFriendlyAuthError(err);
-                msgEl.className = 'ag-msg show error';
-                agSetLoading('ag-reset-btn', false);
-            }
-        };
-        form.addEventListener('submit', newHandler);
-    } catch (err) {
-        agShowMessage('This password reset link is invalid or has expired. Please request a new one.', 'error');
-    }
-}
 </script>
 
 <script>
