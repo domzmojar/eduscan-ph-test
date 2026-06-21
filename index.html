@@ -33,14 +33,29 @@
     // those aren't ES modules and can't use `import` themselves. This is
     // the standard bridge pattern for mixing a modular Firebase SDK with
     // a non-module page script.
-    window.__firebase = {
-      initializeApp, getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
-      signInWithPopup, GoogleAuthProvider, sendPasswordResetEmail,
-      updatePassword, signOut, onAuthStateChanged, updateProfile,
-      verifyPasswordResetCode, confirmPasswordReset,
-      getFirestore, doc, getDoc, setDoc
-    };
-    window.dispatchEvent(new Event('firebase-ready'));
+    //
+    // window.__firebaseReady is a PROMISE, not an event. A plain
+    // 'firebase-ready' event (the original approach) has a real race
+    // condition: <script type="module"> loads asynchronously per the
+    // HTML spec, so if this module finishes and dispatches its event
+    // BEFORE the later <script> down in <body> has even run far enough
+    // to call addEventListener for it, the event fires into nobody and
+    // is lost forever — silently. That's exactly what caused the logout
+    // button (and every other auth function) to do nothing: the
+    // functions were never actually attached to window because
+    // initFirebase() never ran. A Promise has no such window — code can
+    // await it at ANY time, before or after it resolves, and always gets
+    // the result correctly.
+    window.__firebaseReady = new Promise((resolve) => {
+      window.__firebase = {
+        initializeApp, getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
+        signInWithPopup, GoogleAuthProvider, sendPasswordResetEmail,
+        updatePassword, signOut, onAuthStateChanged, updateProfile,
+        verifyPasswordResetCode, confirmPasswordReset,
+        getFirestore, doc, getDoc, setDoc
+      };
+      resolve(window.__firebase);
+    });
   </script>
 
   <style>
@@ -4173,27 +4188,37 @@ const resetPasswordView = document.getElementById('reset-password-view');
 // routed through window.__firebase (set up by the module script earlier
 // in <head>). Everything else below is unchanged from before — same
 // validation, same UI state machine, same screens.
-let fb, auth, db, googleProvider;
+// IMPORTANT: this is named `fsDb` (Firestore DB), NOT `db` — the main
+// app already declares `let db` at the top of its own script block for
+// its IndexedDB connection (see openDB() near line 1512). Separate
+// non-module <script> tags share ONE global scope in the browser, so a
+// second top-level `let db` here collided with that declaration and
+// threw "Identifier 'db' has already been declared" — which silently
+// aborted this entire script block, meaning logoutUser/confirmLogout/
+// every Firebase function never got defined at all. That's the actual
+// root cause of the reported logout failure.
+let fb, auth, fsDb, googleProvider;
 let isPasswordRecovery = false;
 
-function initFirebase() {
-    const F = window.__firebase;
+// readyPromise resolves once Firebase is fully initialized. Every
+// window-exposed function below awaits this FIRST, before touching fb/
+// auth/db — so it doesn't matter whether the person clicks logout (or
+// anything else) one millisecond after page load or ten minutes later;
+// there's no window where the button "does nothing" because the
+// underlying objects aren't ready yet. This replaces the old
+// event-listener approach, which had a real missed-event race: if the
+// module script's 'firebase-ready' event fired before this script had
+// even run far enough to start listening for it, the event was lost
+// forever and initFirebase() never ran — silently breaking every auth
+// button on the page, which is exactly what was reported.
+const readyPromise = window.__firebaseReady.then((F) => {
     fb = F;
     const app = F.initializeApp(firebaseConfig);
     auth = F.getAuth(app);
-    db = F.getFirestore(app);
+    fsDb = F.getFirestore(app);
     googleProvider = new F.GoogleAuthProvider();
-    wireUpAuthListenersAndRunGate();
-}
-
-// firebase-ready fires once the module <script> in <head> has finished
-// importing and attached window.__firebase. Auth setup can't start
-// before that, so everything is wrapped in this listener.
-if (window.__firebase) {
-    initFirebase();
-} else {
-    window.addEventListener('firebase-ready', initFirebase, { once: true });
-}
+    return F;
+});
 
 // ── UI HELPERS (unchanged) ──────────────────────────────────────────────
 function agShowMessage(text, type) {
@@ -4344,7 +4369,7 @@ function agFriendlyAuthError(error) {
 // Firebase Auth UID — the direct equivalent of the old Supabase
 // `profiles` table keyed by `id`.
 async function getProfile(uid) {
-    const ref = fb.doc(db, 'profiles', uid);
+    const ref = fb.doc(fsDb, 'profiles', uid);
     const snap = await fb.getDoc(ref);
     return snap.exists() ? snap.data() : null;
 }
@@ -4358,7 +4383,7 @@ async function createProfile(user, fullName) {
         trial_ends_at: trialEndsAt,
         created_at: new Date().toISOString()
     };
-    await fb.setDoc(fb.doc(db, 'profiles', user.uid), profile);
+    await fb.setDoc(fb.doc(fsDb, 'profiles', user.uid), profile);
     return profile;
 }
 
@@ -4377,6 +4402,7 @@ document.getElementById('ag-signup-form').addEventListener('submit', async (e) =
 
     agShowMessage('', null);
     agSetLoading('ag-signup-btn', true);
+    await readyPromise; // ensure fb/auth/fsDb exist no matter how early this fires
 
     try {
         // Unlike Supabase, Firebase throws a loud, specific
@@ -4409,6 +4435,7 @@ document.getElementById('ag-signin-form').addEventListener('submit', async (e) =
 
     agShowMessage('', null);
     agSetLoading('ag-signin-btn', true);
+    await readyPromise;
 
     try {
         await fb.signInWithEmailAndPassword(auth, email, password);
@@ -4438,6 +4465,7 @@ window.agForgotPassword = async function agForgotPassword() {
         return;
     }
     agShowMessage('Sending reset link…', 'info');
+    await readyPromise;
     try {
         await fb.sendPasswordResetEmail(auth, email);
         agShowMessage(`Password reset link sent to ${email}. Check your inbox.`, 'success');
@@ -4483,6 +4511,7 @@ document.getElementById('ag-reset-form').addEventListener('submit', async (e) =>
     const msgEl = document.getElementById('ag-reset-message');
     msgEl.className = 'ag-msg';
     agSetLoading('ag-reset-btn', true);
+    await readyPromise;
 
     try {
         // updatePassword() works when the person already has a live
@@ -4523,6 +4552,7 @@ document.getElementById('ag-reset-form').addEventListener('submit', async (e) =>
 // Google provider in the Firebase Console).
 window.loginWithGoogle = async function loginWithGoogle() {
     agShowMessage('', null);
+    await readyPromise;
     try {
         const result = await fb.signInWithPopup(auth, googleProvider);
         // First-time Google sign-in: no profile doc yet, create one now.
@@ -4538,7 +4568,12 @@ window.loginWithGoogle = async function loginWithGoogle() {
 };
 
 // ── 5. LOGOUT ─────────────────────────────────────────────────────────────
+// This is the function the header's sign-out button calls. It previously
+// failed silently if clicked before initFirebase() had run (see the
+// readyPromise comment above) — awaiting readyPromise here guarantees
+// fb.signOut is always callable, no matter when the button is clicked.
 window.logoutUser = async function logoutUser() {
+    await readyPromise;
     await fb.signOut(auth);
     localStorage.removeItem('eduscan_auth_cache');
     window.location.reload();
@@ -4553,6 +4588,7 @@ window.confirmLogout = function confirmLogout() {
 // ── 6. THE GATEKEEPER: Checks if user is allowed to use the app ─────────
 async function checkSubscriptionStatus() {
     if (isPasswordRecovery) return;
+    await readyPromise; // defensive — auth/fsDb must exist before reading auth.currentUser
 
     const user = auth.currentUser;
 
@@ -4632,6 +4668,12 @@ function wireUpAuthListenersAndRunGate() {
 
     setTimeout(checkSubscriptionStatus, 500);
 }
+
+// Kick off the gate as soon as Firebase finishes initializing — this is
+// the one and only place wireUpAuthListenersAndRunGate() is called from,
+// driven by the race-free readyPromise rather than the old event-based
+// approach.
+readyPromise.then(wireUpAuthListenersAndRunGate);
 
 async function handlePasswordResetLink() {
     const params = new URLSearchParams(window.location.search);
