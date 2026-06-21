@@ -4612,13 +4612,18 @@ window.loginWithGoogle = async function loginWithGoogle() {
 // of an uncaught error that, by crashing this function, would also have
 // prevented window.confirmLogout from being defined in the first place.
 window.logoutUser = async function logoutUser() {
+    console.log('LOGOUT DEBUG: function called');
     try {
+        console.log('LOGOUT DEBUG: awaiting readyPromise...');
         await readyPromise;
+        console.log('LOGOUT DEBUG: readyPromise resolved, calling fb.signOut...');
         await fb.signOut(auth);
+        console.log('LOGOUT DEBUG: signOut succeeded, clearing cache...');
         localStorage.removeItem('eduscan_auth_cache');
+        console.log('LOGOUT DEBUG: cache cleared, reloading page now...');
         window.location.reload();
     } catch (err) {
-        console.error('Logout failed:', err);
+        console.error('LOGOUT DEBUG: caught an error, this is why it stopped:', err);
         agShowMessage('Could not sign out — check your connection and try again, or just close the app.', 'error');
     }
 };
@@ -4640,6 +4645,7 @@ async function checkSubscriptionStatus() {
         // than silently hanging with neither the app nor the login card
         // visible. agShowMessage() already surfaced the underlying
         // reason when readyPromise was first constructed.
+        console.log('GATE DEBUG: readyPromise rejected, showing login');
         authGate.classList.add('active');
         loginView.style.display = 'block';
         expiredView.style.display = 'none';
@@ -4647,16 +4653,22 @@ async function checkSubscriptionStatus() {
     }
 
     const user = auth.currentUser;
+    console.log('GATE DEBUG: auth.currentUser is', user ? ('signed in as ' + user.email) : 'null (signed out)');
 
     if (!user) {
         const cached = localStorage.getItem('eduscan_auth_cache');
+        console.log('GATE DEBUG: no user — cached profile in localStorage:', cached);
         if (cached) {
             const profile = JSON.parse(cached);
-            if (profile.is_lifetime || new Date(profile.trial_ends_at) > new Date()) {
+            const stillValid = profile.is_lifetime || new Date(profile.trial_ends_at) > new Date();
+            console.log('GATE DEBUG: cached profile still valid?', stillValid, profile);
+            if (stillValid) {
+                console.log('GATE DEBUG: granting access from stale cache despite no live user — THIS would be the bug if seen right after logout');
                 authGate.classList.remove('active');
                 return;
             }
         }
+        console.log('GATE DEBUG: showing login screen (correct post-logout behavior)');
         authGate.classList.add('active');
         loginView.style.display = 'block';
         expiredView.style.display = 'none';
