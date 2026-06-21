@@ -575,6 +575,8 @@
 }
 #logout-btn:hover { background: var(--danger-bg); color: var(--danger); border-color: var(--danger-border); }
   </style>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 <!-- AUTH OVERLAY -->
@@ -648,6 +650,30 @@
                 <button type="submit" class="btn btn-primary" id="resetBtn"><span>Send Reset Link</span></button>
             </form>
             <div class="auth-switch">Remember your password? <a onclick="showLogin()">Sign in</a></div>
+        </div>
+
+        <!-- NEW PASSWORD FORM (Shown after clicking email reset link) -->
+        <div id="newPasswordForm" class="hidden">
+            <div class="auth-header">
+                <div class="auth-logo">🔑</div>
+                <h1>Set new password</h1>
+                <p>Enter your new password below</p>
+            </div>
+            <div class="alert alert-success" id="newPasswordSuccess"><span class="checkmark">✓</span><span>Password updated!</span></div>
+            <div class="alert alert-error" id="newPasswordError"><span>⚠️</span><span id="newPasswordErrorText">Error.</span></div>
+            <form onsubmit="handleNewPassword(event)">
+                <div class="form-group">
+                    <label for="newPassword">New Password</label>
+                    <input type="password" id="newPassword" placeholder="Enter new password" oninput="checkPasswordStrength(this.value, 'newStrengthFill', 'newStrengthText')" required>
+                    <div class="password-strength"><div class="strength-bar"><div class="strength-fill" id="newStrengthFill"></div></div><div class="strength-text" id="newStrengthText">Password strength</div></div>
+                </div>
+                <div class="form-group">
+                    <label for="confirmNewPassword">Confirm New Password</label>
+                    <input type="password" id="confirmNewPassword" placeholder="Confirm new password" required>
+                    <div class="error-message" id="confirmNewPasswordError">Passwords do not match</div>
+                </div>
+                <button type="submit" class="btn btn-primary" id="newPasswordBtn"><span>Update Password</span></button>
+            </form>
         </div>
     </div>
 </div>
@@ -3850,64 +3876,57 @@ async function saveEditStudent() {
 function closeEditStudentModal(e) { if (e.target === document.getElementById('edit-student-modal')) closeEditStudentModalDirect(); }
 function closeEditStudentModalDirect() { document.getElementById('edit-student-modal').classList.remove('open'); document.body.style.overflow = ''; }
 
-// ── AUTH SYSTEM ─────────────────────────────────────────────────────────────
-function updateAuthDate() {
-    const el = document.getElementById('auth-current-date');
-    if (el) {
-        const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-        el.textContent = new Date().toLocaleDateString('en-US', options);
-    }
-}
+// ── SUPABASE AUTH SYSTEM ──────────────────────────────────────────────────
+// TODO: PASTE YOUR SUPABASE CREDENTIALS HERE
+const SUPABASE_URL = 'https://sbltuuhwcdsooitnbxgo.supabase.co'; 
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNibHR1dWh3Y2Rzb29pdG5ieGdvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIwMzI1NjgsImV4cCI6MjA5NzYwODU2OH0.hmA5C3GWFMr0RpHnJ7M2nDlYBM80mQMPZhG6Xt7spQE';
 
-function showLogin() {
-    hideAuthForms();
-    document.getElementById('loginForm').classList.remove('hidden');
-    clearAuthAlerts();
-}
-function showSignup() {
-    hideAuthForms();
-    document.getElementById('signupForm').classList.remove('hidden');
-    clearAuthAlerts();
-}
-function showResetPassword() {
-    hideAuthForms();
-    document.getElementById('resetPasswordForm').classList.remove('hidden');
-    clearAuthAlerts();
-}
-function hideAuthForms() {
-    ['loginForm', 'signupForm', 'resetPasswordForm'].forEach(id => {
-        document.getElementById(id).classList.add('hidden');
+let supabase = null;
+
+function initSupabase() {
+    if (SUPABASE_URL === 'YOUR_SUPABASE_URL' || !SUPABASE_URL) {
+        console.warn('Supabase not configured. Auth will fallback to offline mode.');
+        return;
+    }
+    supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    
+    // Listen for Auth State Changes (Handles Login, Logout, and Password Reset)
+    supabase.auth.onAuthStateChange((event, session) => {
+        if (event === 'PASSWORD_RECOVERY') {
+            // User clicked the reset link in their email
+            showNewPasswordForm();
+        } else if (event === 'SIGNED_IN' && session) {
+            document.getElementById('auth-overlay').classList.add('hidden');
+            document.getElementById('logout-btn').style.display = 'flex';
+        } else if (event === 'SIGNED_OUT' || event === 'USER_DELETED') {
+            document.getElementById('auth-overlay').classList.remove('hidden');
+            document.getElementById('logout-btn').style.display = 'none';
+            showLogin();
+        }
     });
 }
-function clearAuthAlerts() {
-    document.querySelectorAll('#auth-overlay .alert').forEach(a => a.classList.remove('show'));
-    document.querySelectorAll('#auth-overlay input').forEach(i => i.classList.remove('error'));
-    document.querySelectorAll('#auth-overlay .error-message').forEach(m => m.classList.remove('show'));
+
+function showNewPasswordForm() {
+    hideAuthForms();
+    document.getElementById('newPasswordForm').classList.remove('hidden');
+    clearAuthAlerts();
 }
 
-function checkPasswordStrength(password, fillId, textId) {
-    const fill = document.getElementById(fillId);
-    const text = document.getElementById(textId);
-    let strength = 0;
-    if (password.length >= 8) strength++;
-    if (password.match(/[a-z]/) && password.match(/[A-Z]/)) strength++;
-    if (password.match(/[0-9]/)) strength++;
-    if (password.match(/[^a-zA-Z0-9]/)) strength++;
-    
-    fill.className = 'strength-fill';
-    if (strength <= 1) { fill.classList.add('weak'); text.textContent = 'Weak password'; text.style.color = '#ef4444'; }
-    else if (strength <= 3) { fill.classList.add('medium'); text.textContent = 'Medium strength'; text.style.color = '#f59e0b'; }
-    else { fill.classList.add('strong'); text.textContent = 'Strong password'; text.style.color = '#10b981'; }
+function hideAuthForms() {
+    ['loginForm', 'signupForm', 'resetPasswordForm', 'newPasswordForm'].forEach(id => {
+        const el = document.getElementById(id);
+        if(el) el.classList.add('hidden');
+    });
 }
 
-function isValidEmail(email) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email); }
-
+// 1. LOGIN
 async function handleLogin(event) {
     event.preventDefault();
+    if (!supabase) return showToast('Auth not configured. Check Supabase keys.', 'err');
+    
     clearAuthAlerts();
     const email = document.getElementById('loginEmail').value.trim();
     const password = document.getElementById('loginPassword').value;
-    const rememberMe = document.getElementById('rememberMe').checked;
     const loginBtn = document.getElementById('loginBtn');
 
     if (!email) { document.getElementById('loginEmail').classList.add('error'); document.getElementById('loginEmailError').classList.add('show'); return; }
@@ -3916,34 +3935,24 @@ async function handleLogin(event) {
     loginBtn.disabled = true;
     loginBtn.innerHTML = '<div class="spinner"></div><span>Signing in...</span>';
 
-    setTimeout(() => {
-        const users = JSON.parse(localStorage.getItem('eduscan_users') || '[]');
-        const user = users.find(u => (u.email === email || u.employeeId === email) && u.password === password);
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
-        if (user) {
-            const sessionData = { isLoggedIn: true, user: { id: user.id, name: user.name, email: user.email, employeeId: user.employeeId }, loginTime: new Date().toISOString() };
-            if (rememberMe) localStorage.setItem('eduscan_session', JSON.stringify(sessionData));
-            else sessionStorage.setItem('eduscan_session', JSON.stringify(sessionData));
-
-            document.getElementById('loginSuccess').classList.add('show');
-            setTimeout(() => {
-                document.getElementById('auth-overlay').classList.add('hidden');
-                document.getElementById('logout-btn').style.display = 'flex';
-                showToast(`Welcome, ${user.name}!`, 'ok');
-            }, 800);
-        } else {
-            document.getElementById('loginErrorText').textContent = 'Invalid Employee ID/Email or Password.';
-            document.getElementById('loginError').classList.add('show');
-            document.getElementById('loginEmail').classList.add('error');
-            document.getElementById('loginPassword').classList.add('error');
-            loginBtn.disabled = false;
-            loginBtn.innerHTML = '<span>Sign In</span>';
-        }
-    }, 800);
+    if (error) {
+        document.getElementById('loginErrorText').textContent = error.message === 'Invalid login credentials' ? 'Invalid Email or Password.' : error.message;
+        document.getElementById('loginError').classList.add('show');
+        loginBtn.disabled = false;
+        loginBtn.innerHTML = '<span>Sign In</span>';
+    } else {
+        document.getElementById('loginSuccess').classList.add('show');
+        // onAuthStateChange will handle hiding the overlay automatically
+    }
 }
 
+// 2. SIGNUP
 async function handleSignup(event) {
     event.preventDefault();
+    if (!supabase) return showToast('Auth not configured.', 'err');
+
     clearAuthAlerts();
     const name = document.getElementById('signupName').value.trim();
     const email = document.getElementById('signupEmail').value.trim();
@@ -3955,31 +3964,42 @@ async function handleSignup(event) {
     if (!name || !employeeId) return;
     if (!isValidEmail(email)) { document.getElementById('signupEmail').classList.add('error'); document.getElementById('signupEmailError').classList.add('show'); return; }
     if (password !== confirmPassword) { document.getElementById('signupConfirmPassword').classList.add('error'); document.getElementById('signupConfirmError').classList.add('show'); return; }
-    if (password.length < 6) { alert('Password must be at least 6 characters long'); return; }
+    if (password.length < 6) { showToast('Password must be at least 6 characters.', 'err'); return; }
 
     signupBtn.disabled = true;
     signupBtn.innerHTML = '<div class="spinner"></div><span>Creating account...</span>';
 
-    setTimeout(() => {
-        const users = JSON.parse(localStorage.getItem('eduscan_users') || '[]');
-        if (users.find(u => u.email === email || u.employeeId === employeeId)) {
-            document.getElementById('signupErrorText').textContent = 'Email or Employee ID already registered.';
-            document.getElementById('signupError').classList.add('show');
-            signupBtn.disabled = false;
-            signupBtn.innerHTML = '<span>Create Account</span>';
-            return;
+    const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+            data: { full_name: name, employee_id: employeeId }
         }
+    });
 
-        users.push({ id: Date.now().toString(), name, email, employeeId, password, createdAt: new Date().toISOString() });
-        localStorage.setItem('eduscan_users', JSON.stringify(users));
+    signupBtn.disabled = false;
+    signupBtn.innerHTML = '<span>Create Account</span>';
 
-        document.getElementById('signupSuccess').classList.add('show');
-        setTimeout(() => { showLogin(); document.getElementById('loginEmail').value = email; }, 1500);
-    }, 800);
+    if (error) {
+        document.getElementById('signupErrorText').textContent = error.message;
+        document.getElementById('signupError').classList.add('show');
+    } else {
+        if (data.session) {
+            // If email confirmation is disabled, they sign in immediately
+            document.getElementById('signupSuccess').classList.add('show');
+        } else {
+            showToast('Account created! Check your email to verify.', 'ok');
+            showLogin();
+            document.getElementById('loginEmail').value = email;
+        }
+    }
 }
 
+// 3. RESET PASSWORD (Sends Email)
 async function handleResetPassword(event) {
     event.preventDefault();
+    if (!supabase) return showToast('Auth not configured.', 'err');
+
     clearAuthAlerts();
     const email = document.getElementById('resetEmail').value.trim();
     const resetBtn = document.getElementById('resetBtn');
@@ -3989,53 +4009,68 @@ async function handleResetPassword(event) {
     resetBtn.disabled = true;
     resetBtn.innerHTML = '<div class="spinner"></div><span>Sending...</span>';
 
-    setTimeout(() => {
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin + window.location.pathname 
+    });
+
+    resetBtn.disabled = false;
+    resetBtn.innerHTML = '<span>Send Reset Link</span>';
+
+    if (error) {
+        document.getElementById('resetErrorText').textContent = error.message;
+        document.getElementById('resetError').classList.add('show');
+    } else {
         document.getElementById('resetSuccess').classList.add('show');
-        resetBtn.disabled = false;
-        resetBtn.innerHTML = '<span>Send Reset Link</span>';
-    }, 800);
+    }
 }
 
-function signInWithMicrosoft() {
-    showToast('Microsoft SSO integration coming soon.', 'info');
+// 4. UPDATE PASSWORD (After clicking email link)
+async function handleNewPassword(event) {
+    event.preventDefault();
+    if (!supabase) return;
+
+    const newPassword = document.getElementById('newPassword').value;
+    const confirmPassword = document.getElementById('confirmNewPassword').value;
+    const btn = document.getElementById('newPasswordBtn');
+
+    if (newPassword !== confirmPassword) {
+        document.getElementById('confirmNewPassword').classList.add('error');
+        document.getElementById('confirmNewPasswordError').classList.add('show');
+        return;
+    }
+    if (newPassword.length < 6) { showToast('Password must be at least 6 characters.', 'err'); return; }
+
+    btn.disabled = true;
+    btn.innerHTML = '<div class="spinner"></div><span>Updating...</span>';
+
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+
+    btn.disabled = false;
+    btn.innerHTML = '<span>Update Password</span>';
+
+    if (error) {
+        document.getElementById('newPasswordErrorText').textContent = error.message;
+        document.getElementById('newPasswordError').classList.add('show');
+    } else {
+        document.getElementById('newPasswordSuccess').classList.add('show');
+        history.replaceState(null, '', window.location.pathname); // Clean URL
+        setTimeout(() => showLogin(), 2000);
+    }
 }
 
+// 5. LOGOUT
 function handleLogout() {
+    if (!supabase) return;
     if (confirm('Are you sure you want to logout?')) {
-        localStorage.removeItem('eduscan_session');
-        sessionStorage.removeItem('eduscan_session');
-        document.getElementById('auth-overlay').classList.remove('hidden');
-        document.getElementById('logout-btn').style.display = 'none';
-        showLogin();
-        document.getElementById('loginEmail').value = '';
-        document.getElementById('loginPassword').value = '';
-        showToast('Logged out successfully.', 'info');
+        supabase.auth.signOut();
+        // onAuthStateChange handles UI updates
     }
-}
-
-function checkAuthSession() {
-    const session = localStorage.getItem('eduscan_session') || sessionStorage.getItem('eduscan_session');
-    if (session) {
-        try {
-            const data = JSON.parse(session);
-            if (data.isLoggedIn) {
-                document.getElementById('auth-overlay').classList.add('hidden');
-                document.getElementById('logout-btn').style.display = 'flex';
-                return true;
-            }
-        } catch(e) {}
-    }
-    document.getElementById('auth-overlay').classList.remove('hidden');
-    document.getElementById('logout-btn').style.display = 'none';
-    updateAuthDate();
-    return false;
 }
 
 // ── BOOT ──────────────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', async () => {
-    // ── AUTH CHECK (Added) ──
-    const isLoggedIn = checkAuthSession();
-    // The app continues to load data in the background so it's ready when they log in
+    // ── INIT SUPABASE AUTH ──
+    initSupabase();
     
     await openDB();
 
