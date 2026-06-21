@@ -580,7 +580,7 @@
 </head>
 <body>
 <!-- AUTH OVERLAY -->
-<div id="auth-overlay" class="hidden">
+<div id="auth-overlay">
     <div class="auth-container">
         <!-- LOGIN FORM -->
         <div id="loginForm">
@@ -679,27 +679,26 @@
 </div>
 
 <header style="display:flex; align-items:center; justify-content:space-between; padding: 0.65rem 1rem;">
-    <!-- Left side: Logo & Title -->
-    <div style="display:flex; align-items:center; gap:10px;">
-        <div style="width:40px; height:40px; border-radius:10px; flex-shrink:0; background:linear-gradient(145deg,#1d4ed8,#3b82f6); display:flex; align-items:center; justify-content:center; box-shadow:0 2px 8px rgba(29,78,216,0.3);">
-            <svg width="24" height="24" viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect x="13" y="16" width="26" height="30" rx="3" fill="white" opacity="0.95"/>
-                <rect x="20" y="11" width="12" height="8" rx="2" fill="white" opacity="0.95"/>
-                <rect x="20" y="13" width="12" height="4" rx="1" fill="#1d4ed8"/>
-                <rect x="17" y="25" width="18" height="2.5" rx="1.25" fill="#1d4ed8" opacity="0.7"/>
-                <rect x="17" y="31" width="18" height="2.5" rx="1.25" fill="#1d4ed8" opacity="0.7"/>
-                <rect x="17" y="37" width="11" height="2.5" rx="1.25" fill="#1d4ed8" opacity="0.7"/>
-                <path d="M30 38 L33 41 L39 35" stroke="#10b981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-        </div>
-        <div style="text-align:left;">
-            <div style="font-size:1.05rem; font-weight:800; color:var(--primary); letter-spacing:-0.02em; line-height:1.1;">EduScan PH</div>
-            <div style="font-size:0.7rem; color:var(--text-muted); line-height:1;">Offline-first attendance tracker</div>
-        </div>
-    </div>
-    
-    <!-- Right side: Logout Button -->
-    <button id="logout-btn" onclick="handleLogout()">🚪 Logout</button>
+<!-- Left side: Logo & Title -->
+<div style="display:flex; align-items:center; gap:10px;">
+<div style="width:40px; height:40px; border-radius:10px; flex-shrink:0; background:linear-gradient(145deg,#1d4ed8,#3b82f6); display:flex; align-items:center; justify-content:center; box-shadow:0 2px 8px rgba(29,78,216,0.3);">
+<svg width="24" height="24" viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect x="13" y="16" width="26" height="30" rx="3" fill="white" opacity="0.95"/>
+<rect x="20" y="11" width="12" height="8" rx="2" fill="white" opacity="0.95"/>
+<rect x="20" y="13" width="12" height="4" rx="1" fill="#1d4ed8"/>
+<rect x="17" y="25" width="18" height="2.5" rx="1.25" fill="#1d4ed8" opacity="0.7"/>
+<rect x="17" y="31" width="18" height="2.5" rx="1.25" fill="#1d4ed8" opacity="0.7"/>
+<rect x="17" y="37" width="11" height="2.5" rx="1.25" fill="#1d4ed8" opacity="0.7"/>
+<path d="M30 38 L33 41 L39 35" stroke="#10b981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
+</div>
+<div style="text-align:left;">
+<div style="font-size:1.05rem; font-weight:800; color:var(--primary); letter-spacing:-0.02em; line-height:1.1;">EduScan PH</div>
+<div style="font-size:0.7rem; color:var(--text-muted); line-height:1;">Offline-first attendance tracker</div>
+</div>
+</div>
+<!-- Right side: Logout Button -->
+<button id="logout-btn" onclick="handleLogout()">🚪 Logout</button>
 </header>
 
 <nav>
@@ -3880,13 +3879,20 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 let supabase = null;
 
 function initSupabase() {
-    if (SUPABASE_URL === 'YOUR_SUPABASE_URL' || !SUPABASE_URL) {
-        console.warn('Supabase not configured. Auth will fallback to offline mode.');
-        // If fallback, ensure overlay is hidden so they can use the app
-        document.getElementById('auth-overlay').classList.add('hidden');
-        return;
-    }
-    supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// SAFETY CHECK: Ensure the Supabase SDK actually loaded from the CDN
+if (typeof window.supabase === 'undefined') {
+console.error('Supabase SDK failed to load. Hiding overlay to allow offline access.');
+document.getElementById('auth-overlay').classList.add('hidden');
+return;
+}
+
+if (SUPABASE_URL === 'YOUR_SUPABASE_URL' || !SUPABASE_URL) {
+console.warn('Supabase not configured. Auth will fallback to offline mode.');
+document.getElementById('auth-overlay').classList.add('hidden');
+return;
+}
+
+supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     
     // Centralized UI updater
     function updateAuthUI(session) {
