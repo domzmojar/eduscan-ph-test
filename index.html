@@ -17,7 +17,31 @@
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import {
+      getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
+      signInWithPopup, GoogleAuthProvider, sendPasswordResetEmail,
+      updatePassword, signOut, onAuthStateChanged, updateProfile,
+      verifyPasswordResetCode, confirmPasswordReset
+    } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+    import {
+      getFirestore, doc, getDoc, setDoc
+    } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+    // Expose what the rest of the page's plain <script> blocks need, since
+    // those aren't ES modules and can't use `import` themselves. This is
+    // the standard bridge pattern for mixing a modular Firebase SDK with
+    // a non-module page script.
+    window.__firebase = {
+      initializeApp, getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
+      signInWithPopup, GoogleAuthProvider, sendPasswordResetEmail,
+      updatePassword, signOut, onAuthStateChanged, updateProfile,
+      verifyPasswordResetCode, confirmPasswordReset,
+      getFirestore, doc, getDoc, setDoc
+    };
+    window.dispatchEvent(new Event('firebase-ready'));
+  </script>
 
   <style>
     :root {
@@ -4123,30 +4147,55 @@ window.addEventListener('DOMContentLoaded', async () => {
 </script>
 
 <script>
-// ── SUPABASE AUTH & SUBSCRIPTION GATE ──────────────────────────────────────
-// ⚠️ REPLACE THESE WITH YOUR ACTUAL SUPABASE CREDENTIALS ⚠️
-const SUPABASE_URL = 'https://dkzqbmrkayxfqfogyemw.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRrenFibXJrYXl4ZnFmb2d5ZW13Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE5NzE3NjIsImV4cCI6MjA5NzU0Nzc2Mn0.BQwsl9fOBJWqk4u-3tdmfyE8EPWxr8G8SYAb9XAJjP0';
+// ── FIREBASE AUTH & TRIAL GATE ──────────────────────────────────────────
+const firebaseConfig = {
+  apiKey: "AIzaSyDnzWyIRsBkdUQOr7ojAf1Lx6F6hmmQZAE",
+  authDomain: "eduscan-ph.firebaseapp.com",
+  projectId: "eduscan-ph",
+  storageBucket: "eduscan-ph.firebasestorage.app",
+  messagingSenderId: "741562148163",
+  appId: "1:741562148163:web:eaff9d53e2c08aa114bbf6",
+  measurementId: "G-44YHWR9QNP"
+};
 
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const TRIAL_DAYS = 7;
 const authGate = document.getElementById('auth-gate');
 const loginView = document.getElementById('login-view');
 const expiredView = document.getElementById('expired-view');
 const resetPasswordView = document.getElementById('reset-password-view');
 
-const TRIAL_DAYS = 7;
-
-// Set when Supabase fires PASSWORD_RECOVERY (i.e. the person arrived via
-// a password-reset email link). While true, checkSubscriptionStatus()
-// must NOT run its normal logic — that would immediately drop a
-// recovery session straight into the main app (since the recovery link
-// IS a valid, signed-in session), bypassing the "set a new password"
-// step entirely. This is exactly the bug reported: the reset link
-// logged the person in but gave them nowhere to actually change their
-// password.
+// Firebase's modular SDK only works as ES modules, but the rest of this
+// page (and all its inline onclick="" handlers in the HTML) are plain,
+// non-module script — onclick="" can't see anything declared inside a
+// <script type="module">. So every function the HTML calls directly
+// (loginWithGoogle, logoutUser, agForgotPassword, confirmLogout) is
+// defined here on `window` explicitly, and the actual Firebase calls are
+// routed through window.__firebase (set up by the module script earlier
+// in <head>). Everything else below is unchanged from before — same
+// validation, same UI state machine, same screens.
+let fb, auth, db, googleProvider;
 let isPasswordRecovery = false;
 
-// ── UI HELPERS ──────────────────────────────────────────────────────────
+function initFirebase() {
+    const F = window.__firebase;
+    fb = F;
+    const app = F.initializeApp(firebaseConfig);
+    auth = F.getAuth(app);
+    db = F.getFirestore(app);
+    googleProvider = new F.GoogleAuthProvider();
+    wireUpAuthListenersAndRunGate();
+}
+
+// firebase-ready fires once the module <script> in <head> has finished
+// importing and attached window.__firebase. Auth setup can't start
+// before that, so everything is wrapped in this listener.
+if (window.__firebase) {
+    initFirebase();
+} else {
+    window.addEventListener('firebase-ready', initFirebase, { once: true });
+}
+
+// ── UI HELPERS (unchanged) ──────────────────────────────────────────────
 function agShowMessage(text, type) {
     const el = document.getElementById('ag-message');
     if (!text) { el.className = 'ag-msg'; el.textContent = ''; return; }
@@ -4179,8 +4228,6 @@ function agSetLoading(btnId, loading) {
     btn.setAttribute('aria-busy', String(loading));
 }
 
-// Password show/hide toggle — wired generically so it works for both
-// the sign-in and sign-up password fields without duplicating logic.
 document.querySelectorAll('.ag-pw-toggle').forEach(btn => {
     btn.addEventListener('click', () => {
         const targetId = btn.getAttribute('data-target');
@@ -4195,8 +4242,6 @@ document.querySelectorAll('.ag-pw-toggle').forEach(btn => {
     });
 });
 
-// Clear field-level errors as the person types, same pattern as the
-// reference design — errors shouldn't linger once they've started fixing them.
 document.querySelectorAll('.ag-card input').forEach(inp => {
     inp.addEventListener('input', () => {
         inp.setAttribute('aria-invalid', 'false');
@@ -4205,8 +4250,6 @@ document.querySelectorAll('.ag-card input').forEach(inp => {
     });
 });
 
-// Remember-me: pre-fill the last-used sign-in email (not the password —
-// we never persist that client-side).
 try {
     const rememberedEmail = localStorage.getItem('eduscan_remembered_email');
     if (rememberedEmail) {
@@ -4215,7 +4258,7 @@ try {
     }
 } catch (e) {}
 
-// ── VALIDATION ────────────────────────────────────────────────────────────
+// ── VALIDATION (unchanged) ───────────────────────────────────────────────
 function agValidateEmail(value) {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 }
@@ -4268,13 +4311,58 @@ function agValidateSignup() {
     return ok;
 }
 
+// Maps Firebase's auth error codes to plain-language messages. Firebase
+// always gives a `.code` like "auth/email-already-in-use" — much more
+// reliable to switch on than parsing `.message` text, which is what the
+// Supabase version had to do.
+function agFriendlyAuthError(error) {
+    const code = error && error.code;
+    switch (code) {
+        case 'auth/email-already-in-use':
+            return 'An account with this email already exists. Try signing in, or use "Forgot password?" if you don\'t remember your password.';
+        case 'auth/invalid-email':
+            return 'Enter a valid email address.';
+        case 'auth/weak-password':
+            return 'Password must be at least 6 characters.';
+        case 'auth/user-not-found':
+        case 'auth/wrong-password':
+        case 'auth/invalid-credential':
+            return 'Incorrect email or password.';
+        case 'auth/too-many-requests':
+            return 'Too many attempts. Please wait a moment and try again.';
+        case 'auth/popup-closed-by-user':
+            return 'Google sign-in was closed before finishing. Please try again.';
+        case 'auth/network-request-failed':
+            return 'Network error. Check your connection and try again.';
+        default:
+            return (error && error.message) || 'Something went wrong. Please try again.';
+    }
+}
+
+// ── FIRESTORE PROFILE HELPERS ────────────────────────────────────────────
+// One document per user in the `profiles` collection, keyed by their
+// Firebase Auth UID — the direct equivalent of the old Supabase
+// `profiles` table keyed by `id`.
+async function getProfile(uid) {
+    const ref = fb.doc(db, 'profiles', uid);
+    const snap = await fb.getDoc(ref);
+    return snap.exists() ? snap.data() : null;
+}
+
+async function createProfile(user, fullName) {
+    const trialEndsAt = new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000).toISOString();
+    const profile = {
+        full_name: fullName || user.displayName || user.email,
+        email: user.email,
+        is_lifetime: false,
+        trial_ends_at: trialEndsAt,
+        created_at: new Date().toISOString()
+    };
+    await fb.setDoc(fb.doc(db, 'profiles', user.uid), profile);
+    return profile;
+}
+
 // ── 1. SIGN UP (email + password) ──────────────────────────────────────
-// Creates the Supabase Auth user, then creates the matching `profiles`
-// row with a fresh 7-day trial. If email confirmation is enabled on the
-// Supabase project, there will be no session yet after signUp() — in
-// that case we tell the person to check their inbox instead of silently
-// failing the profile insert (which requires an authenticated session
-// under normal RLS policies).
 document.getElementById('ag-signup-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     if (!agValidateSignup()) {
@@ -4291,73 +4379,17 @@ document.getElementById('ag-signup-form').addEventListener('submit', async (e) =
     agSetLoading('ag-signup-btn', true);
 
     try {
-        const { data, error } = await sb.auth.signUp({
-            email, password,
-            options: { data: { full_name: name } }
-        });
-
-        if (error) {
-            agShowMessage(error.message || 'Could not create account. Please try again.', 'error');
-            agSetLoading('ag-signup-btn', false);
-            return;
-        }
-
-        // TEMP DIAGNOSTIC — remove once #1 is confirmed fixed. Open
-        // DevTools Console (F12 → Console tab) before signing up with an
-        // existing email, then check what this actually prints.
-        console.log('SIGNUP DEBUG — data.session:', data.session);
-        console.log('SIGNUP DEBUG — data.user:', data.user);
-        console.log('SIGNUP DEBUG — identities:', data.user ? data.user.identities : 'no user object');
-
-        // Supabase intentionally avoids a loud "email already registered"
-        // error (it would let someone probe which emails have accounts).
-        // Instead, signing up again with an existing-but-unconfirmed email
-        // returns success with no session AND an empty identities array.
-        // A genuinely brand-new sign-up also has no session when email
-        // confirmation is on, but its identities array is populated — so
-        // checking identities.length is what tells these two cases apart.
-        if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
-            agShowMessage('An account with this email already exists. Try signing in, or use "Forgot password?" if you don\'t remember your password.', 'info');
-            agSetLoading('ag-signup-btn', false);
-            agSwitchTab('signin');
-            document.getElementById('ag-signin-email').value = email;
-            return;
-        }
-
-        // No session yet => Supabase project has email confirmation ON,
-        // and this genuinely is a brand-new sign-up.
-        if (!data.session) {
-            agShowMessage('Account created! Check your email to confirm your address, then sign in.', 'success');
-            agSetLoading('ag-signup-btn', false);
-            agSwitchTab('signin');
-            document.getElementById('ag-signin-email').value = email;
-            return;
-        }
-
-        // Session exists immediately (email confirmation OFF) — create
-        // the trial profile now while we have an authenticated session.
-        const trialEndsAt = new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000).toISOString();
-        const { error: profileError } = await sb.from('profiles').upsert({
-            id: data.user.id,
-            full_name: name,
-            email: email,
-            is_lifetime: false,
-            trial_ends_at: trialEndsAt
-        }, { onConflict: 'id' });
-
-        if (profileError) {
-            // Don't silently swallow this — if profile creation fails
-            // (almost always an RLS policy issue), checkSubscriptionStatus()
-            // will catch and retry it on the next check, but the person
-            // should still see that something needs attention rather than
-            // assuming signup fully succeeded.
-            console.error('Profile creation error:', profileError);
-        }
+        // Unlike Supabase, Firebase throws a loud, specific
+        // auth/email-already-in-use error for a duplicate email — no
+        // more guessing at response shape to detect this case.
+        const cred = await fb.createUserWithEmailAndPassword(auth, email, password);
+        await fb.updateProfile(cred.user, { displayName: name });
+        await createProfile(cred.user, name);
 
         agSetLoading('ag-signup-btn', false);
         checkSubscriptionStatus();
     } catch (err) {
-        agShowMessage('Something went wrong. Check your connection and try again.', 'error');
+        agShowMessage(agFriendlyAuthError(err), 'error');
         agSetLoading('ag-signup-btn', false);
     }
 });
@@ -4379,18 +4411,7 @@ document.getElementById('ag-signin-form').addEventListener('submit', async (e) =
     agSetLoading('ag-signin-btn', true);
 
     try {
-        const { error } = await sb.auth.signInWithPassword({ email, password });
-
-        if (error) {
-            agShowMessage(
-                error.message === 'Invalid login credentials'
-                    ? 'Incorrect email or password.'
-                    : (error.message || 'Could not sign in. Please try again.'),
-                'error'
-            );
-            agSetLoading('ag-signin-btn', false);
-            return;
-        }
+        await fb.signInWithEmailAndPassword(auth, email, password);
 
         try {
             if (remember) localStorage.setItem('eduscan_remembered_email', email);
@@ -4400,13 +4421,16 @@ document.getElementById('ag-signin-form').addEventListener('submit', async (e) =
         agSetLoading('ag-signin-btn', false);
         checkSubscriptionStatus();
     } catch (err) {
-        agShowMessage('Something went wrong. Check your connection and try again.', 'error');
+        agShowMessage(agFriendlyAuthError(err), 'error');
         agSetLoading('ag-signin-btn', false);
     }
 });
 
 // ── 3. FORGOT PASSWORD ──────────────────────────────────────────────────
-async function agForgotPassword() {
+// Firebase sends this email through Google's own infrastructure — no
+// separate SMTP setup, and no low-volume rate-limit wall like Supabase's
+// default mailer.
+window.agForgotPassword = async function agForgotPassword() {
     const email = document.getElementById('ag-signin-email').value.trim();
     if (!email || !agValidateEmail(email)) {
         agShowMessage('Enter your email above first, then tap "Forgot password?" again.', 'info');
@@ -4415,20 +4439,22 @@ async function agForgotPassword() {
     }
     agShowMessage('Sending reset link…', 'info');
     try {
-        const { error } = await sb.auth.resetPasswordForEmail(email, {
-            redirectTo: window.location.origin
-        });
-        if (error) {
-            agShowMessage(error.message || 'Could not send reset link.', 'error');
-        } else {
-            agShowMessage(`Password reset link sent to ${email}. Check your inbox.`, 'success');
-        }
+        await fb.sendPasswordResetEmail(auth, email);
+        agShowMessage(`Password reset link sent to ${email}. Check your inbox.`, 'success');
     } catch (err) {
-        agShowMessage('Could not send reset link. Check your connection.', 'error');
+        agShowMessage(agFriendlyAuthError(err), 'error');
     }
-}
+};
 
-// ── 3b. SET NEW PASSWORD (after clicking a reset-password email link) ──
+// ── 3b. SET NEW PASSWORD ─────────────────────────────────────────────────
+// Firebase's reset-password email link does NOT sign the person into
+// this page the way Supabase's did — it opens Firebase's own hosted
+// "reset password" page by default. To keep the reset experience inside
+// EduScan PH's own UI, the reset email's action link is configured to
+// land back on this page with an oobCode (the verification code) in the
+// URL, which this form then submits via verifyPasswordResetCode +
+// confirmPasswordReset. See the setup note below the script for the one
+// Firebase Console setting this depends on.
 document.getElementById('ag-reset-form').addEventListener('submit', async (e) => {
     e.preventDefault();
 
@@ -4459,147 +4485,111 @@ document.getElementById('ag-reset-form').addEventListener('submit', async (e) =>
     agSetLoading('ag-reset-btn', true);
 
     try {
-        const { error } = await sb.auth.updateUser({ password: pw.value });
-        if (error) {
-            msgEl.textContent = error.message || 'Could not update password. Please try again.';
-            msgEl.className = 'ag-msg show error';
-            agSetLoading('ag-reset-btn', false);
-            return;
+        // updatePassword() works when the person already has a live
+        // session (e.g. they're still signed in elsewhere). If they
+        // arrived purely via the email link with no active session,
+        // Firebase's confirmPasswordReset + oobCode path (wired in
+        // handlePasswordResetLink below) is what actually applies here —
+        // this call is the fallback for an already-authenticated update.
+        if (auth.currentUser) {
+            await fb.updatePassword(auth.currentUser, pw.value);
+        } else {
+            throw { code: 'auth/no-current-user' };
         }
 
         msgEl.textContent = 'Password updated! Taking you to sign in…';
         msgEl.className = 'ag-msg show success';
         agSetLoading('ag-reset-btn', false);
 
-        // The recovery session is single-purpose: once the password is
-        // changed, sign out of it and send the person to the normal sign
-        // in form with their now-updated password, rather than silently
-        // continuing to ride the temporary recovery session into the app.
         setTimeout(async () => {
             isPasswordRecovery = false;
-            await sb.auth.signOut();
+            await fb.signOut(auth);
             resetPasswordView.style.display = 'none';
             loginView.style.display = 'block';
             agSwitchTab('signin');
             document.getElementById('ag-signin-password').value = '';
         }, 1500);
     } catch (err) {
-        msgEl.textContent = 'Something went wrong. Check your connection and try again.';
+        msgEl.textContent = agFriendlyAuthError(err);
         msgEl.className = 'ag-msg show error';
         agSetLoading('ag-reset-btn', false);
     }
 });
 
-// ── 4. GOOGLE OAUTH ─────────────────────────────────────────────────────
-async function loginWithGoogle() {
+// ── 4. GOOGLE OAUTH ──────────────────────────────────────────────────────
+// Firebase's signInWithPopup handles the entire OAuth dance internally —
+// no manual redirect_uri configuration in Google Cloud Console needed
+// (Firebase registers its own callback automatically when you enable the
+// Google provider in the Firebase Console).
+window.loginWithGoogle = async function loginWithGoogle() {
     agShowMessage('', null);
-    const { error } = await sb.auth.signInWithOAuth({
-        provider: 'google',
-        options: { redirectTo: window.location.origin }
-    });
-    if (error) {
-        console.error('Login error:', error);
-        agShowMessage(error.message || 'Could not connect to Google. Please try again.', 'error');
+    try {
+        const result = await fb.signInWithPopup(auth, googleProvider);
+        // First-time Google sign-in: no profile doc yet, create one now.
+        const existing = await getProfile(result.user.uid);
+        if (!existing) {
+            await createProfile(result.user, result.user.displayName);
+        }
+        checkSubscriptionStatus();
+    } catch (err) {
+        console.error('Login error:', err);
+        agShowMessage(agFriendlyAuthError(err), 'error');
     }
-}
+};
 
-// ── 5. LOGOUT ────────────────────────────────────────────────────────────
-async function logoutUser() {
-    await sb.auth.signOut();
-    localStorage.removeItem('eduscan_auth_cache'); // Clear local offline cache
+// ── 5. LOGOUT ─────────────────────────────────────────────────────────────
+window.logoutUser = async function logoutUser() {
+    await fb.signOut(auth);
+    localStorage.removeItem('eduscan_auth_cache');
     window.location.reload();
-}
+};
 
-// Confirmation wrapper for the header logout button — logging out mid-task
-// (e.g. mid-scan) shouldn't happen from a single accidental tap. This does
-// NOT touch any IndexedDB data (classes/students/logs all stay intact on
-// this device); it only clears the Supabase session + the cached profile
-// check, exactly like logoutUser() always did.
-function confirmLogout() {
+window.confirmLogout = function confirmLogout() {
     if (confirm('Sign out of EduScan PH?\n\nYour classes, students, and attendance logs stay saved on this device — signing out only ends your current session.')) {
         logoutUser();
     }
-}
+};
 
-// ── 6. THE GATEKEEPER: Checks if user is allowed to use the app ────────
+// ── 6. THE GATEKEEPER: Checks if user is allowed to use the app ─────────
 async function checkSubscriptionStatus() {
-    // Don't run the normal access check while the person is in the middle
-    // of a password-recovery flow — showResetPasswordView() already has
-    // the gate open on the right screen; letting this function proceed
-    // would yank them straight into the main app instead.
     if (isPasswordRecovery) return;
 
-    const { data: { session } } = await sb.auth.getSession();
+    const user = auth.currentUser;
 
-    // If no active online session, check our offline cache
-    if (!session) {
+    if (!user) {
         const cached = localStorage.getItem('eduscan_auth_cache');
         if (cached) {
             const profile = JSON.parse(cached);
-            // If offline cache says they have lifetime or valid trial, let them in!
             if (profile.is_lifetime || new Date(profile.trial_ends_at) > new Date()) {
                 authGate.classList.remove('active');
                 return;
             }
         }
-        // No valid cache and no session -> Show Login
         authGate.classList.add('active');
         loginView.style.display = 'block';
         expiredView.style.display = 'none';
         return;
     }
 
-    // User is logged in online. Fetch their actual subscription status.
     try {
-        const { data, error } = await sb.from('profiles')
-            .select('*')
-            .eq('id', session.user.id)
-            .single();
+        let profile = await getProfile(user.uid);
 
-        if (!error && data) {
-            // Save to local cache for offline use later
-            localStorage.setItem('eduscan_auth_cache', JSON.stringify(data));
+        if (!profile) {
+            // No profile doc yet — covers Google sign-in's first run, or
+            // a signup whose profile-create step failed for some reason.
+            // Create one now rather than locking the person out.
+            console.warn('No profile found for this user — creating one now.');
+            profile = await createProfile(user, user.displayName);
+        }
 
-            // Check Access Rules
-            if (data.is_lifetime || new Date(data.trial_ends_at) > new Date()) {
-                authGate.classList.remove('active'); // ✅ ACCESS GRANTED
-                return;
-            }
-        } else {
-            // No profile row yet for this session — covers Google sign-in
-            // happening for the first time, signUp() running but its own
-            // profile insert failing, AND any shape of "no row found"
-            // response. Different Supabase client versions/RLS setups can
-            // return this as either { error: {code: 'PGRST116'}, data:
-            // null } OR as { error: null, data: null } — checking only
-            // for the PGRST116 code missed the second case entirely and
-            // silently fell through to "trial expired" with no profile
-            // ever created, which is exactly the bug being fixed here.
-            console.warn('No profile row found for this user — creating one now.', error);
-            const trialEndsAt = new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000).toISOString();
-            const { data: created, error: createError } = await sb.from('profiles').upsert({
-                id: session.user.id,
-                full_name: session.user.user_metadata?.full_name || session.user.user_metadata?.name || session.user.email,
-                email: session.user.email,
-                is_lifetime: false,
-                trial_ends_at: trialEndsAt
-            }, { onConflict: 'id' }).select().single();
+        localStorage.setItem('eduscan_auth_cache', JSON.stringify(profile));
 
-            if (createError) {
-                // Surface the actual reason in the console — almost always
-                // an RLS policy rejecting the insert/update. Worth checking
-                // here first if this branch is ever hit again.
-                console.error('Profile auto-creation failed:', createError);
-            } else {
-                localStorage.setItem('eduscan_auth_cache', JSON.stringify(created || {
-                    is_lifetime: false, trial_ends_at: trialEndsAt
-                }));
-                authGate.classList.remove('active');
-                return;
-            }
+        if (profile.is_lifetime || new Date(profile.trial_ends_at) > new Date()) {
+            authGate.classList.remove('active'); // ✅ ACCESS GRANTED
+            return;
         }
     } catch (e) {
-        console.warn('Offline or fetch failed, relying on local cache.');
+        console.warn('Offline or fetch failed, relying on local cache.', e);
         const cached = localStorage.getItem('eduscan_auth_cache');
         if (cached) {
             const profile = JSON.parse(cached);
@@ -4610,17 +4600,11 @@ async function checkSubscriptionStatus() {
         }
     }
 
-    // If we reach here, trial is expired or no valid cache
+    // Trial expired or no valid cache
     authGate.classList.add('active');
     loginView.style.display = 'none';
     expiredView.style.display = 'block'; // ❌ ACCESS DENIED
 }
-
-// Run the gatekeeper when the app loads
-window.addEventListener('DOMContentLoaded', () => {
-    // Small delay to ensure Supabase client is ready
-    setTimeout(checkSubscriptionStatus, 500);
-});
 
 function showResetPasswordView() {
     isPasswordRecovery = true;
@@ -4630,27 +4614,83 @@ function showResetPasswordView() {
     resetPasswordView.style.display = 'block';
 }
 
-// Listen for auth state changes (e.g., when they return from Google login
-// popup, or click a password-reset email link).
-sb.auth.onAuthStateChange((event, session) => {
-    // TEMP DIAGNOSTIC — remove once #2 is confirmed fixed. Open DevTools
-    // Console (F12 → Console tab) BEFORE clicking the reset-password email
-    // link, then check what event name actually prints when the page loads.
-    console.log('AUTH EVENT DEBUG:', event, session ? '(session present)' : '(no session)');
+// ── AUTH STATE LISTENER ───────────────────────────────────────────────────
+function wireUpAuthListenersAndRunGate() {
+    fb.onAuthStateChanged(auth, (user) => {
+        if (isPasswordRecovery) return; // see showResetPasswordView()
+        if (user) checkSubscriptionStatus();
+        else checkSubscriptionStatus();
+    });
 
-    if (event === 'PASSWORD_RECOVERY') {
-        // Clicking a reset-password email link signs the person in with a
-        // temporary recovery session. Without this branch, the normal
-        // SIGNED_IN handling below would treat that as a real login and
-        // drop them straight into the main app — which is the bug
-        // reported: no way to actually type the new password.
+    // If this page load is a password-reset email link, Firebase puts a
+    // `mode=resetPassword` + `oobCode=...` pair in the URL query string
+    // (this requires the reset email's action URL to point back at this
+    // page — see the setup note at the bottom of this file). Detect that
+    // BEFORE the normal auth-state check runs, so the person sees the
+    // "set new password" screen instead of the main app or sign-in form.
+    handlePasswordResetLink();
+
+    setTimeout(checkSubscriptionStatus, 500);
+}
+
+async function handlePasswordResetLink() {
+    const params = new URLSearchParams(window.location.search);
+    const mode = params.get('mode');
+    const oobCode = params.get('oobCode');
+    if (mode !== 'resetPassword' || !oobCode) return;
+
+    try {
+        // Confirms the code is valid and gets the associated email, but
+        // doesn't change the password yet — that happens in the form
+        // submit handler below via confirmPasswordReset.
+        const { verifyPasswordResetCode, confirmPasswordReset } = window.__firebase;
+        const email = await verifyPasswordResetCode(auth, oobCode);
         showResetPasswordView();
-        return;
+
+        // Re-wire the reset form's submit handler specifically for this
+        // oobCode flow (no active session exists yet at this point, so
+        // the normal updatePassword() path in the form handler above
+        // can't run — this needs confirmPasswordReset instead, which
+        // works purely off the emailed code).
+        const form = document.getElementById('ag-reset-form');
+        const newHandler = async (e) => {
+            e.preventDefault();
+            const pw = document.getElementById('ag-reset-password').value;
+            const pwConfirm = document.getElementById('ag-reset-password-confirm').value;
+            const msgEl = document.getElementById('ag-reset-message');
+
+            if (!pw || pw.length < 6) {
+                document.getElementById('ag-reset-password-err').textContent = 'Password must be at least 6 characters';
+                document.getElementById('ag-reset-password').setAttribute('aria-invalid', 'true');
+                return;
+            }
+            if (pw !== pwConfirm) {
+                document.getElementById('ag-reset-password-confirm-err').textContent = 'Passwords do not match';
+                document.getElementById('ag-reset-password-confirm').setAttribute('aria-invalid', 'true');
+                return;
+            }
+
+            agSetLoading('ag-reset-btn', true);
+            try {
+                await confirmPasswordReset(auth, oobCode, pw);
+                msgEl.textContent = `Password updated for ${email}! Taking you to sign in…`;
+                msgEl.className = 'ag-msg show success';
+                agSetLoading('ag-reset-btn', false);
+                setTimeout(() => {
+                    isPasswordRecovery = false;
+                    window.location.href = window.location.origin + window.location.pathname;
+                }, 1500);
+            } catch (err) {
+                msgEl.textContent = agFriendlyAuthError(err);
+                msgEl.className = 'ag-msg show error';
+                agSetLoading('ag-reset-btn', false);
+            }
+        };
+        form.addEventListener('submit', newHandler);
+    } catch (err) {
+        agShowMessage('This password reset link is invalid or has expired. Please request a new one.', 'error');
     }
-    if (event === 'SIGNED_IN' && session) {
-        checkSubscriptionStatus();
-    }
-});
+}
 </script>
 
 <script>
