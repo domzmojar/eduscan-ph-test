@@ -1000,8 +1000,8 @@
       </div>
     </div>
     <textarea id="feedback-text" placeholder="What's working well? What could be better? Report a bug or suggest a feature…" style="width:100%;height:110px;border:1.5px solid #e2e8f0;border-radius:10px;padding:10px 12px;font-size:0.88rem;color:#111827;resize:none;box-sizing:border-box;font-family:inherit;outline:none;transition:border-color 0.15s;" onfocus="this.style.borderColor='#1d4ed8'" onblur="this.style.borderColor='#e2e8f0'"></textarea>
-    <div style="font-size:0.72rem;color:#9ca3af;margin:6px 0 14px;">Your feedback goes directly to the developer.</div>
-    <button onclick="submitFeedback()" style="width:100%;padding:13px;border:none;border-radius:10px;background:#22315e;color:#fff;font-size:0.9rem;font-weight:700;cursor:pointer;margin-bottom:8px;">Send Feedback</button>
+    <div id="feedback-error" style="font-size:0.78rem;color:#dc2626;min-height:1.1em;margin:5px 0 10px;"></div>
+    <button id="feedback-submit-btn" onclick="submitFeedback()" style="width:100%;padding:13px;border:none;border-radius:10px;background:#22315e;color:#fff;font-size:0.9rem;font-weight:700;cursor:pointer;margin-bottom:8px;">Send Feedback</button>
     <button onclick="closeFeedbackModal()" style="width:100%;padding:11px;border:1.5px solid #e5e7eb;border-radius:10px;background:none;color:#6b7280;font-size:0.88rem;font-weight:600;cursor:pointer;">Cancel</button>
   </div>
 </div>
@@ -4703,12 +4703,12 @@ function closeHeaderMenu() {
 }
 
 // ── FEEDBACK MODAL ────────────────────────────────────────────────────────
-// Opens a simple text modal; submits via mailto so no backend needed.
-// Swap the mailto for a Google Form or Supabase insert later if you want.
-const FEEDBACK_EMAIL = 'domz.mojar@gmail.com'; // TODO: update to your preferred email
+// Feedback is saved directly to the Supabase 'feedback' table,
+// along with the teacher's email, user ID, and current access tier.
 
 function showFeedbackModal() {
     document.getElementById('feedback-text').value = '';
+    document.getElementById('feedback-error').textContent = '';
     const modal = document.getElementById('feedback-modal');
     modal.style.display = 'flex';
     modal.classList.remove('hidden');
@@ -4719,14 +4719,36 @@ function closeFeedbackModal() {
     document.getElementById('feedback-modal').classList.add('hidden');
 }
 
-function submitFeedback() {
+async function submitFeedback() {
+    const btn = document.getElementById('feedback-submit-btn');
+    const errEl = document.getElementById('feedback-error');
     const text = document.getElementById('feedback-text').value.trim();
-    if (!text) { showToast('Please write something before sending.', 'err'); return; }
-    const subject = encodeURIComponent('EduScan PH Feedback');
-    const body = encodeURIComponent(text);
-    window.open(`mailto:${FEEDBACK_EMAIL}?subject=${subject}&body=${body}`, '_blank');
-    closeFeedbackModal();
-    showToast('Opening your email app to send feedback. Thank you! 🙏', 'success');
+
+    errEl.textContent = '';
+    if (!text) { errEl.textContent = 'Please write something before sending.'; return; }
+    if (!supabaseClient) { errEl.textContent = 'No connection — try again when online.'; return; }
+
+    btn.textContent = 'Sending…';
+    btn.disabled = true;
+
+    try {
+        const { data: { session } } = await supabaseClient.auth.getSession();
+        const { error } = await supabaseClient.from('feedback').insert({
+            user_id: session?.user?.id || null,
+            email: session?.user?.email || null,
+            access_tier: _lastKnownAccess?.tier || null,
+            message: text,
+        });
+        if (error) throw error;
+        closeFeedbackModal();
+        showToast('Feedback sent — thank you! 🙏', 'success');
+    } catch (e) {
+        errEl.textContent = 'Failed to send. Check your connection and try again.';
+        console.error('Feedback error:', e);
+    } finally {
+        btn.textContent = 'Send Feedback';
+        btn.disabled = false;
+    }
 }
 
 // ── FIRST-OPEN INTRO SLIDER ─────────────────────────────────────────────
