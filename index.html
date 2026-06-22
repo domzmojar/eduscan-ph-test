@@ -1362,6 +1362,25 @@
 </div>
 <div id="sync-status-msg"></div>
 
+<!-- NEW: Cross-Device Sync Controls -->
+<div id="cross-device-sync-panel" style="margin-top: 20px; padding: 15px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0; display: none;">
+  <h4 style="margin: 0 0 10px 0; color: #0f172a;">🔄 Cross-Device Sync Status</h4>
+  <p style="margin: 5px 0; font-size: 14px;">Last synced: <span id="last-sync-display" style="font-weight: bold; color: #3b82f6;">Never</span></p>
+  
+  <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 15px;">
+    <button id="btn-pull-data" style="padding: 8px 16px; background: #10b981; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold;">
+      ⬇ Pull Data (New Device)
+    </button>
+    <button id="btn-push-full" style="padding: 8px 16px; background: #3b82f6; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold;">
+      ⬆ Full Push Now
+    </button>
+    <button id="btn-toggle-auto" style="padding: 8px 16px; background: #64748b; color: white; border: none; border-radius: 6px; cursor: pointer;">
+      Enable Auto-Sync
+    </button>
+  </div>
+</div>
+<!-- END: Cross-Device Sync Controls -->
+
 <!-- REMOVED: The <details> block containing the Apps Script textarea -->
 </div>
 </div>
@@ -4601,6 +4620,22 @@ async function handleLogin(event) {
         document.getElementById('loginSuccess').classList.add('show');
         // onAuthStateChange will handle hiding the overlay automatically
     }
+
+    // Add this inside your successful login handler:
+(async () => {
+  const gasUrl = localStorage.getItem('gasUrl');
+  if (gasUrl) {
+    const db = await openEduScanDB();
+    const classes = await db.getAll('classes');
+    
+    // If IndexedDB is empty, they are on a new device!
+    if (classes.length === 0) {
+      if (confirm('New device detected! Would you like to download your classes and students from Google Sheets?')) {
+        await pullDataFromSheets();
+      }
+    }
+  }
+})();
 }
 
 // 2. SIGNUP
@@ -4927,6 +4962,180 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').catch(() => {});
   });
 }
+</script>
+
+<script>
+/**
+ * EduScan PH - Cross-Device Sync Module (JSONP Workaround)
+ */
+
+// --- 1. JSONP Fetch Wrapper ---
+function jsonpFetch(url) {
+  return new Promise((resolve, reject) => {
+    const callback = 'jsonp_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    const timeout = setTimeout(() => { cleanup(); reject(new Error('Request timeout')); }, 30000);
+    
+    window[callback] = function(data) { clearTimeout(timeout); cleanup(); resolve(data); };
+    
+    const script = document.createElement('script');
+    const separator = url.includes('?') ? '&' : '?';
+    script.src = url + separator + 'callback=' + callback;
+    script.onerror = function() { clearTimeout(timeout); cleanup(); reject(new Error('Network error')); };
+    
+    function cleanup() { delete window[callback]; if (script.parentNode) script.parentNode.removeChild(script); }
+    document.body.appendChild(script);
+  });
+}
+
+// --- 2. IndexedDB Helper (Adjust if your DB name/version is different) ---
+function openEduScanDB() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open('EduScanPH', 3); // Change version/name if your existing DB uses different ones
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(request.result);
+    request.onupgradeneeded = (event) => {
+      const db = event.target.result;
+      if (!db.objectStoreNames.contains('classes')) db.createObjectStore('classes', { keyPath: 'id' });
+      if (!db.objectStoreNames.contains('students')) db.createObjectStore('students', { keyPath: 'id' });
+      if (!db.objectStoreNames.contains('logs')) {
+        const logStore = db.createObjectStore('logs', { keyPath: 'id' });
+        logStore.createIndex('synced', 'synced');
+      }
+      if (!db.objectStoreNames.contains('settings')) db.createObjectStore('settings', { keyPath: 'key' });
+    };
+  });
+}
+
+// --- 3. Pull Data (For New Devices) ---
+async function pullDataFromSheets() {
+  const gasUrl = localStorage.getItem('gasUrl');
+  if (!gasUrl) { alert('Please enter your Sync URL first.'); return; }
+  
+  const btn = document.getElementById('btn-pull-data');
+  btn.textContent = ' Pulling...'; btn.disabled = true;
+
+  try {
+    const data = await jsonpFetch(gasUrl);
+    if (!data.success) throw new Error(data.error || 'Pull failed');
+
+    const db = await openEduScanDB();
+    
+    if (data.classes.length > 0) {
+      const tx = db.transaction('classes', 'readwrite');
+      data.classes.forEach(c => tx.objectStore('classes').put(c));
+      await tx.done;
+    }
+    if (data.students.length > 0) {
+      const tx = db.transaction('students', 'readwrite');
+      data.students.forEach(s => tx.objectStore('students').put(s));
+      await tx.done;
+    }
+    if (data.schoolYearStart) {
+      const tx = db.transaction('settings', 'readwrite');
+      tx.objectStore('settings').put({ key: 'schoolYearStart', value: data.schoolYearStart });
+      await tx.done;
+    }
+
+    localStorage.setItem('lastSync', new Date().toISOString());
+    updateSyncUI();
+    alert('✅ Data pulled successfully! Refreshing app...');
+    location.reload(); // Reload to show the newly imported data
+  } catch (err) {
+    alert('❌ Pull failed: ' + err.message);
+  } finally {
+    btn.textContent = ' Pull Data (New Device)'; btn.disabled = false;
+  }
+}
+
+// --- 4. Push Data (Full Sync) ---
+async function pushFullSync() {
+  const gasUrl = localStorage.getItem('gasUrl');
+  if (!gasUrl) { alert('Please enter your Sync URL first.'); return; }
+  
+  const btn = document.getElementById('btn-push-full');
+  btn.textContent = '⏳ Pushing...'; btn.disabled = true;
+
+  try {
+    const db = await openEduScanDB();
+    const classes = await db.getAll('classes');
+    const students = await db.getAll('students');
+    const logs = await db.getAll('logs');
+    const unsyncedLogs = logs.filter(l => !l.synced);
+
+    const payload = {
+      action: 'full_sync',
+      classes: classes,
+      students: students,
+      logs: unsyncedLogs,
+      activeClasses: classes.map(c => c.name),
+      timestamp: new Date().toISOString()
+    };
+
+    // POST with no-cors (fire and forget)
+    await fetch(gasUrl, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    // Mark logs as synced locally
+    if (unsyncedLogs.length > 0) {
+      const tx = db.transaction('logs', 'readwrite');
+      unsyncedLogs.forEach(l => { l.synced = true; l.syncedAt = new Date().toISOString(); tx.objectStore('logs').put(l); });
+      await tx.done;
+    }
+
+    localStorage.setItem('lastSync', new Date().toISOString());
+    updateSyncUI();
+    alert('✅ Full sync completed!');
+  } catch (err) {
+    alert('❌ Push failed: ' + err.message);
+  } finally {
+    btn.textContent = ' Full Push Now'; btn.disabled = false;
+  }
+}
+
+// --- 5. UI Updates & Initialization ---
+function updateSyncUI() {
+  const gasUrl = localStorage.getItem('gasUrl');
+  const panel = document.getElementById('cross-device-sync-panel');
+  const lastSync = document.getElementById('last-sync-display');
+  
+  if (gasUrl) {
+    panel.style.display = 'block';
+    lastSync.textContent = localStorage.getItem('lastSync') ? new Date(localStorage.getItem('lastSync')).toLocaleString() : 'Never';
+  } else {
+    panel.style.display = 'none';
+  }
+}
+
+// Hook up the buttons
+document.addEventListener('DOMContentLoaded', () => {
+  updateSyncUI();
+  
+  const pullBtn = document.getElementById('btn-pull-data');
+  if (pullBtn) pullBtn.addEventListener('click', pullDataFromSheets);
+  
+  const pushBtn = document.getElementById('btn-push-full');
+  if (pushBtn) pushBtn.addEventListener('click', pushFullSync);
+
+  // Auto-sync toggle logic
+  const autoBtn = document.getElementById('btn-toggle-auto');
+  if (autoBtn) {
+    autoBtn.addEventListener('click', () => {
+      const isAuto = localStorage.getItem('autoSync') === 'true';
+      localStorage.setItem('autoSync', !isAuto);
+      autoBtn.textContent = !isAuto ? 'Disable Auto-Sync' : 'Enable Auto-Sync';
+      autoBtn.style.background = !isAuto ? '#10b981' : '#64748b';
+    });
+    // Set initial state
+    if (localStorage.getItem('autoSync') === 'true') {
+      autoBtn.textContent = 'Disable Auto-Sync';
+      autoBtn.style.background = '#10b981';
+    }
+  }
+});
 </script>
 </body>
 </html>
