@@ -568,13 +568,15 @@
 @keyframes authSpin { to { transform: rotate(360deg); } }
 #auth-overlay .checkmark { width: 20px; height: 20px; border-radius: 50%; background: #10b981; display: flex; align-items: center; justify-content: center; color: white; font-size: 12px; flex-shrink: 0; }
 
-/* Logout Button in Header */
+/* Logout Button in Header — premium feel */
 #logout-btn {
-    background: none; border: 1px solid var(--border); color: var(--text-muted);
-    padding: 6px 12px; border-radius: 8px; font-size: 0.8rem; font-weight: 600;
-    cursor: pointer; transition: all 0.15s; display: none; align-items: center; gap: 4px;
+    background: none; border: 1px solid rgba(255,255,255,0.18);
+    color: rgba(255,255,255,0.75);
+    padding: 6px 13px; border-radius: 8px; font-size: 0.8rem; font-weight: 600;
+    cursor: pointer; transition: all 0.18s; display: none; align-items: center; gap: 5px;
 }
-#logout-btn:hover { background: var(--danger-bg); color: var(--danger); border-color: var(--danger-border); }
+#logout-btn:hover { background: rgba(255,255,255,0.1); color: #fff; border-color: rgba(255,255,255,0.35); }
+#logout-btn svg { opacity: 0.8; }
 
 /* Help / Replay Intro Button in Header */
 #help-replay-btn {
@@ -598,6 +600,48 @@
 #access-badge.tier-lifetime{ background: #d1fae5; color: #065f46; border-color: #a7f3d0; }
 #access-badge.tier-expired { background: #fee2e2; color: #991b1b; border-color: #fecaca; }
 #access-badge .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+
+/* Trial / Lifetime info popup (shown on badge tap during active trial or lifetime) */
+#access-info-popup {
+    position: fixed; inset: 0; z-index: 9001; display: flex; align-items: flex-end;
+    justify-content: center; padding: 16px; background: rgba(0,0,0,0.35);
+    backdrop-filter: blur(3px);
+}
+#access-info-popup.hidden { display: none !important; }
+#access-info-popup .info-card {
+    background: #fff; border-radius: 18px; max-width: 420px; width: 100%;
+    padding: 26px 24px 20px; box-shadow: 0 20px 50px rgba(0,0,0,0.22);
+    animation: slideUp 0.22s ease;
+}
+@keyframes slideUp { from { transform: translateY(24px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+#access-info-popup .info-header { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+#access-info-popup .info-icon {
+    width: 44px; height: 44px; border-radius: 12px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+}
+#access-info-popup .info-icon.trial  { background: #fef3c7; color: #d97706; }
+#access-info-popup .info-icon.lifetime { background: #d1fae5; color: #059669; }
+#access-info-popup .info-title { font-size: 1.05rem; font-weight: 800; color: #111827; }
+#access-info-popup .info-sub   { font-size: 0.78rem; color: #6b7280; margin-top: 1px; }
+#access-info-popup .info-body  { font-size: 0.88rem; color: #374151; line-height: 1.55; margin-bottom: 18px; }
+#access-info-popup .info-days-bar {
+    background: #f1f5f9; border-radius: 8px; height: 8px; margin-bottom: 6px; overflow: hidden;
+}
+#access-info-popup .info-days-fill {
+    height: 100%; border-radius: 8px; background: #d97706; transition: width 0.4s ease;
+}
+#access-info-popup .info-days-label { font-size: 0.75rem; color: #6b7280; margin-bottom: 16px; }
+#access-info-popup .btn-info-upgrade {
+    width: 100%; padding: 13px; border: none; border-radius: 10px;
+    background: #22315e; color: #fff; font-size: 0.9rem; font-weight: 700;
+    cursor: pointer; margin-bottom: 8px; transition: background 0.15s;
+}
+#access-info-popup .btn-info-upgrade:hover { background: #1a2647; }
+#access-info-popup .btn-info-close {
+    width: 100%; padding: 11px; border: 1.5px solid #e5e7eb; border-radius: 10px;
+    background: none; color: #6b7280; font-size: 0.88rem; font-weight: 600; cursor: pointer;
+}
+#access-info-popup .btn-info-close:hover { background: #f9fafb; }
 
 /* Access-locked overlay (trial expired, no lifetime access) */
 #access-lock-overlay {
@@ -910,6 +954,28 @@
   </div>
 </div>
 
+<!-- TRIAL / LIFETIME INFO POPUP: shown on badge tap when trial is active or lifetime -->
+<div id="access-info-popup" class="hidden" onclick="if(event.target===this) closeAccessInfoPopup()">
+  <div class="info-card">
+    <div class="info-header">
+      <div class="info-icon trial" id="info-popup-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/><path d="M12 6v6l4 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </div>
+      <div>
+        <div class="info-title" id="info-popup-title">Free Trial Active</div>
+        <div class="info-sub" id="info-popup-sub">EduScan PH</div>
+      </div>
+    </div>
+    <p class="info-body" id="info-popup-body">You're on your free trial. Try all features — no limits during the trial period.</p>
+    <div id="info-trial-progress" style="display:none;">
+      <div class="info-days-bar"><div class="info-days-fill" id="info-days-fill"></div></div>
+      <div class="info-days-label" id="info-days-label"></div>
+    </div>
+    <button class="btn-info-upgrade" id="info-popup-upgrade-btn" onclick="closeAccessInfoPopup(); showAccessLock(true);">Upgrade to Lifetime — ₱1,499</button>
+    <button class="btn-info-close" onclick="closeAccessInfoPopup()">Close</button>
+  </div>
+</div>
+
 <header style="display:flex; align-items:center; justify-content:space-between; padding: 0.65rem 1rem;">
 <!-- Left side: Logo & Title -->
 <div style="display:flex; align-items:center; gap:10px;">
@@ -923,7 +989,7 @@
 </div>
 <!-- Right side: Access badge + Help + Logout Button -->
 <div id="header-right">
-  <div id="access-badge" class="tier-trial" onclick="showAccessLock(true)" style="cursor:pointer;" title="Tap for access details">
+  <div id="access-badge" class="tier-trial" onclick="handleBadgeClick()" style="cursor:pointer;" title="Tap for access details">
     <span class="dot"></span><span id="access-badge-text">Trial</span>
   </div>
   <button id="help-replay-btn" onclick="showIntroSlider(true)" title="Show app introduction again"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/><path d="M9.5 9a2.5 2.5 0 0 1 5 0c0 1.5-2 2-2 3.5M12 17h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
@@ -4230,7 +4296,64 @@ async function checkAccess(userId, { silent } = {}) {
     return access;
 }
 
+// ── ACCESS BADGE CLICK HANDLER ────────────────────────────────────────────
+// Branches by current tier — never sends an active-trial teacher to the
+// "trial ended" lock screen, which was the original bug.
+let _lastKnownAccess = null; // cached by renderAccessUI so badge click can read it
+
+function handleBadgeClick() {
+    if (!_lastKnownAccess) return;
+    if (_lastKnownAccess.tier === 'expired') {
+        showAccessLock(false); // truly expired — show the payment wall
+    } else {
+        showAccessInfoPopup(_lastKnownAccess); // trial or lifetime — show info popup
+    }
+}
+
+function showAccessInfoPopup(access) {
+    const popup     = document.getElementById('access-info-popup');
+    const icon      = document.getElementById('info-popup-icon');
+    const title     = document.getElementById('info-popup-title');
+    const sub       = document.getElementById('info-popup-sub');
+    const body      = document.getElementById('info-popup-body');
+    const progress  = document.getElementById('info-trial-progress');
+    const fill      = document.getElementById('info-days-fill');
+    const label     = document.getElementById('info-days-label');
+    const upgradeBtn= document.getElementById('info-popup-upgrade-btn');
+
+    if (access.tier === 'lifetime') {
+        icon.className = 'info-icon lifetime';
+        icon.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14 2 9.27l6.91-1.01L12 2z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>';
+        title.textContent = 'Lifetime Access';
+        sub.textContent   = 'EduScan PH — No expiry';
+        body.textContent  = 'You have permanent access to EduScan PH. All features are unlocked, forever.';
+        progress.style.display = 'none';
+        upgradeBtn.style.display = 'none';
+    } else {
+        // Active trial
+        icon.className = 'info-icon trial';
+        icon.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/><path d="M12 6v6l4 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+        const dl = access.daysLeft;
+        title.textContent = `${dl} ${dl === 1 ? 'Day' : 'Days'} Left in Trial`;
+        sub.textContent   = 'Free trial — EduScan PH';
+        body.textContent  = `You're using the full app free for ${TRIAL_DAYS} days. Once your trial ends, upgrade to keep all your data and features.`;
+        progress.style.display = 'block';
+        const pct = (dl / TRIAL_DAYS) * 100;
+        fill.style.width = `${pct}%`;
+        fill.style.background = dl <= 2 ? '#ef4444' : dl <= 4 ? '#f59e0b' : '#059669';
+        label.textContent = `${dl} of ${TRIAL_DAYS} days remaining`;
+        upgradeBtn.style.display = 'block';
+    }
+
+    popup.classList.remove('hidden');
+}
+
+function closeAccessInfoPopup() {
+    document.getElementById('access-info-popup').classList.add('hidden');
+}
+
 function renderAccessUI(access) {
+    _lastKnownAccess = access; // cache so handleBadgeClick can read current tier
     const badge = document.getElementById('access-badge');
     const badgeText = document.getElementById('access-badge-text');
     const lockOverlay = document.getElementById('access-lock-overlay');
