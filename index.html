@@ -3530,11 +3530,51 @@ async function pullFromSheets({ silent = false } = {}) {
             refreshTerms();
         }
 
-        if (importedClasses > 0 || importedStudents > 0) {
+        // ── PULL LOGS FROM SHEET ──────────────────────────────────────────
+        // Logs are returned from the per-class sheet tabs (not a snapshot).
+        // We only import logs the local IndexedDB doesn't already have,
+        // keyed by timestamp (the stable System ID from the sheet).
+        // Pulled logs are marked _pulledFromSheet so the watermark is set
+        // to the latest one — preventing them from being re-pushed on the
+        // next sync (they're already in the Sheet).
+        let importedLogs = 0;
+        if (result.logs?.length) {
+            const existingTimestamps = new Set(logs.map(l => l.timestamp));
+            const newLogs = result.logs.filter(l => !existingTimestamps.has(l.timestamp));
+
+            if (newLogs.length) {
+                // Write to IndexedDB one at a time (dbAdd assigns autoIncrement id)
+                for (const l of newLogs) {
+                    const { _pulledFromSheet, ...cleanLog } = l;
+                    const newId = await dbAdd('logs', cleanLog);
+                    cleanLog.id = newId;
+                    logs.push(cleanLog);
+                }
+                importedLogs = newLogs.length;
+
+                // Advance the watermark to the latest pulled log timestamp so
+                // syncToSheets() does not attempt to re-push them next time.
+                const latestPulled = newLogs
+                    .map(l => l.timestamp)
+                    .sort()
+                    .at(-1);
+                const currentWatermark = await dbGetSetting('last_sync_time');
+                if (!currentWatermark || latestPulled > currentWatermark) {
+                    await dbSetSetting('last_sync_time', latestPulled);
+                }
+
+                // Re-sort logs newest-first (same order as the main feed)
+                logs.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+            }
+        }
+        // ── END PULL LOGS ─────────────────────────────────────────────────
+
+        if (importedClasses > 0 || importedStudents > 0 || importedLogs > 0) {
             populateDropdowns();
             renderClasses();
             renderStudents();
-            showToast(`✅ Pulled ${importedClasses} classes, ${importedStudents} students from your Sheet.`, 'ok');
+            renderLog();
+            showToast(`✅ Pulled ${importedClasses} classes, ${importedStudents} students, ${importedLogs} logs from your Sheet.`, 'ok');
         } else if (!silent) {
             showToast('Sheet has no roster data yet — set up classes on this device first.', 'info');
         }
