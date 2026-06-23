@@ -3614,111 +3614,61 @@ async function pullFromSheets({ silent = false } = {}) {
             refreshTerms();
         }
 
-        // ── MERGE LOGS (new + edits, duplicate-safe) ─────────────────────
+        // ── REPLACE LOGS: Sheet is the source of truth ───────────────────
         //
-        // Root cause of duplicates:
-        //   When a teacher edits a log (e.g. changes time or date), saveEditLog()
-        //   rebuilds log.timestamp from the new date+time inputs. The GAS sheet
-        //   then stores this NEW timestamp as the System ID (col A). When Device B
-        //   pulls, the Sheet log has the NEW timestamp but Device B's IDB still
-        //   has the ORIGINAL timestamp → timestamp lookup misses → treated as a
-        //   brand-new log → duplicate.
+        // Philosophy: the Sheet is always correct. Rather than trying to
+        // smart-merge local IDB logs with pulled logs (which caused duplicates
+        // when timestamps changed on edit), we simply:
         //
-        // Three-tier lookup (mirrors what the GAS doPost already does for push):
+        //   1. Find which class names the Sheet returned logs for
+        //   2. Delete ALL local IDB logs belonging to those classes
+        //   3. Write the Sheet logs for those classes fresh into IDB
         //
-        //   Tier 1 — Exact timestamp match
-        //     Pulled log ts === local log ts  →  same record, check for field edits
-        //
-        //   Tier 2 — Semantic match (studentLrn|localDate|type)
-        //     Timestamp changed (teacher edited time/date) but it's the same
-        //     real-world attendance event.  Update the local record in-place and
-        //     update its timestamp to the new value so future pulls don't re-match.
-        //
-        //   Tier 3 — No match at all
-        //     Genuinely new log from another device  →  insert.
-        //
-        // Both maps are kept in sync as we process each pulled log so that a
-        // batch pull with two edits to the same student doesn't double-insert.
+        // Safe because teachers don't edit on two devices simultaneously —
+        // any local log that matters was already pushed before switching devices.
+        // Logs from classes NOT in the Sheet response are left untouched.
 
         let importedLogs = 0;
-        let updatedLogs  = 0;
 
         if (result.logs?.length) {
-            // Build BOTH lookup maps upfront
-            const existingByTs  = new Map(logs.map(l => [l.timestamp, l]));
-            const semanticKey   = l => `${l.studentLrn || l.studentName}|${l.localDate}|${l.type}`;
-            const existingBySem = new Map(logs.map(l => [semanticKey(l), l]));
+            // Step 1: which className values did the Sheet return?
+            const sheetClassNames = new Set(result.logs.map(l => l.className).filter(Boolean));
 
-            // Fields that constitute a meaningful change worth updating
-            const logSignature  = l =>
-                `${l.timestamp}|${l.type}|${l.isLate ? '1' : '0'}|${l.studentName}|${l.studentLrn}|${l.className}|${l.localDate}`;
+            // Step 2: remove local logs whose className is covered by the Sheet
+            const survivingLogs = logs.filter(l => !sheetClassNames.has(l.className));
+            const removedIds    = logs
+                .filter(l => sheetClassNames.has(l.className))
+                .map(l => l.id)
+                .filter(id => id != null);
+            for (const id of removedIds) await dbDelete('logs', id);
 
+            // Step 3: write each Sheet log as a fresh IDB record (no id field)
+            const freshLogs = [];
             for (const l of result.logs) {
-                const { _pulledFromSheet, ...cleanLog } = l;
+                const { _pulledFromSheet, id: _dropId, ...cleanLog } = l;
                 if (!cleanLog.enrolledDate) cleanLog.enrolledDate = cleanLog.localDate || todayStr();
-
-                // ── Tier 1: exact timestamp match ─────────────────────────
-                const byTs = existingByTs.get(cleanLog.timestamp);
-                if (byTs) {
-                    if (logSignature(byTs) !== logSignature(cleanLog)) {
-                        // Same record, some field changed (e.g. isLate toggled)
-                        const merged = { ...byTs, ...cleanLog, id: byTs.id };
-                        await dbPutAll('logs', [merged]);
-                        const idx = logs.findIndex(x => x.id === byTs.id);
-                        if (idx !== -1) logs[idx] = merged;
-                        existingByTs.set(cleanLog.timestamp, merged);
-                        existingBySem.set(semanticKey(merged), merged);
-                        updatedLogs++;
-                    }
-                    // else identical — skip
-                    continue;
-                }
-
-                // ── Tier 2: semantic match (timestamp changed by edit) ────
-                const bySem = existingBySem.get(semanticKey(cleanLog));
-                if (bySem) {
-                    // Teacher edited the time/date on Device A, so the Sheet
-                    // now has a new timestamp for the same attendance event.
-                    // Overwrite the local record and update its timestamp so
-                    // future pulls don't re-match this as a new log.
-                    const merged = { ...bySem, ...cleanLog, id: bySem.id };
-                    await dbPutAll('logs', [merged]);
-                    const idx = logs.findIndex(x => x.id === bySem.id);
-                    if (idx !== -1) logs[idx] = merged;
-                    // Remove the old timestamp key, add the new one
-                    existingByTs.delete(bySem.timestamp);
-                    existingByTs.set(cleanLog.timestamp, merged);
-                    existingBySem.set(semanticKey(merged), merged);
-                    updatedLogs++;
-                    continue;
-                }
-
-                // ── Tier 3: genuinely new log ─────────────────────────────
                 const newId = await dbAdd('logs', cleanLog);
-                cleanLog.id = newId;
-                logs.push(cleanLog);
-                existingByTs.set(cleanLog.timestamp, cleanLog);
-                existingBySem.set(semanticKey(cleanLog), cleanLog);
-                importedLogs++;
+                freshLogs.push({ ...cleanLog, id: newId });
             }
 
-            if (importedLogs > 0 || updatedLogs > 0) {
-                // Advance watermark to latest Sheet timestamp so syncToSheets()
-                // never re-pushes logs that are already in the Sheet.
-                const latestPulled = result.logs.map(l => l.timestamp).sort().at(-1);
-                const currentWatermark = await dbGetSetting('last_sync_time');
-                if (!currentWatermark || latestPulled > currentWatermark) {
-                    await dbSetSetting('last_sync_time', latestPulled);
-                }
-                logs.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+            // Rebuild in-memory array
+            logs = [...survivingLogs, ...freshLogs];
+            logs.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+            importedLogs = freshLogs.length;
+
+            // Advance watermark so syncToSheets() never re-pushes pulled logs
+            const latestPulled = result.logs.map(l => l.timestamp).sort().at(-1);
+            const currentWatermark = await dbGetSetting('last_sync_time');
+            if (!currentWatermark || latestPulled > currentWatermark) {
+                await dbSetSetting('last_sync_time', latestPulled);
             }
         }
-        // ── END MERGE LOGS ────────────────────────────────────────────────
+        // ── END REPLACE LOGS ──────────────────────────────────────────────
 
         // Record the time of this pull so the teacher can see "Last pulled: X"
         await dbSetSetting('last_pull_time', new Date().toISOString());
 
-        if (importedClasses > 0 || importedStudents > 0 || importedLogs > 0 || updatedLogs > 0) {
+        if (importedClasses > 0 || importedStudents > 0 || importedLogs > 0) {
             populateDropdowns();
             renderClasses();
             renderStudents();
@@ -3726,8 +3676,7 @@ async function pullFromSheets({ silent = false } = {}) {
             const parts = [];
             if (importedClasses  > 0) parts.push(`${importedClasses} class${importedClasses > 1 ? 'es' : ''}`);
             if (importedStudents > 0) parts.push(`${importedStudents} student${importedStudents > 1 ? 's' : ''}`);
-            if (importedLogs     > 0) parts.push(`${importedLogs} new log${importedLogs > 1 ? 's' : ''}`);
-            if (updatedLogs      > 0) parts.push(`${updatedLogs} edited log${updatedLogs > 1 ? 's' : ''}`);
+            if (importedLogs     > 0) parts.push(`${importedLogs} log${importedLogs > 1 ? 's' : ''} synced from Sheet`);
             showToast(`✅ Pulled: ${parts.join(', ')}.`, 'ok');
         } else if (!silent) {
             showToast('✓ Already up to date — no new or edited data in Sheet.', 'info');
