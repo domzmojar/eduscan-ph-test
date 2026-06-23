@@ -1332,22 +1332,22 @@
 <button class="btn danger sm" onclick="disableAutoSync()">Disable</button>
 </div>
 
-<div class="form-group">
-<label>Your Unique Sync URL</label>
-<input type="url" id="sync-url-input" placeholder="https://script.google.com/macros/s/.../exec">
+<!-- NEW MANAGED SETUP MESSAGE -->
+<div class="instruction-block">
+    <p style="font-size:0.87rem; font-weight:600; margin-bottom:0.6rem;">🔐 Managed Sync Setup</p>
+    <p style="font-size:0.85rem; color:var(--text-muted); line-height:1.5; margin:0 0 0.6rem;">
+        If your private Google Sheet was already configured during onboarding, paste your unique <strong>Sync URL</strong> below to connect this app to your data.
+    </p>
+    <details>
+      <summary>Don't have a Sync URL yet? Set one up yourself →</summary>
+      <ol style="margin-top:0.6rem;">
+        <li>Create a new Google Sheet, then go to <strong>Extensions → Apps Script</strong>.</li>
+        <li>Paste in the EduScan PH sync script (ask your administrator or check the EduScan PH documentation for the latest script code).</li>
+        <li>Click <strong>Deploy → New deployment</strong>, choose type <strong>Web app</strong>, set "Who has access" to <strong>Anyone</strong>, then deploy.</li>
+        <li>Copy the generated <code>.../exec</code> URL and paste it into the Sync URL field below.</li>
+      </ol>
+    </details>
 </div>
-
-<div class="form-group">
-<label>Sync Secret Key (Must match your Google Apps Script)</label>
-<input type="password" id="sync-secret-input" placeholder="Enter your secret key">
-</div>
-
-<div style="display:flex; flex-direction:column; gap:0.5rem; margin-bottom:0.75rem;">
-<button class="btn full" onclick="saveSyncUrl()">💾 Save Connection Settings</button>
-<button class="btn full success" id="sync-btn" onclick="syncToSheets(false, true)">⬆ Manual Sync &amp; Update Summary</button>
-<button class="btn full outline danger" onclick="forceFullResync()" style="font-size:0.75rem;">🔄 Force Full Re-sync (Data Recovery)</button>
-</div>
-<div id="sync-status-msg"></div>
 
 <!-- REMOVED: Spreadsheet ID input (PWA doesn't need it) -->
 
@@ -1358,12 +1358,8 @@
 
 <div style="display:flex; gap:0.5rem; margin-bottom:0.75rem; flex-wrap:wrap;">
 <button class="btn full" onclick="saveSyncUrl()">💾 Save &amp; enable auto-sync</button>
-</div>
-<div style="display:flex; gap:0.5rem; margin-bottom:0.4rem; flex-wrap:wrap;">
 <button class="btn full success" id="sync-btn" onclick="syncToSheets()">⬆ Push unsynced logs</button>
-<button class="btn full outline" id="pull-from-sheet-btn" onclick="pullFromSheets({silent:false})">⬇ Pull latest from Sheet</button>
 </div>
-<div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:0.75rem;" id="pull-last-label">Never pulled on this device</div>
 <div id="sync-status-msg"></div>
 
 <!-- REMOVED: The <details> block containing the Apps Script textarea -->
@@ -1487,7 +1483,7 @@
       <button class="btn full success" onclick="enableAutoExport()">⏱ Enable auto-export</button>
     </div>
 
-<!-- Import / restore -->
+    <!-- Import / restore -->
     <div class="card">
       <h2 style="margin-bottom:0.25rem;">📥 Import / Restore</h2>
       <p style="font-size:0.82rem; color:var(--text-muted); margin-bottom:1rem;">Restore data from a previously exported JSON file. <strong>This will merge with existing data.</strong></p>
@@ -1496,13 +1492,6 @@
       </label>
       <input type="file" id="import-file-input" accept=".json" style="display:none;" onchange="importData(event)">
       <div id="import-status-msg" style="margin-top:0.6rem;"></div>
-    </div>
-
-    <!-- School Year Reset Card -->
-    <div class="card" style="border: 1px solid var(--danger-border); background: var(--danger-bg); margin-top:1rem;">
-      <h2 style="color: var(--danger); margin-bottom:0.25rem;">🧹 Maintenance</h2>
-      <p style="font-size:0.82rem; color:var(--text-muted); margin-bottom:1rem;">This action clears all local logs to start a fresh school year. <strong>Ensure you have synced or exported your data first!</strong></p>
-      <button class="btn danger full" onclick="resetSchoolYear()">Delete All Local Logs</button>
     </div>
 
   </div>
@@ -1661,19 +1650,6 @@
 const DB_NAME    = 'EduScanPH';
 const DB_VERSION = 1;
 let   db         = null;
-
-// --- SECURITY PATCH: HTML Escaping Utility to prevent Stored XSS ---
-function escapeHtml(text) {
-  if (typeof text !== 'string') return text;
-  const map = {
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#039;'
-  };
-  return text.replace(/[&<>"']/g, function(m) { return map[m]; });
-}
 
 function openDB() {
   return new Promise((resolve, reject) => {
@@ -2194,7 +2170,7 @@ function renderClasses() {
     return `
     <tr class="class-row-clickable" onclick="openClassRosterModal('${c.id}')">
       <td>
-        <strong style="color:var(--primary);">${escapeHtml(c.name)}</strong><br>
+        <strong style="color:var(--primary);">${c.name}</strong><br>
         <span style="font-size:0.75rem;color:var(--text-muted);">
           ${count} student${count !== 1 ? 's' : ''} · starts ${startTime}${grace ? ' · ' + grace : ''} · tap to view roster
         </span>
@@ -2461,8 +2437,10 @@ let logRenderedCount = 0;
 let logScrollHandlerAttached = false;
 
 function buildLogRowHTML(l) {
+  // Use localDate if available (for timezone accuracy), otherwise fallback to timestamp
   const dateObj = l.localDate ? new Date(l.localDate + 'T00:00:00') : new Date(l.timestamp);
 
+  // Format Time (e.g., 07:30 AM) and Date (e.g., Jun 19)
   const timeStr = new Date(l.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const dateStr = dateObj.toLocaleDateString([], { month: 'short', day: 'numeric' });
 
@@ -2480,8 +2458,8 @@ function buildLogRowHTML(l) {
         <span class="date">${dateStr}</span>
       </div>
       <div class="log-feed-info">
-        <div class="log-feed-name">${escapeHtml(l.studentName)} ${lateTag}</div>
-        <div class="log-feed-meta">${escapeHtml(l.className || 'Unknown Class')} · LRN ${escapeHtml(l.studentLrn || 'N/A')}</div>
+        <div class="log-feed-name">${l.studentName} ${lateTag}</div>
+        <div class="log-feed-meta">${l.className || 'Unknown Class'} · LRN ${l.studentLrn || 'N/A'}</div>
       </div>
       <div class="log-feed-actions">
         ${statusBadge}
@@ -3200,11 +3178,9 @@ const AUTO_SYNC_DELAY = 8000;
 
 async function renderSyncPage() {
     const savedUrl = await dbGetSetting('sync_url') || '';
-    const savedSecret = await dbGetSetting('sync_secret') || '';
     const autoSync = await dbGetSetting('auto_sync');
     
     document.getElementById('sync-url-input').value = savedUrl;
-    document.getElementById('sync-secret-input').value = savedSecret;
     
     autoSyncEnabled = !!autoSync;
     updateAutoSyncBar();
@@ -3226,10 +3202,9 @@ async function updateAutoSyncLastLabel() {
 
 async function saveSyncUrl() {
     const url = document.getElementById('sync-url-input').value.trim();
-    const secret = document.getElementById('sync-secret-input').value.trim();
     const msg = document.getElementById('sync-status-msg');
     
-    if (!url || !secret) return showToast('URL and Secret Key are required.', 'warn');
+    if (!url) return showToast('Paste your Sync URL first.', 'warn');
     
     if (!url.includes('script.google.com')) {
         msg.innerHTML = `<div class="sync-status err">Invalid URL. It must be your unique EduScan PH sync link.</div>`;
@@ -3237,7 +3212,6 @@ async function saveSyncUrl() {
     }
     
     await dbSetSetting('sync_url', url);
-    await dbSetSetting('sync_secret', secret);
     await dbSetSetting('auto_sync', true);
     
     autoSyncEnabled = true;
@@ -3246,7 +3220,7 @@ async function saveSyncUrl() {
     msg.innerHTML = `<div class="sync-status info">Testing connection…</div>`;
     
     try {
-        const resp   = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'ping', secret: secret }) });
+        const resp   = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'ping' }) });
         const result = await resp.json();
         
         if (result.pong || result.success) {
@@ -3259,32 +3233,6 @@ async function saveSyncUrl() {
         msg.innerHTML = `<div class="sync-status err">Could not reach the server. Check your internet connection.</div>`;
     }
 }
-
-async function disableAutoSync() {
-  await dbSetSetting('auto_sync', false);
-  autoSyncEnabled = false;
-  clearTimeout(autoSyncTimer);
-  updateAutoSyncBar();
-  showToast('auto-sync disabled.', 'info');
-}
-
-// --- DATA RECOVERY & MAINTENANCE PATCHES ---
-async function forceFullResync() {
-    if(!confirm("This will clear your 'last sync' watermark and re-upload all history to the sheet. Use this if your spreadsheet is missing data. Proceed?")) return;
-    await dbSetSetting('last_sync_time', null);
-    showToast('Watermark cleared. Starting full re-sync...', 'info');
-    syncToSheets(false, true);
-}
-
-async function resetSchoolYear() {
-    if(!confirm("DANGER: This will permanently delete ALL local attendance logs from this device. Make sure you have exported a backup JSON or synced to Google Sheets first! Proceed?")) return;
-    await dbClear('logs');
-    logs = [];
-    await dbSetSetting('last_sync_time', null);
-    showToast('Logs cleared for the new school year.', 'ok');
-    renderLog();
-}
-
 
 async function disableAutoSync() {
   await dbSetSetting('auto_sync', false);
@@ -3403,19 +3351,18 @@ async function clearSyncFlags(syncedLogs) {
 }
 
 // ── OPTIMIZED SYNC FUNCTION (Chunking + Retry) ────────────────────────────
-async function syncToSheets(silent = false, forceSummary = false) {
+async function syncToSheets(silent = false) {
     const url = await dbGetSetting('sync_url');
-    const secret = await dbGetSetting('sync_secret');
     const msg = document.getElementById('sync-status-msg');
     const btn = document.getElementById('sync-btn');
 
-    if (!url || !secret) { 
-        if (!silent && msg) msg.innerHTML = `<div class="sync-status err">Sync URL and Secret Key are required. Complete setup above first.</div>`; 
+    if (!url) { 
+        if (!silent && msg) msg.innerHTML = `<div class="sync-status err">No URL saved. Complete setup above first.</div>`; 
         return; 
     }
 
     const pendingLogs = await getPendingLogs();
-    if (!pendingLogs.length && !forceSummary) { 
+    if (!pendingLogs.length) { 
         if (!silent && msg) msg.innerHTML = `<div class="sync-status ok">✅ All logs already synced.</div>`; 
         return; 
     }
@@ -3447,14 +3394,20 @@ async function syncToSheets(silent = false, forceSummary = false) {
         // Retry loop with Exponential Backoff
         while (!success && retries <= MAX_RETRIES) {
             try {
-                            const payload = {
-                                action: 'sync',
-                                secret: secret,              // Pass secret to lock down endpoint
-                                rebuildSummary: forceSummary, // Conditionally triggers summary rebuild
-                                logs: chunk,
-                                activeClasses: getActiveClasses(),
-                                schoolYearStart: schoolYearStart || ''
-                            };
+                const payload = {
+                    action: 'sync', // Matches GAS v8 requirement
+                    logs: chunk,
+                    activeClasses: getActiveClasses(),
+                    // Lets the spreadsheet compute the SAME year-aware term
+                    // boundaries as the app (see computeTermsFromStartDate /
+                    // defaultTermsForYear). Without this, GAS falls back to
+                    // its own hardcoded Jun-Sep/Oct-Dec/Jan-Mar calendar,
+                    // which can silently disagree with a school's configured
+                    // start date and — more importantly — has no year
+                    // component, so it merges multiple school years' worth
+                    // of attendance into the same "Term 1" bucket.
+                    schoolYearStart: schoolYearStart || ''
+                };
 
                 const resp = await fetch(url, {
                     method: 'POST',
@@ -3518,189 +3471,6 @@ async function syncToSheets(silent = false, forceSummary = false) {
     } else if (totalAdded > 0 || totalUpdated > 0) {
         showToast(`☁ Synced ${totalAdded + totalUpdated} records`, 'ok');
     }
-}
-
-// ── CROSS-DEVICE PULL FROM SHEETS ────────────────────────────────────────
-// Called after a successful login on a fresh device (IndexedDB is empty).
-// Fetches the teacher's own Google Sheet via GAS doGet, then hydrates
-// the local IndexedDB with their classes and students — all without any
-// student data ever passing through our servers (Supabase only stores
-// the GAS URL, not the actual roster).
-// ── pullFromSheets ────────────────────────────────────────────────────────
-// Manual pull triggered by the teacher (or auto-triggered once on a new
-// device when local IDB is empty). Incremental and safe:
-//   • Classes / students: merged by id — new ones added, existing kept as-is
-//   • Logs: merged by timestamp — only adds logs missing from local IDB;
-//     never deletes or overwrites anything already stored locally
-//   • Watermark advances only forward (never re-pushes already-synced logs)
-async function pullFromSheets({ silent = false } = {}) {
-    // ── RESOLVE GAS URL ───────────────────────────────────────────────────
-    // Priority: local IndexedDB → Supabase profile (for new/existing devices
-    // whose gas_url was null before this version).
-    let url = await dbGetSetting('sync_url');
-
-    if (!url && supabaseClient) {
-        try {
-            const { data: { session } } = await supabaseClient.auth.getSession();
-            if (session?.user?.id) {
-                const { data: profile } = await supabaseClient
-                    .from('profiles')
-                    .select('gas_url')
-                    .eq('id', session.user.id)
-                    .single();
-                if (profile?.gas_url) {
-                    url = profile.gas_url;
-                    await dbSetSetting('sync_url', url);
-                    await dbSetSetting('auto_sync', true);
-                    autoSyncEnabled = true;
-                    updateAutoSyncBar();
-                    const syncInput = document.getElementById('sync-url-input');
-                    if (syncInput) syncInput.value = url;
-                    if (!silent) showToast('Sync URL restored from your account ✓', 'ok');
-                }
-            }
-        } catch (e) {
-            console.warn('Could not fetch GAS URL from Supabase:', e.message);
-        }
-    }
-
-    if (!url) return; // No GAS URL anywhere — teacher hasn't set up Sheets yet
-    // ── END RESOLVE GAS URL ───────────────────────────────────────────────
-
-    if (!navigator.onLine) {
-        if (!silent) showToast('Offline — cannot pull data from Sheets right now.', 'warn');
-        return;
-    }
-
-    // Show a subtle status while pulling (only when called explicitly)
-    const pullBtn = document.getElementById('pull-from-sheet-btn');
-    if (pullBtn) { pullBtn.disabled = true; pullBtn.textContent = '⏳ Pulling…'; }
-
-    try {
-        const resp = await fetch(`${url}?action=pull`, { method: 'GET' });
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        const result = await resp.json();
-        if (!result.success) throw new Error(result.error || 'Pull failed');
-
-        let importedClasses = 0, importedStudents = 0, updatedClasses = 0, updatedStudents = 0;
-
-        // ── MERGE CLASSES (incremental) ───────────────────────────────────
-        if (result.classes?.length) {
-            const existingMap = new Map(classes.map(c => [c.id, c]));
-            result.classes.forEach(c => {
-                if (!existingMap.has(c.id)) {
-                    classes.push(c);
-                    importedClasses++;
-                }
-                // Note: we intentionally do NOT overwrite existing classes —
-                // the local device is the authoritative source for class names/settings.
-                // If a teacher renames a class on Device B, we don't want Device A's
-                // pull to silently revert it.
-            });
-            if (importedClasses > 0) await dbPutAll('classes', classes);
-        }
-
-        // ── MERGE STUDENTS (incremental) ──────────────────────────────────
-        if (result.students?.length) {
-            const existingMap = new Map(students.map(s => [s.id, s]));
-            result.students.forEach(s => {
-                if (!existingMap.has(s.id)) {
-                    students.push(s);
-                    importedStudents++;
-                }
-            });
-            if (importedStudents > 0) {
-                students.sort((a, b) => a.name.localeCompare(b.name));
-                await dbPutAll('students', students);
-            }
-        }
-
-        // ── SYNC SETTINGS ─────────────────────────────────────────────────
-        if (result.settings?.schoolYearStart) {
-            schoolYearStart = result.settings.schoolYearStart;
-            await dbSetSetting('school_year_start', schoolYearStart);
-            refreshTerms();
-        }
-
-        // ── ADD MISSING LOGS: Safe incremental add ────────────────────────
-        //
-        // Simple and future-proof: only add logs from the Sheet that are NOT
-        // already in local IDB (matched by timestamp). Never deletes or
-        // overwrites anything. This means:
-        //
-        //   • New logs added on Device A → pushed → pulled on Device B ✅
-        //   • Edited logs (timestamp changed on edit) may leave the old
-        //     version on Device B alongside the new one — acceptable because
-        //     teachers don't edit on two devices simultaneously.
-        //
-        // The result is a lightweight, risk-free sync that won't cause data
-        // loss and won't stress free-tier quotas on large datasets.
-
-        let importedLogs = 0;
-
-        if (result.logs?.length) {
-            // Build fast-lookup set of timestamps already in local IDB
-            const existingTimestamps = new Set(logs.map(l => l.timestamp));
-
-            for (const l of result.logs) {
-                if (!existingTimestamps.has(l.timestamp)) {
-                    const { _pulledFromSheet, id: _dropId, ...cleanLog } = l;
-                    if (!cleanLog.enrolledDate) cleanLog.enrolledDate = cleanLog.localDate || todayStr();
-                    const newId = await dbAdd('logs', cleanLog);
-                    logs.push({ ...cleanLog, id: newId });
-                    existingTimestamps.add(l.timestamp); // prevent double-add within same batch
-                    importedLogs++;
-                }
-            }
-
-            if (importedLogs > 0) {
-                logs.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
-
-                // Advance watermark so syncToSheets() never re-pushes pulled logs
-                const latestPulled = result.logs.map(l => l.timestamp).sort().at(-1);
-                const currentWatermark = await dbGetSetting('last_sync_time');
-                if (!currentWatermark || latestPulled > currentWatermark) {
-                    await dbSetSetting('last_sync_time', latestPulled);
-                }
-            }
-        }
-        // ── END ADD MISSING LOGS ──────────────────────────────────────────
-
-        // Record the time of this pull so the teacher can see "Last pulled: X"
-        await dbSetSetting('last_pull_time', new Date().toISOString());
-
-        if (importedClasses > 0 || importedStudents > 0 || importedLogs > 0) {
-            populateDropdowns();
-            renderClasses();
-            renderStudents();
-            renderLog();
-            const parts = [];
-            if (importedClasses  > 0) parts.push(`${importedClasses} class${importedClasses > 1 ? 'es' : ''}`);
-            if (importedStudents > 0) parts.push(`${importedStudents} student${importedStudents > 1 ? 's' : ''}`);
-            if (importedLogs     > 0) parts.push(`${importedLogs} log${importedLogs > 1 ? 's' : ''} synced from Sheet`);
-            showToast(`✅ Pulled: ${parts.join(', ')}.`, 'ok');
-        } else if (!silent) {
-            showToast('✓ Already up to date — no new data found in Sheet.', 'info');
-        }
-
-        // Update the "Last pulled" label on the sync page if it's visible
-        updatePullLastLabel();
-
-    } catch (e) {
-        console.warn('pullFromSheets failed:', e.message);
-        if (!silent) showToast('Could not pull from Sheets: ' + e.message, 'err');
-    } finally {
-        if (pullBtn) { pullBtn.disabled = false; pullBtn.textContent = '⬇ Pull latest from Sheet'; }
-    }
-}
-
-async function updatePullLastLabel() {
-    const el = document.getElementById('pull-last-label');
-    if (!el) return;
-    const last = await dbGetSetting('last_pull_time');
-    el.textContent = last
-        ? `Last pulled: ${new Date(last).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`
-        : 'Never pulled on this device';
 }
 
 // ── PWA INSTALL ───────────────────────────────────────────────────────────
@@ -4529,10 +4299,6 @@ supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
             overlay.classList.add('hidden');
             headerRight.style.display = 'flex';
             checkAccess(session.user.id); // gate on trial/lifetime status
-            // Pull roster from teacher's Sheet if this is a fresh device
-            // (runs silently — only speaks up if it actually imported something
-            // or if there was an error worth knowing about)
-            pullFromSheets({ silent: true });
         } else {
             // User is NOT logged in: Show overlay, hide header-right group
             overlay.classList.remove('hidden');
@@ -4592,33 +4358,13 @@ async function checkAccess(userId, { silent } = {}) {
     try {
         const { data, error } = await supabaseClient
             .from('profiles')
-            .select('access_tier, trial_started_at, granted_at, gas_url')
+            .select('access_tier, trial_started_at, granted_at')
             .eq('id', userId)
             .single();
 
         if (error) throw error;
         access = resolveAccess(data);
         setCachedAccess({ ...access, checkedAt: Date.now() });
-
-        // ── HYDRATE GAS URL from Supabase profile on every login ──────────
-        // Covers three cases:
-        //   1. Brand-new device that has never had the URL (new install)
-        //   2. Existing early-access users whose gas_url was null before
-        //      this version — it gets written to profiles when they next
-        //      save their Sync URL on any device, and then auto-appears here
-        //   3. Teacher cleared app data / changed browser — URL is restored
-        if (data?.gas_url) {
-            const localUrl = await dbGetSetting('sync_url');
-            if (!localUrl) {
-                await dbSetSetting('sync_url', data.gas_url);
-                await dbSetSetting('auto_sync', true);
-                autoSyncEnabled = true;
-                updateAutoSyncBar();
-                const syncInput = document.getElementById('sync-url-input');
-                if (syncInput) syncInput.value = data.gas_url;
-            }
-        }
-        // ── END GAS URL HYDRATION ─────────────────────────────────────────
     } catch (e) {
         console.warn('Live access check failed, using cached status:', e.message || e);
         const cached = getCachedAccess();
@@ -5098,7 +4844,9 @@ window.addEventListener('DOMContentLoaded', async () => {
     // ── AUTH SCREEN DATE (independent of Supabase, must always run) ──
     setAuthCurrentDate();
 
-    // ── OPEN INDEXEDDB FIRST — everything else depends on it ──
+    // ── INIT SUPABASE AUTH ──
+    initSupabase();
+    
     await openDB();
 
   // Migrate from localStorage if IDB is empty
@@ -5156,15 +4904,6 @@ window.addEventListener('DOMContentLoaded', async () => {
   autoSyncEnabled = !!(await dbGetSetting('auto_sync'));
   schoolYearStart = await dbGetSetting('school_year_start') || '';
   refreshTerms();
-
-  // ── INIT SUPABASE AUTH (after DB + global arrays are ready) ──
-  // Must run after openDB() and after classes/students/logs are loaded into
-  // memory. onAuthStateChange fires immediately if a session already exists,
-  // which triggers pullFromSheets() — that function reads dbGetSetting() and
-  // writes to the global arrays, both of which require the DB to be open and
-  // the arrays to exist. Calling initSupabase() earlier (before openDB) caused
-  // pullFromSheets to silently fail on returning users because db was undefined.
-  initSupabase();
 
   populateDropdowns();
   initSummaryPeriod();
