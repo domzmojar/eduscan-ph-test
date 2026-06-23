@@ -1332,22 +1332,22 @@
 <button class="btn danger sm" onclick="disableAutoSync()">Disable</button>
 </div>
 
-<!-- NEW MANAGED SETUP MESSAGE -->
-<div class="instruction-block">
-    <p style="font-size:0.87rem; font-weight:600; margin-bottom:0.6rem;">🔐 Managed Sync Setup</p>
-    <p style="font-size:0.85rem; color:var(--text-muted); line-height:1.5; margin:0 0 0.6rem;">
-        If your private Google Sheet was already configured during onboarding, paste your unique <strong>Sync URL</strong> below to connect this app to your data.
-    </p>
-    <details>
-      <summary>Don't have a Sync URL yet? Set one up yourself →</summary>
-      <ol style="margin-top:0.6rem;">
-        <li>Create a new Google Sheet, then go to <strong>Extensions → Apps Script</strong>.</li>
-        <li>Paste in the EduScan PH sync script (ask your administrator or check the EduScan PH documentation for the latest script code).</li>
-        <li>Click <strong>Deploy → New deployment</strong>, choose type <strong>Web app</strong>, set "Who has access" to <strong>Anyone</strong>, then deploy.</li>
-        <li>Copy the generated <code>.../exec</code> URL and paste it into the Sync URL field below.</li>
-      </ol>
-    </details>
+<div class="form-group">
+<label>Your Unique Sync URL</label>
+<input type="url" id="sync-url-input" placeholder="https://script.google.com/macros/s/.../exec">
 </div>
+
+<div class="form-group">
+<label>Sync Secret Key (Must match your Google Apps Script)</label>
+<input type="password" id="sync-secret-input" placeholder="Enter your secret key">
+</div>
+
+<div style="display:flex; flex-direction:column; gap:0.5rem; margin-bottom:0.75rem;">
+<button class="btn full" onclick="saveSyncUrl()">💾 Save Connection Settings</button>
+<button class="btn full success" id="sync-btn" onclick="syncToSheets(false, true)">⬆ Manual Sync &amp; Update Summary</button>
+<button class="btn full outline danger" onclick="forceFullResync()" style="font-size:0.75rem;">🔄 Force Full Re-sync (Data Recovery)</button>
+</div>
+<div id="sync-status-msg"></div>
 
 <!-- REMOVED: Spreadsheet ID input (PWA doesn't need it) -->
 
@@ -1487,7 +1487,7 @@
       <button class="btn full success" onclick="enableAutoExport()">⏱ Enable auto-export</button>
     </div>
 
-    <!-- Import / restore -->
+<!-- Import / restore -->
     <div class="card">
       <h2 style="margin-bottom:0.25rem;">📥 Import / Restore</h2>
       <p style="font-size:0.82rem; color:var(--text-muted); margin-bottom:1rem;">Restore data from a previously exported JSON file. <strong>This will merge with existing data.</strong></p>
@@ -1496,6 +1496,13 @@
       </label>
       <input type="file" id="import-file-input" accept=".json" style="display:none;" onchange="importData(event)">
       <div id="import-status-msg" style="margin-top:0.6rem;"></div>
+    </div>
+
+    <!-- School Year Reset Card -->
+    <div class="card" style="border: 1px solid var(--danger-border); background: var(--danger-bg); margin-top:1rem;">
+      <h2 style="color: var(--danger); margin-bottom:0.25rem;">🧹 Maintenance</h2>
+      <p style="font-size:0.82rem; color:var(--text-muted); margin-bottom:1rem;">This action clears all local logs to start a fresh school year. <strong>Ensure you have synced or exported your data first!</strong></p>
+      <button class="btn danger full" onclick="resetSchoolYear()">Delete All Local Logs</button>
     </div>
 
   </div>
@@ -1654,6 +1661,19 @@
 const DB_NAME    = 'EduScanPH';
 const DB_VERSION = 1;
 let   db         = null;
+
+// --- SECURITY PATCH: HTML Escaping Utility to prevent Stored XSS ---
+function escapeHtml(text) {
+  if (typeof text !== 'string') return text;
+  const map = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;'
+  };
+  return text.replace(/[&<>"']/g, function(m) { return map[m]; });
+}
 
 function openDB() {
   return new Promise((resolve, reject) => {
@@ -2174,7 +2194,7 @@ function renderClasses() {
     return `
     <tr class="class-row-clickable" onclick="openClassRosterModal('${c.id}')">
       <td>
-        <strong style="color:var(--primary);">${c.name}</strong><br>
+        <strong style="color:var(--primary);">${escapeHtml(c.name)}</strong><br>
         <span style="font-size:0.75rem;color:var(--text-muted);">
           ${count} student${count !== 1 ? 's' : ''} · starts ${startTime}${grace ? ' · ' + grace : ''} · tap to view roster
         </span>
@@ -2441,10 +2461,8 @@ let logRenderedCount = 0;
 let logScrollHandlerAttached = false;
 
 function buildLogRowHTML(l) {
-  // Use localDate if available (for timezone accuracy), otherwise fallback to timestamp
   const dateObj = l.localDate ? new Date(l.localDate + 'T00:00:00') : new Date(l.timestamp);
 
-  // Format Time (e.g., 07:30 AM) and Date (e.g., Jun 19)
   const timeStr = new Date(l.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const dateStr = dateObj.toLocaleDateString([], { month: 'short', day: 'numeric' });
 
@@ -2462,8 +2480,8 @@ function buildLogRowHTML(l) {
         <span class="date">${dateStr}</span>
       </div>
       <div class="log-feed-info">
-        <div class="log-feed-name">${l.studentName} ${lateTag}</div>
-        <div class="log-feed-meta">${l.className || 'Unknown Class'} · LRN ${l.studentLrn || 'N/A'}</div>
+        <div class="log-feed-name">${escapeHtml(l.studentName)} ${lateTag}</div>
+        <div class="log-feed-meta">${escapeHtml(l.className || 'Unknown Class')} · LRN ${escapeHtml(l.studentLrn || 'N/A')}</div>
       </div>
       <div class="log-feed-actions">
         ${statusBadge}
@@ -3182,13 +3200,14 @@ const AUTO_SYNC_DELAY = 8000;
 
 async function renderSyncPage() {
     const savedUrl = await dbGetSetting('sync_url') || '';
+    const savedSecret = await dbGetSetting('sync_secret') || '';
     const autoSync = await dbGetSetting('auto_sync');
     
     document.getElementById('sync-url-input').value = savedUrl;
+    document.getElementById('sync-secret-input').value = savedSecret;
     
     autoSyncEnabled = !!autoSync;
     updateAutoSyncBar();
-    updatePullLastLabel();
 }
 
 function updateAutoSyncBar() {
@@ -3207,9 +3226,10 @@ async function updateAutoSyncLastLabel() {
 
 async function saveSyncUrl() {
     const url = document.getElementById('sync-url-input').value.trim();
+    const secret = document.getElementById('sync-secret-input').value.trim();
     const msg = document.getElementById('sync-status-msg');
     
-    if (!url) return showToast('Paste your Sync URL first.', 'warn');
+    if (!url || !secret) return showToast('URL and Secret Key are required.', 'warn');
     
     if (!url.includes('script.google.com')) {
         msg.innerHTML = `<div class="sync-status err">Invalid URL. It must be your unique EduScan PH sync link.</div>`;
@@ -3217,43 +3237,16 @@ async function saveSyncUrl() {
     }
     
     await dbSetSetting('sync_url', url);
+    await dbSetSetting('sync_secret', secret);
     await dbSetSetting('auto_sync', true);
-
+    
     autoSyncEnabled = true;
     updateAutoSyncBar();
-
-    // ── PERSIST GAS URL TO SUPABASE so other devices find it automatically ──
-    // Uses update-then-insert fallback instead of upsert because Supabase RLS
-    // policies often allow UPDATE on own row but reject upsert's internal
-    // DELETE+INSERT path, causing a silent failure with no JS error thrown.
-    try {
-        if (supabaseClient) {
-            const { data: { session } } = await supabaseClient.auth.getSession();
-            if (session?.user?.id) {
-                const uid = session.user.id;
-                // Try UPDATE first (row already exists — the common case)
-                const { error: updateErr } = await supabaseClient
-                    .from('profiles')
-                    .update({ gas_url: url })
-                    .eq('id', uid);
-                if (updateErr) {
-                    // Row may not exist yet (brand-new account) — try INSERT
-                    const { error: insertErr } = await supabaseClient
-                        .from('profiles')
-                        .insert({ id: uid, gas_url: url });
-                    if (insertErr) throw insertErr;
-                }
-            }
-        }
-    } catch (e) {
-        console.warn('Could not save GAS URL to Supabase (non-fatal):', e.message);
-    }
-    // ── END SUPABASE GAS URL SAVE ─────────────────────────────────────────
-
+    
     msg.innerHTML = `<div class="sync-status info">Testing connection…</div>`;
     
     try {
-        const resp   = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'ping' }) });
+        const resp   = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'ping', secret: secret }) });
         const result = await resp.json();
         
         if (result.pong || result.success) {
@@ -3266,6 +3259,32 @@ async function saveSyncUrl() {
         msg.innerHTML = `<div class="sync-status err">Could not reach the server. Check your internet connection.</div>`;
     }
 }
+
+async function disableAutoSync() {
+  await dbSetSetting('auto_sync', false);
+  autoSyncEnabled = false;
+  clearTimeout(autoSyncTimer);
+  updateAutoSyncBar();
+  showToast('auto-sync disabled.', 'info');
+}
+
+// --- DATA RECOVERY & MAINTENANCE PATCHES ---
+async function forceFullResync() {
+    if(!confirm("This will clear your 'last sync' watermark and re-upload all history to the sheet. Use this if your spreadsheet is missing data. Proceed?")) return;
+    await dbSetSetting('last_sync_time', null);
+    showToast('Watermark cleared. Starting full re-sync...', 'info');
+    syncToSheets(false, true);
+}
+
+async function resetSchoolYear() {
+    if(!confirm("DANGER: This will permanently delete ALL local attendance logs from this device. Make sure you have exported a backup JSON or synced to Google Sheets first! Proceed?")) return;
+    await dbClear('logs');
+    logs = [];
+    await dbSetSetting('last_sync_time', null);
+    showToast('Logs cleared for the new school year.', 'ok');
+    renderLog();
+}
+
 
 async function disableAutoSync() {
   await dbSetSetting('auto_sync', false);
@@ -3384,18 +3403,19 @@ async function clearSyncFlags(syncedLogs) {
 }
 
 // ── OPTIMIZED SYNC FUNCTION (Chunking + Retry) ────────────────────────────
-async function syncToSheets(silent = false) {
+async function syncToSheets(silent = false, forceSummary = false) {
     const url = await dbGetSetting('sync_url');
+    const secret = await dbGetSetting('sync_secret');
     const msg = document.getElementById('sync-status-msg');
     const btn = document.getElementById('sync-btn');
 
-    if (!url) { 
-        if (!silent && msg) msg.innerHTML = `<div class="sync-status err">No URL saved. Complete setup above first.</div>`; 
+    if (!url || !secret) { 
+        if (!silent && msg) msg.innerHTML = `<div class="sync-status err">Sync URL and Secret Key are required. Complete setup above first.</div>`; 
         return; 
     }
 
     const pendingLogs = await getPendingLogs();
-    if (!pendingLogs.length) { 
+    if (!pendingLogs.length && !forceSummary) { 
         if (!silent && msg) msg.innerHTML = `<div class="sync-status ok">✅ All logs already synced.</div>`; 
         return; 
     }
@@ -3427,25 +3447,14 @@ async function syncToSheets(silent = false) {
         // Retry loop with Exponential Backoff
         while (!success && retries <= MAX_RETRIES) {
             try {
-                const payload = {
-                    action: 'sync', // Matches GAS v8 requirement
-                    logs: chunk,
-                    activeClasses: getActiveClasses(),
-                    // Lets the spreadsheet compute the SAME year-aware term
-                    // boundaries as the app (see computeTermsFromStartDate /
-                    // defaultTermsForYear). Without this, GAS falls back to
-                    // its own hardcoded Jun-Sep/Oct-Dec/Jan-Mar calendar,
-                    // which can silently disagree with a school's configured
-                    // start date and — more importantly — has no year
-                    // component, so it merges multiple school years' worth
-                    // of attendance into the same "Term 1" bucket.
-                    schoolYearStart: schoolYearStart || '',
-                    // Cross-device sync: push roster so a new device can
-                    // pull classes + students from the Sheet via doGet,
-                    // without any student data ever touching our servers.
-                    // Only sent on the first chunk to avoid redundant writes.
-                    ...(i === 0 ? { classesSnapshot: classes, studentsSnapshot: students } : {})
-                };
+                            const payload = {
+                                action: 'sync',
+                                secret: secret,              // Pass secret to lock down endpoint
+                                rebuildSummary: forceSummary, // Conditionally triggers summary rebuild
+                                logs: chunk,
+                                activeClasses: getActiveClasses(),
+                                schoolYearStart: schoolYearStart || ''
+                            };
 
                 const resp = await fetch(url, {
                     method: 'POST',
