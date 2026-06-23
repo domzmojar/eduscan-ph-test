@@ -3518,13 +3518,12 @@ async function syncToSheets(silent = false) {
 // student data ever passing through our servers (Supabase only stores
 // the GAS URL, not the actual roster).
 // ── pullFromSheets ────────────────────────────────────────────────────────
-// Always runs an incremental merge — not just on first login.
-// Safe to call on every login because:
-//   • Classes / students: merged by id (no duplicates, no overwrites)
-//   • Logs: merged by timestamp (new ones added, existing ones skipped)
-//   • Watermark advances only forward (never causes re-push of already-synced logs)
-// This means edits made on Device A and pushed to the Sheet will appear on
-// Device B the next time Device B logs in or the teacher hits "Pull from Sheet".
+// Manual pull triggered by the teacher (or auto-triggered once on a new
+// device when local IDB is empty). Incremental and safe:
+//   • Classes / students: merged by id — new ones added, existing kept as-is
+//   • Logs: merged by timestamp — only adds logs missing from local IDB;
+//     never deletes or overwrites anything already stored locally
+//   • Watermark advances only forward (never re-pushes already-synced logs)
 async function pullFromSheets({ silent = false } = {}) {
     // ── RESOLVE GAS URL ───────────────────────────────────────────────────
     // Priority: local IndexedDB → Supabase profile (for new/existing devices
@@ -3614,56 +3613,49 @@ async function pullFromSheets({ silent = false } = {}) {
             refreshTerms();
         }
 
-        // ── REPLACE LOGS: Sheet is the source of truth ───────────────────
+        // ── ADD MISSING LOGS: Safe incremental add ────────────────────────
         //
-        // Philosophy: the Sheet is always correct. Rather than trying to
-        // smart-merge local IDB logs with pulled logs (which caused duplicates
-        // when timestamps changed on edit), we simply:
+        // Simple and future-proof: only add logs from the Sheet that are NOT
+        // already in local IDB (matched by timestamp). Never deletes or
+        // overwrites anything. This means:
         //
-        //   1. Find which class names the Sheet returned logs for
-        //   2. Delete ALL local IDB logs belonging to those classes
-        //   3. Write the Sheet logs for those classes fresh into IDB
+        //   • New logs added on Device A → pushed → pulled on Device B ✅
+        //   • Edited logs (timestamp changed on edit) may leave the old
+        //     version on Device B alongside the new one — acceptable because
+        //     teachers don't edit on two devices simultaneously.
         //
-        // Safe because teachers don't edit on two devices simultaneously —
-        // any local log that matters was already pushed before switching devices.
-        // Logs from classes NOT in the Sheet response are left untouched.
+        // The result is a lightweight, risk-free sync that won't cause data
+        // loss and won't stress free-tier quotas on large datasets.
 
         let importedLogs = 0;
 
         if (result.logs?.length) {
-            // Step 1: which className values did the Sheet return?
-            const sheetClassNames = new Set(result.logs.map(l => l.className).filter(Boolean));
+            // Build fast-lookup set of timestamps already in local IDB
+            const existingTimestamps = new Set(logs.map(l => l.timestamp));
 
-            // Step 2: remove local logs whose className is covered by the Sheet
-            const survivingLogs = logs.filter(l => !sheetClassNames.has(l.className));
-            const removedIds    = logs
-                .filter(l => sheetClassNames.has(l.className))
-                .map(l => l.id)
-                .filter(id => id != null);
-            for (const id of removedIds) await dbDelete('logs', id);
-
-            // Step 3: write each Sheet log as a fresh IDB record (no id field)
-            const freshLogs = [];
             for (const l of result.logs) {
-                const { _pulledFromSheet, id: _dropId, ...cleanLog } = l;
-                if (!cleanLog.enrolledDate) cleanLog.enrolledDate = cleanLog.localDate || todayStr();
-                const newId = await dbAdd('logs', cleanLog);
-                freshLogs.push({ ...cleanLog, id: newId });
+                if (!existingTimestamps.has(l.timestamp)) {
+                    const { _pulledFromSheet, id: _dropId, ...cleanLog } = l;
+                    if (!cleanLog.enrolledDate) cleanLog.enrolledDate = cleanLog.localDate || todayStr();
+                    const newId = await dbAdd('logs', cleanLog);
+                    logs.push({ ...cleanLog, id: newId });
+                    existingTimestamps.add(l.timestamp); // prevent double-add within same batch
+                    importedLogs++;
+                }
             }
 
-            // Rebuild in-memory array
-            logs = [...survivingLogs, ...freshLogs];
-            logs.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
-            importedLogs = freshLogs.length;
+            if (importedLogs > 0) {
+                logs.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
 
-            // Advance watermark so syncToSheets() never re-pushes pulled logs
-            const latestPulled = result.logs.map(l => l.timestamp).sort().at(-1);
-            const currentWatermark = await dbGetSetting('last_sync_time');
-            if (!currentWatermark || latestPulled > currentWatermark) {
-                await dbSetSetting('last_sync_time', latestPulled);
+                // Advance watermark so syncToSheets() never re-pushes pulled logs
+                const latestPulled = result.logs.map(l => l.timestamp).sort().at(-1);
+                const currentWatermark = await dbGetSetting('last_sync_time');
+                if (!currentWatermark || latestPulled > currentWatermark) {
+                    await dbSetSetting('last_sync_time', latestPulled);
+                }
             }
         }
-        // ── END REPLACE LOGS ──────────────────────────────────────────────
+        // ── END ADD MISSING LOGS ──────────────────────────────────────────
 
         // Record the time of this pull so the teacher can see "Last pulled: X"
         await dbSetSetting('last_pull_time', new Date().toISOString());
@@ -3679,7 +3671,7 @@ async function pullFromSheets({ silent = false } = {}) {
             if (importedLogs     > 0) parts.push(`${importedLogs} log${importedLogs > 1 ? 's' : ''} synced from Sheet`);
             showToast(`✅ Pulled: ${parts.join(', ')}.`, 'ok');
         } else if (!silent) {
-            showToast('✓ Already up to date — no new or edited data in Sheet.', 'info');
+            showToast('✓ Already up to date — no new data found in Sheet.', 'info');
         }
 
         // Update the "Last pulled" label on the sync page if it's visible
