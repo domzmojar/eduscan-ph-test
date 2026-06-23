@@ -1358,8 +1358,12 @@
 
 <div style="display:flex; gap:0.5rem; margin-bottom:0.75rem; flex-wrap:wrap;">
 <button class="btn full" onclick="saveSyncUrl()">💾 Save &amp; enable auto-sync</button>
-<button class="btn full success" id="sync-btn" onclick="syncToSheets()">⬆ Push unsynced logs</button>
 </div>
+<div style="display:flex; gap:0.5rem; margin-bottom:0.4rem; flex-wrap:wrap;">
+<button class="btn full success" id="sync-btn" onclick="syncToSheets()">⬆ Push unsynced logs</button>
+<button class="btn full outline" id="pull-from-sheet-btn" onclick="pullFromSheets({silent:false})">⬇ Pull latest from Sheet</button>
+</div>
+<div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:0.75rem;" id="pull-last-label">Never pulled on this device</div>
 <div id="sync-status-msg"></div>
 
 <!-- REMOVED: The <details> block containing the Apps Script textarea -->
@@ -3184,6 +3188,7 @@ async function renderSyncPage() {
     
     autoSyncEnabled = !!autoSync;
     updateAutoSyncBar();
+    updatePullLastLabel();
 }
 
 function updateAutoSyncBar() {
@@ -3213,14 +3218,13 @@ async function saveSyncUrl() {
     
     await dbSetSetting('sync_url', url);
     await dbSetSetting('auto_sync', true);
-    
+
     autoSyncEnabled = true;
     updateAutoSyncBar();
 
-    // ── SAVE GAS URL TO SUPABASE so other devices can pull it automatically ──
-    // This is the key fix for cross-device GAS URL sync. Without this, a new
-    // device has no way to know the teacher's GAS URL and pullFromSheets()
-    // silently does nothing after login.
+    // ── PERSIST GAS URL TO SUPABASE so other devices find it automatically ──
+    // Existing early-access users who had null gas_url get their URL written
+    // here the first time they save it after updating to this version.
     try {
         if (supabaseClient) {
             const { data: { session } } = await supabaseClient.auth.getSession();
@@ -3231,11 +3235,10 @@ async function saveSyncUrl() {
             }
         }
     } catch (e) {
-        // Non-fatal — URL is still saved locally; Supabase sync will retry next time
-        console.warn('Could not save GAS URL to Supabase:', e.message);
+        console.warn('Could not save GAS URL to Supabase (non-fatal):', e.message);
     }
-    // ── END GAS URL SUPABASE SAVE ─────────────────────────────────────────
-    
+    // ── END SUPABASE GAS URL SAVE ─────────────────────────────────────────
+
     msg.innerHTML = `<div class="sync-status info">Testing connection…</div>`;
     
     try {
@@ -3503,13 +3506,20 @@ async function syncToSheets(silent = false) {
 // the local IndexedDB with their classes and students — all without any
 // student data ever passing through our servers (Supabase only stores
 // the GAS URL, not the actual roster).
+// ── pullFromSheets ────────────────────────────────────────────────────────
+// Always runs an incremental merge — not just on first login.
+// Safe to call on every login because:
+//   • Classes / students: merged by id (no duplicates, no overwrites)
+//   • Logs: merged by timestamp (new ones added, existing ones skipped)
+//   • Watermark advances only forward (never causes re-push of already-synced logs)
+// This means edits made on Device A and pushed to the Sheet will appear on
+// Device B the next time Device B logs in or the teacher hits "Pull from Sheet".
 async function pullFromSheets({ silent = false } = {}) {
+    // ── RESOLVE GAS URL ───────────────────────────────────────────────────
+    // Priority: local IndexedDB → Supabase profile (for new/existing devices
+    // whose gas_url was null before this version).
     let url = await dbGetSetting('sync_url');
 
-    // ── FETCH GAS URL FROM SUPABASE if not saved locally ─────────────────
-    // On a brand-new device, sync_url is absent from IndexedDB. We try to
-    // retrieve it from the teacher's Supabase profile so they don't have to
-    // manually re-enter it on every new device/browser.
     if (!url && supabaseClient) {
         try {
             const { data: { session } } = await supabaseClient.auth.getSession();
@@ -3521,12 +3531,10 @@ async function pullFromSheets({ silent = false } = {}) {
                     .single();
                 if (profile?.gas_url) {
                     url = profile.gas_url;
-                    // Persist locally so future calls are instant (no extra round-trip)
                     await dbSetSetting('sync_url', url);
                     await dbSetSetting('auto_sync', true);
                     autoSyncEnabled = true;
                     updateAutoSyncBar();
-                    // Refresh the Sync tab input if it's currently showing
                     const syncInput = document.getElementById('sync-url-input');
                     if (syncInput) syncInput.value = url;
                     if (!silent) showToast('Sync URL restored from your account ✓', 'ok');
@@ -3536,20 +3544,18 @@ async function pullFromSheets({ silent = false } = {}) {
             console.warn('Could not fetch GAS URL from Supabase:', e.message);
         }
     }
-    // ── END GAS URL FETCH ─────────────────────────────────────────────────
 
     if (!url) return; // No GAS URL anywhere — teacher hasn't set up Sheets yet
-
-    const hasClasses = classes.length > 0;
-    const hasStudents = students.length > 0;
-    if (hasClasses && hasStudents) return; // Already populated — nothing to pull
+    // ── END RESOLVE GAS URL ───────────────────────────────────────────────
 
     if (!navigator.onLine) {
         if (!silent) showToast('Offline — cannot pull data from Sheets right now.', 'warn');
         return;
     }
 
-    if (!silent) showToast('New device detected — pulling your roster from Sheets…', 'info');
+    // Show a subtle status while pulling (only when called explicitly)
+    const pullBtn = document.getElementById('pull-from-sheet-btn');
+    if (pullBtn) { pullBtn.disabled = true; pullBtn.textContent = '⏳ Pulling…'; }
 
     try {
         const resp = await fetch(`${url}?action=pull`, { method: 'GET' });
@@ -3557,83 +3563,115 @@ async function pullFromSheets({ silent = false } = {}) {
         const result = await resp.json();
         if (!result.success) throw new Error(result.error || 'Pull failed');
 
-        let importedClasses = 0, importedStudents = 0;
+        let importedClasses = 0, importedStudents = 0, updatedClasses = 0, updatedStudents = 0;
 
-        if (result.classes?.length && !hasClasses) {
-            const existingIds = new Set(classes.map(c => c.id));
-            const newClasses = result.classes.filter(c => !existingIds.has(c.id));
-            classes.push(...newClasses);
-            await dbPutAll('classes', classes);
-            importedClasses = newClasses.length;
+        // ── MERGE CLASSES (incremental) ───────────────────────────────────
+        if (result.classes?.length) {
+            const existingMap = new Map(classes.map(c => [c.id, c]));
+            result.classes.forEach(c => {
+                if (!existingMap.has(c.id)) {
+                    classes.push(c);
+                    importedClasses++;
+                }
+                // Note: we intentionally do NOT overwrite existing classes —
+                // the local device is the authoritative source for class names/settings.
+                // If a teacher renames a class on Device B, we don't want Device A's
+                // pull to silently revert it.
+            });
+            if (importedClasses > 0) await dbPutAll('classes', classes);
         }
 
-        if (result.students?.length && !hasStudents) {
-            const existingIds = new Set(students.map(s => s.id));
-            const newStudents = result.students.filter(s => !existingIds.has(s.id));
-            students.push(...newStudents);
-            students.sort((a, b) => a.name.localeCompare(b.name));
-            await dbPutAll('students', students);
-            importedStudents = newStudents.length;
+        // ── MERGE STUDENTS (incremental) ──────────────────────────────────
+        if (result.students?.length) {
+            const existingMap = new Map(students.map(s => [s.id, s]));
+            result.students.forEach(s => {
+                if (!existingMap.has(s.id)) {
+                    students.push(s);
+                    importedStudents++;
+                }
+            });
+            if (importedStudents > 0) {
+                students.sort((a, b) => a.name.localeCompare(b.name));
+                await dbPutAll('students', students);
+            }
         }
 
+        // ── SYNC SETTINGS ─────────────────────────────────────────────────
         if (result.settings?.schoolYearStart) {
             schoolYearStart = result.settings.schoolYearStart;
             await dbSetSetting('school_year_start', schoolYearStart);
             refreshTerms();
         }
 
-        // ── PULL LOGS FROM SHEET ──────────────────────────────────────────
-        // Logs are returned from the per-class sheet tabs (not a snapshot).
+        // ── MERGE LOGS (incremental by timestamp) ─────────────────────────
         // We only import logs the local IndexedDB doesn't already have,
         // keyed by timestamp (the stable System ID from the sheet).
-        // Pulled logs are marked _pulledFromSheet so the watermark is set
-        // to the latest one — preventing them from being re-pushed on the
-        // next sync (they're already in the Sheet).
+        // This means a log pushed from Device A will appear on Device B on
+        // next pull — regardless of whether Device B already has data.
         let importedLogs = 0;
         if (result.logs?.length) {
             const existingTimestamps = new Set(logs.map(l => l.timestamp));
             const newLogs = result.logs.filter(l => !existingTimestamps.has(l.timestamp));
 
             if (newLogs.length) {
-                // Write to IndexedDB one at a time (dbAdd assigns autoIncrement id)
                 for (const l of newLogs) {
                     const { _pulledFromSheet, ...cleanLog } = l;
+                    // Ensure enrolledDate exists (guard for older sheet records)
+                    if (!cleanLog.enrolledDate) cleanLog.enrolledDate = cleanLog.localDate || todayStr();
                     const newId = await dbAdd('logs', cleanLog);
                     cleanLog.id = newId;
                     logs.push(cleanLog);
                 }
                 importedLogs = newLogs.length;
 
-                // Advance the watermark to the latest pulled log timestamp so
-                // syncToSheets() does not attempt to re-push them next time.
-                const latestPulled = newLogs
-                    .map(l => l.timestamp)
-                    .sort()
-                    .at(-1);
+                // Advance the watermark to the latest pulled log so syncToSheets()
+                // never re-pushes logs that are already in the Sheet.
+                const latestPulled = newLogs.map(l => l.timestamp).sort().at(-1);
                 const currentWatermark = await dbGetSetting('last_sync_time');
                 if (!currentWatermark || latestPulled > currentWatermark) {
                     await dbSetSetting('last_sync_time', latestPulled);
                 }
 
-                // Re-sort logs newest-first (same order as the main feed)
                 logs.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
             }
         }
-        // ── END PULL LOGS ─────────────────────────────────────────────────
+        // ── END MERGE LOGS ────────────────────────────────────────────────
+
+        // Record the time of this pull so the teacher can see "Last pulled: X"
+        await dbSetSetting('last_pull_time', new Date().toISOString());
 
         if (importedClasses > 0 || importedStudents > 0 || importedLogs > 0) {
             populateDropdowns();
             renderClasses();
             renderStudents();
             renderLog();
-            showToast(`✅ Pulled ${importedClasses} classes, ${importedStudents} students, ${importedLogs} logs from your Sheet.`, 'ok');
+            const parts = [];
+            if (importedClasses > 0) parts.push(`${importedClasses} class${importedClasses > 1 ? 'es' : ''}`);
+            if (importedStudents > 0) parts.push(`${importedStudents} student${importedStudents > 1 ? 's' : ''}`);
+            if (importedLogs > 0) parts.push(`${importedLogs} log${importedLogs > 1 ? 's' : ''}`);
+            showToast(`✅ Pulled ${parts.join(', ')} from your Sheet.`, 'ok');
         } else if (!silent) {
-            showToast('Sheet has no roster data yet — set up classes on this device first.', 'info');
+            showToast('✓ Already up to date — no new data in Sheet.', 'info');
         }
+
+        // Update the "Last pulled" label on the sync page if it's visible
+        updatePullLastLabel();
+
     } catch (e) {
         console.warn('pullFromSheets failed:', e.message);
         if (!silent) showToast('Could not pull from Sheets: ' + e.message, 'err');
+    } finally {
+        if (pullBtn) { pullBtn.disabled = false; pullBtn.textContent = '⬇ Pull latest from Sheet'; }
     }
+}
+
+async function updatePullLastLabel() {
+    const el = document.getElementById('pull-last-label');
+    if (!el) return;
+    const last = await dbGetSetting('last_pull_time');
+    el.textContent = last
+        ? `Last pulled: ${new Date(last).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`
+        : 'Never pulled on this device';
 }
 
 // ── PWA INSTALL ───────────────────────────────────────────────────────────
@@ -4533,10 +4571,13 @@ async function checkAccess(userId, { silent } = {}) {
         access = resolveAccess(data);
         setCachedAccess({ ...access, checkedAt: Date.now() });
 
-        // ── HYDRATE LOCAL GAS URL from profile (new-device convenience) ──
-        // If the profile carries a gas_url and the local IDB doesn't have one
-        // yet, save it now so pullFromSheets (called right after this) finds it
-        // immediately without needing its own Supabase round-trip.
+        // ── HYDRATE GAS URL from Supabase profile on every login ──────────
+        // Covers three cases:
+        //   1. Brand-new device that has never had the URL (new install)
+        //   2. Existing early-access users whose gas_url was null before
+        //      this version — it gets written to profiles when they next
+        //      save their Sync URL on any device, and then auto-appears here
+        //   3. Teacher cleared app data / changed browser — URL is restored
         if (data?.gas_url) {
             const localUrl = await dbGetSetting('sync_url');
             if (!localUrl) {
