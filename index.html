@@ -3223,15 +3223,26 @@ async function saveSyncUrl() {
     updateAutoSyncBar();
 
     // ── PERSIST GAS URL TO SUPABASE so other devices find it automatically ──
-    // Existing early-access users who had null gas_url get their URL written
-    // here the first time they save it after updating to this version.
+    // Uses update-then-insert fallback instead of upsert because Supabase RLS
+    // policies often allow UPDATE on own row but reject upsert's internal
+    // DELETE+INSERT path, causing a silent failure with no JS error thrown.
     try {
         if (supabaseClient) {
             const { data: { session } } = await supabaseClient.auth.getSession();
             if (session?.user?.id) {
-                await supabaseClient
+                const uid = session.user.id;
+                // Try UPDATE first (row already exists — the common case)
+                const { error: updateErr } = await supabaseClient
                     .from('profiles')
-                    .upsert({ id: session.user.id, gas_url: url }, { onConflict: 'id' });
+                    .update({ gas_url: url })
+                    .eq('id', uid);
+                if (updateErr) {
+                    // Row may not exist yet (brand-new account) — try INSERT
+                    const { error: insertErr } = await supabaseClient
+                        .from('profiles')
+                        .insert({ id: uid, gas_url: url });
+                    if (insertErr) throw insertErr;
+                }
             }
         }
     } catch (e) {
@@ -3603,35 +3614,61 @@ async function pullFromSheets({ silent = false } = {}) {
             refreshTerms();
         }
 
-        // ── MERGE LOGS (incremental by timestamp) ─────────────────────────
-        // We only import logs the local IndexedDB doesn't already have,
-        // keyed by timestamp (the stable System ID from the sheet).
-        // This means a log pushed from Device A will appear on Device B on
-        // next pull — regardless of whether Device B already has data.
+        // ── MERGE LOGS (new + edits) ──────────────────────────────────────
+        // Two passes:
+        //   Pass A — NEW logs: timestamp absent from local IDB → dbAdd
+        //   Pass B — EDITED logs: timestamp already exists but a field changed
+        //            (e.g. isLate flipped, type corrected) → dbPut to overwrite
+        //
+        // "Already up to date" only fires when NEITHER pass finds anything,
+        // which is why edited logs previously showed that misleading message.
         let importedLogs = 0;
-        if (result.logs?.length) {
-            const existingTimestamps = new Set(logs.map(l => l.timestamp));
-            const newLogs = result.logs.filter(l => !existingTimestamps.has(l.timestamp));
+        let updatedLogs  = 0;
 
-            if (newLogs.length) {
-                for (const l of newLogs) {
-                    const { _pulledFromSheet, ...cleanLog } = l;
-                    // Ensure enrolledDate exists (guard for older sheet records)
-                    if (!cleanLog.enrolledDate) cleanLog.enrolledDate = cleanLog.localDate || todayStr();
+        if (result.logs?.length) {
+            // Build a map of timestamp → local log for quick lookup
+            const existingByTs = new Map(logs.map(l => [l.timestamp, l]));
+
+            // Helper: compare the fields the Sheet can change
+            const logSignature = l =>
+                `${l.type}|${l.isLate ? '1' : '0'}|${l.studentName}|${l.studentLrn}|${l.className}`;
+
+            for (const l of result.logs) {
+                const { _pulledFromSheet, ...cleanLog } = l;
+                if (!cleanLog.enrolledDate) cleanLog.enrolledDate = cleanLog.localDate || todayStr();
+
+                const existing = existingByTs.get(cleanLog.timestamp);
+
+                if (!existing) {
+                    // ── Pass A: brand-new log ────────────────────────────
                     const newId = await dbAdd('logs', cleanLog);
                     cleanLog.id = newId;
                     logs.push(cleanLog);
+                    existingByTs.set(cleanLog.timestamp, cleanLog);
+                    importedLogs++;
+                } else if (logSignature(existing) !== logSignature(cleanLog)) {
+                    // ── Pass B: same timestamp, different content → edit ──
+                    // Preserve the local IDB id so dbPut overwrites the right row
+                    const merged = { ...existing, ...cleanLog, id: existing.id };
+                    await dbPutAll('logs', [merged]);
+                    // Update the in-memory array in place
+                    const idx = logs.findIndex(x => x.id === existing.id);
+                    if (idx !== -1) logs[idx] = merged;
+                    existingByTs.set(cleanLog.timestamp, merged);
+                    updatedLogs++;
                 }
-                importedLogs = newLogs.length;
+                // else: identical — skip
+            }
 
-                // Advance the watermark to the latest pulled log so syncToSheets()
-                // never re-pushes logs that are already in the Sheet.
-                const latestPulled = newLogs.map(l => l.timestamp).sort().at(-1);
+            if (importedLogs > 0 || updatedLogs > 0) {
+                // Advance the watermark so syncToSheets() never re-pushes
+                // pulled logs. Watermark = latest timestamp across all pulled logs.
+                const allPulledTs = result.logs.map(l => l.timestamp).sort();
+                const latestPulled = allPulledTs.at(-1);
                 const currentWatermark = await dbGetSetting('last_sync_time');
                 if (!currentWatermark || latestPulled > currentWatermark) {
                     await dbSetSetting('last_sync_time', latestPulled);
                 }
-
                 logs.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
             }
         }
@@ -3640,18 +3677,19 @@ async function pullFromSheets({ silent = false } = {}) {
         // Record the time of this pull so the teacher can see "Last pulled: X"
         await dbSetSetting('last_pull_time', new Date().toISOString());
 
-        if (importedClasses > 0 || importedStudents > 0 || importedLogs > 0) {
+        if (importedClasses > 0 || importedStudents > 0 || importedLogs > 0 || updatedLogs > 0) {
             populateDropdowns();
             renderClasses();
             renderStudents();
             renderLog();
             const parts = [];
-            if (importedClasses > 0) parts.push(`${importedClasses} class${importedClasses > 1 ? 'es' : ''}`);
+            if (importedClasses  > 0) parts.push(`${importedClasses} class${importedClasses > 1 ? 'es' : ''}`);
             if (importedStudents > 0) parts.push(`${importedStudents} student${importedStudents > 1 ? 's' : ''}`);
-            if (importedLogs > 0) parts.push(`${importedLogs} log${importedLogs > 1 ? 's' : ''}`);
-            showToast(`✅ Pulled ${parts.join(', ')} from your Sheet.`, 'ok');
+            if (importedLogs     > 0) parts.push(`${importedLogs} new log${importedLogs > 1 ? 's' : ''}`);
+            if (updatedLogs      > 0) parts.push(`${updatedLogs} edited log${updatedLogs > 1 ? 's' : ''}`);
+            showToast(`✅ Pulled: ${parts.join(', ')}.`, 'ok');
         } else if (!silent) {
-            showToast('✓ Already up to date — no new data in Sheet.', 'info');
+            showToast('✓ Already up to date — no new or edited data in Sheet.', 'info');
         }
 
         // Update the "Last pulled" label on the sync page if it's visible
