@@ -3216,6 +3216,25 @@ async function saveSyncUrl() {
     
     autoSyncEnabled = true;
     updateAutoSyncBar();
+
+    // ── SAVE GAS URL TO SUPABASE so other devices can pull it automatically ──
+    // This is the key fix for cross-device GAS URL sync. Without this, a new
+    // device has no way to know the teacher's GAS URL and pullFromSheets()
+    // silently does nothing after login.
+    try {
+        if (supabaseClient) {
+            const { data: { session } } = await supabaseClient.auth.getSession();
+            if (session?.user?.id) {
+                await supabaseClient
+                    .from('profiles')
+                    .upsert({ id: session.user.id, gas_url: url }, { onConflict: 'id' });
+            }
+        }
+    } catch (e) {
+        // Non-fatal — URL is still saved locally; Supabase sync will retry next time
+        console.warn('Could not save GAS URL to Supabase:', e.message);
+    }
+    // ── END GAS URL SUPABASE SAVE ─────────────────────────────────────────
     
     msg.innerHTML = `<div class="sync-status info">Testing connection…</div>`;
     
@@ -3485,8 +3504,41 @@ async function syncToSheets(silent = false) {
 // student data ever passing through our servers (Supabase only stores
 // the GAS URL, not the actual roster).
 async function pullFromSheets({ silent = false } = {}) {
-    const url = await dbGetSetting('sync_url');
-    if (!url) return; // No GAS URL saved yet — teacher hasn't set up Sheets
+    let url = await dbGetSetting('sync_url');
+
+    // ── FETCH GAS URL FROM SUPABASE if not saved locally ─────────────────
+    // On a brand-new device, sync_url is absent from IndexedDB. We try to
+    // retrieve it from the teacher's Supabase profile so they don't have to
+    // manually re-enter it on every new device/browser.
+    if (!url && supabaseClient) {
+        try {
+            const { data: { session } } = await supabaseClient.auth.getSession();
+            if (session?.user?.id) {
+                const { data: profile } = await supabaseClient
+                    .from('profiles')
+                    .select('gas_url')
+                    .eq('id', session.user.id)
+                    .single();
+                if (profile?.gas_url) {
+                    url = profile.gas_url;
+                    // Persist locally so future calls are instant (no extra round-trip)
+                    await dbSetSetting('sync_url', url);
+                    await dbSetSetting('auto_sync', true);
+                    autoSyncEnabled = true;
+                    updateAutoSyncBar();
+                    // Refresh the Sync tab input if it's currently showing
+                    const syncInput = document.getElementById('sync-url-input');
+                    if (syncInput) syncInput.value = url;
+                    if (!silent) showToast('Sync URL restored from your account ✓', 'ok');
+                }
+            }
+        } catch (e) {
+            console.warn('Could not fetch GAS URL from Supabase:', e.message);
+        }
+    }
+    // ── END GAS URL FETCH ─────────────────────────────────────────────────
+
+    if (!url) return; // No GAS URL anywhere — teacher hasn't set up Sheets yet
 
     const hasClasses = classes.length > 0;
     const hasStudents = students.length > 0;
@@ -4473,13 +4525,30 @@ async function checkAccess(userId, { silent } = {}) {
     try {
         const { data, error } = await supabaseClient
             .from('profiles')
-            .select('access_tier, trial_started_at, granted_at')
+            .select('access_tier, trial_started_at, granted_at, gas_url')
             .eq('id', userId)
             .single();
 
         if (error) throw error;
         access = resolveAccess(data);
         setCachedAccess({ ...access, checkedAt: Date.now() });
+
+        // ── HYDRATE LOCAL GAS URL from profile (new-device convenience) ──
+        // If the profile carries a gas_url and the local IDB doesn't have one
+        // yet, save it now so pullFromSheets (called right after this) finds it
+        // immediately without needing its own Supabase round-trip.
+        if (data?.gas_url) {
+            const localUrl = await dbGetSetting('sync_url');
+            if (!localUrl) {
+                await dbSetSetting('sync_url', data.gas_url);
+                await dbSetSetting('auto_sync', true);
+                autoSyncEnabled = true;
+                updateAutoSyncBar();
+                const syncInput = document.getElementById('sync-url-input');
+                if (syncInput) syncInput.value = data.gas_url;
+            }
+        }
+        // ── END GAS URL HYDRATION ─────────────────────────────────────────
     } catch (e) {
         console.warn('Live access check failed, using cached status:', e.message || e);
         const cached = getCachedAccess();
