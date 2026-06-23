@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1359,6 +1360,7 @@
 <div style="display:flex; gap:0.5rem; margin-bottom:0.75rem; flex-wrap:wrap;">
 <button class="btn full" onclick="saveSyncUrl()">💾 Save &amp; enable auto-sync</button>
 <button class="btn full success" id="sync-btn" onclick="syncToSheets()">⬆ Push unsynced logs</button>
+<button class="btn full outline" id="pull-btn" onclick="pullFromSheets()">⬇ Pull from Google Sheets</button>
 </div>
 <div id="sync-status-msg"></div>
 
@@ -1747,8 +1749,12 @@ let lastScanned     = null;
 let lastScannedTime = 0;
 let scanMode        = 'arrival';
 
-async function saveClasses()  { await dbPutAll('classes',  classes); }
-async function saveStudents() { await dbPutAll('students', students); }
+async function markRosterDirty() {
+  await dbSetSetting('roster_dirty', true);
+}
+
+async function saveClasses()  { await dbPutAll('classes',  classes); await markRosterDirty(); }
+async function saveStudents() { await dbPutAll('students', students); await markRosterDirty(); }
 
 // ── TOAST ──────────────────────────────────────────────────────────────────
 let toastTimer;
@@ -2127,6 +2133,7 @@ async function addClass() {
   if (!name) return showToast('Enter a class name.', 'warn');
   classes.push({ id: 'class_' + Date.now(), name, startTime, graceMins });
   await saveClasses();
+  scheduleRosterSync();
   input.value = '';
   renderClasses(); populateDropdowns();
   showToast('Class saved.', 'ok');
@@ -2153,6 +2160,8 @@ async function removeClass(id) {
   students = students.filter(s => s.classId !== id);
   await dbClear('classes');  await dbPutAll('classes',  classes);
   await dbClear('students'); await dbPutAll('students', students);
+  await markRosterDirty();
+  scheduleRosterSync();
   renderClasses(); populateDropdowns();
   showToast(logCount ? `Class deleted. ${logCount} past attendance record${logCount !== 1 ? 's' : ''} kept in Logs.` : 'Class deleted.', 'ok');
 }
@@ -2249,6 +2258,7 @@ async function addStudent() {
   students.push({ id, classId, name, lrn, guardian, enrolledDate, qrDataUrl });
   students.sort((a, b) => a.name.localeCompare(b.name));
   await saveStudents();
+  scheduleRosterSync();
 
   ['student-name-input','student-lrn-input','student-guardian-input'].forEach(inp => {
     document.getElementById(inp).value = '';
@@ -2280,6 +2290,8 @@ async function deleteStudent(id) {
   // who transferred out) stays intact in the Logs feed and exports.
   students = students.filter(s => s.id !== id);
   await dbClear('students'); await dbPutAll('students', students);
+  await markRosterDirty();
+  scheduleRosterSync();
   renderStudents(); renderClasses();
   showToast(logCount ? `Student removed. ${logCount} past attendance record${logCount !== 1 ? 's' : ''} kept in Logs.` : 'Student removed.', 'ok');
 }
@@ -3038,6 +3050,7 @@ async function saveEditClass() {
   if (!cls) return;
   cls.name = name; cls.startTime = startTime; cls.graceMins = graceMins;
   await saveClasses();
+  scheduleRosterSync();
   closeEditClassModalDirect();
   renderClasses(); populateDropdowns();
   showToast('Class updated.', 'ok');
@@ -3136,12 +3149,15 @@ async function saveEditLog() {
 async function deleteLogEntry() {
   const logId = parseInt(document.getElementById('edit-log-id').value);
   if (!confirm('Delete this attendance record?')) return;
+  const deletedLog = logs.find(l => l.id === logId);
+  await queueDeletedLog(deletedLog);
   logs = logs.filter(l => l.id !== logId);
   await dbDelete('logs', logId);
   closeEditLogModalDirect();
   renderLog(false); renderTodayList();
   if (document.getElementById('page-summary').classList.contains('active')) renderSummary();
   if (document.getElementById('terms-modal-backdrop').classList.contains('open')) renderTermsModalBody();
+  scheduleAutoSync();
   showToast('Record deleted.', 'ok');
 }
 
@@ -3216,6 +3232,7 @@ async function saveSyncUrl() {
     
     autoSyncEnabled = true;
     updateAutoSyncBar();
+    syncPendingWhenOnline('setup');
     
     msg.innerHTML = `<div class="sync-status info">Testing connection…</div>`;
     
@@ -3240,6 +3257,51 @@ async function disableAutoSync() {
   clearTimeout(autoSyncTimer);
   updateAutoSyncBar();
   showToast('Auto-sync disabled.', 'info');
+}
+
+function scheduleRosterSync() {
+  if (autoSyncEnabled) scheduleAutoSync();
+}
+
+async function getPendingDeletes() {
+  return await dbGetSetting('pending_deletes') || [];
+}
+
+async function queueDeletedLog(log) {
+  if (!log) return;
+  const pendingDeletes = await getPendingDeletes();
+  pendingDeletes.push({
+    timestamp: log.timestamp || '',
+    localDate: log.localDate || getLogDate(log),
+    className: log.className || (classes.find(c => c.id === log.classId) || {}).name || '',
+    studentName: log.studentName || '',
+    studentLrn: log.studentLrn || '',
+    type: log.type || 'arrival'
+  });
+  await dbSetSetting('pending_deletes', pendingDeletes);
+}
+
+async function clearPendingDeletes() {
+  await dbSetSetting('pending_deletes', []);
+}
+
+function getRosterPayload() {
+  return {
+    classes: classes.map(c => ({
+      id: c.id,
+      name: c.name,
+      startTime: c.startTime || '',
+      graceMins: c.graceMins != null ? c.graceMins : ''
+    })),
+    students: students.map(s => ({
+      id: s.id,
+      classId: s.classId,
+      name: s.name,
+      lrn: s.lrn || '',
+      guardian: s.guardian || '',
+      enrolledDate: s.enrolledDate || ''
+    }))
+  };
 }
 
 // syncSingleLog now rewinds the watermark instead of pushing out-of-band.
@@ -3288,6 +3350,19 @@ function scheduleAutoSync() {
   if (!autoSyncEnabled) return;
   clearTimeout(autoSyncTimer);
   autoSyncTimer = setTimeout(() => syncToSheets(true), AUTO_SYNC_DELAY);
+}
+
+async function syncPendingWhenOnline(trigger = 'auto') {
+  if (!autoSyncEnabled || !navigator.onLine) return;
+  const url = await dbGetSetting('sync_url');
+  if (!url) return;
+  const pendingLogs = await getPendingLogs();
+  const pendingDeletes = await getPendingDeletes();
+  const rosterDirty = !!(await dbGetSetting('roster_dirty'));
+  if (pendingLogs.length || pendingDeletes.length || rosterDirty) {
+    if (trigger === 'online') showToast('Connection restored. Syncing pending changes...', 'info');
+    scheduleAutoSync();
+  }
 }
 
 // ── SYNC HELPERS ──────────────────────────────────────────────────────────
@@ -3362,7 +3437,10 @@ async function syncToSheets(silent = false) {
     }
 
     const pendingLogs = await getPendingLogs();
-    if (!pendingLogs.length) { 
+    const pendingDeletes = await getPendingDeletes();
+    const rosterDirty = !!(await dbGetSetting('roster_dirty'));
+
+    if (!pendingLogs.length && !pendingDeletes.length && !rosterDirty) { 
         if (!silent && msg) msg.innerHTML = `<div class="sync-status ok">✅ All logs already synced.</div>`; 
         return; 
     }
@@ -3372,14 +3450,16 @@ async function syncToSheets(silent = false) {
     for (let i = 0; i < pendingLogs.length; i += CHUNK_SIZE) {
         chunks.push(pendingLogs.slice(i, i + CHUNK_SIZE));
     }
+    if (!chunks.length) chunks.push([]);
 
     if (!silent) {
-        if (msg) msg.innerHTML = `<div class="sync-status info">Pushing ${pendingLogs.length} records in ${chunks.length} batch(es)…</div>`;
+        if (msg) msg.innerHTML = `<div class="sync-status info">Pushing ${pendingLogs.length} record(s), ${pendingDeletes.length} delete(s), and roster updates in ${chunks.length} batch(es)…</div>`;
         if (btn) { btn.disabled = true; btn.textContent = `Pushing 0/${chunks.length} batches…`; }
     }
 
     let totalAdded = 0;
     let totalUpdated = 0;
+    let totalDeleted = 0;
     let lastSuccessfulTimestamp = await dbGetSetting('last_sync_time');
 
     // Process chunks sequentially
@@ -3397,6 +3477,8 @@ async function syncToSheets(silent = false) {
                 const payload = {
                     action: 'sync', // Matches GAS v8 requirement
                     logs: chunk,
+                    deletedLogs: i === 0 ? pendingDeletes : [],
+                    roster: getRosterPayload(),
                     activeClasses: getActiveClasses(),
                     // Lets the spreadsheet compute the SAME year-aware term
                     // boundaries as the app (see computeTermsFromStartDate /
@@ -3422,6 +3504,7 @@ async function syncToSheets(silent = false) {
                 if (result.success) {
                     totalAdded += result.added || 0;
                     totalUpdated += result.updated || 0;
+                    totalDeleted += result.deleted || 0;
                     // Advance watermark to the LATEST timestamp seen so far,
                     // never just "the chunk's last entry". Since
                     // getPendingLogs() can include an older log that was
@@ -3431,9 +3514,11 @@ async function syncToSheets(silent = false) {
                     // watermark — naively taking chunk[chunk.length-1] in
                     // that case would move the watermark BACKWARD and cause
                     // already-synced logs to be needlessly re-sent next time.
-                    const chunkMaxTimestamp = chunk.reduce((max, l) => l.timestamp > max ? l.timestamp : max, chunk[0].timestamp);
-                    if (!lastSuccessfulTimestamp || chunkMaxTimestamp > lastSuccessfulTimestamp) {
-                      lastSuccessfulTimestamp = chunkMaxTimestamp;
+                    if (chunk.length) {
+                      const chunkMaxTimestamp = chunk.reduce((max, l) => l.timestamp > max ? l.timestamp : max, chunk[0].timestamp);
+                      if (!lastSuccessfulTimestamp || chunkMaxTimestamp > lastSuccessfulTimestamp) {
+                        lastSuccessfulTimestamp = chunkMaxTimestamp;
+                      }
                     }
                     success = true;
                     await clearSyncFlags(chunk);
@@ -3464,16 +3549,173 @@ async function syncToSheets(silent = false) {
     if (lastSuccessfulTimestamp) {
         await advanceSyncWatermark(lastSuccessfulTimestamp);
     }
+    if (pendingDeletes.length) {
+        await clearPendingDeletes();
+    }
+    if (rosterDirty) {
+        await dbSetSetting('roster_dirty', false);
+    }
 
     if (!silent) {
-        if (msg) msg.innerHTML = `<div class="sync-status ok">✅ Synced! ${totalAdded} added, ${totalUpdated} updated.</div>`;
+        if (msg) msg.innerHTML = `<div class="sync-status ok">✅ Synced! ${totalAdded} added, ${totalUpdated} updated, ${totalDeleted} deleted.</div>`;
         if (btn) { btn.disabled = false; btn.textContent = '⬆ Push unsynced logs'; }
-    } else if (totalAdded > 0 || totalUpdated > 0) {
-        showToast(`☁ Synced ${totalAdded + totalUpdated} records`, 'ok');
+    } else if (totalAdded > 0 || totalUpdated > 0 || totalDeleted > 0 || rosterDirty) {
+        showToast(`☁ Synced ${totalAdded + totalUpdated + totalDeleted} change(s)`, 'ok');
     }
 }
 
 // ── PWA INSTALL ───────────────────────────────────────────────────────────
+function logMergeKey(l) {
+  return [
+    l.timestamp || '',
+    l.studentLrn || l.studentName || l.studentId || '',
+    l.type || 'arrival'
+  ].join('|');
+}
+
+async function ensureStudentQr(student) {
+  if (student.qrDataUrl || typeof QRCode === 'undefined') return student;
+  try {
+    student.qrDataUrl = await QRCode.toDataURL(JSON.stringify({ eduscan: true, id: student.id }), { width: 160, margin: 1 });
+  } catch (e) {
+    student.qrDataUrl = '';
+  }
+  return student;
+}
+
+async function pullFromSheets() {
+  const input = document.getElementById('sync-url-input');
+  const msg = document.getElementById('sync-status-msg');
+  const btn = document.getElementById('pull-btn');
+  const savedUrl = await dbGetSetting('sync_url');
+  const typedUrl = input ? input.value.trim() : '';
+  const url = savedUrl || typedUrl;
+
+  if (!url) {
+    if (msg) msg.innerHTML = `<div class="sync-status err">No URL saved. Paste your Sync URL first.</div>`;
+    return;
+  }
+
+  if (!savedUrl && typedUrl) {
+    await dbSetSetting('sync_url', typedUrl);
+    await dbSetSetting('auto_sync', true);
+    autoSyncEnabled = true;
+    updateAutoSyncBar();
+  }
+
+  if (!navigator.onLine) {
+    if (msg) msg.innerHTML = `<div class="sync-status err">Pull needs internet. Your offline data is still safe on this device.</div>`;
+    return;
+  }
+
+  const pendingLogs = await getPendingLogs();
+  const pendingDeletes = await getPendingDeletes();
+  const rosterDirty = !!(await dbGetSetting('roster_dirty'));
+  if (pendingLogs.length || pendingDeletes.length || rosterDirty) {
+    if (msg) msg.innerHTML = `<div class="sync-status info">Pushing local changes before pull...</div>`;
+    await syncToSheets(true);
+    const stillPendingLogs = await getPendingLogs();
+    const stillPendingDeletes = await getPendingDeletes();
+    const stillRosterDirty = !!(await dbGetSetting('roster_dirty'));
+    if (stillPendingLogs.length || stillPendingDeletes.length || stillRosterDirty) {
+      if (msg) msg.innerHTML = `<div class="sync-status err">Could not finish pushing local changes. Pull was stopped to avoid conflicts.</div>`;
+      return;
+    }
+  }
+
+  try {
+    if (btn) { btn.disabled = true; btn.textContent = 'Pulling...'; }
+    if (msg) msg.innerHTML = `<div class="sync-status info">Pulling roster and attendance from Google Sheets...</div>`;
+
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: 'pull' })
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+    const result = await resp.json();
+    if (!result.success) throw new Error(result.error || 'Pull failed');
+
+    const incomingClasses = Array.isArray(result.classes) ? result.classes : [];
+    const incomingStudents = Array.isArray(result.students) ? result.students : [];
+    const incomingLogs = Array.isArray(result.logs) ? result.logs : [];
+
+    const classMap = new Map(classes.map(c => [c.id, c]));
+    incomingClasses.forEach(c => {
+      if (!c.id) return;
+      classMap.set(c.id, { ...(classMap.get(c.id) || {}), ...c });
+    });
+    classes = Array.from(classMap.values()).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+    const studentMap = new Map(students.map(s => [s.id, s]));
+    for (const s of incomingStudents) {
+      if (!s.id) continue;
+      const merged = { ...(studentMap.get(s.id) || {}), ...s };
+      studentMap.set(s.id, await ensureStudentQr(merged));
+    }
+    students = Array.from(studentMap.values()).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+    const classByName = new Map(classes.map(c => [c.name, c.id]));
+    const studentByLrn = new Map(students.filter(s => s.lrn).map(s => [s.lrn, s.id]));
+    const studentByName = new Map(students.filter(s => s.name).map(s => [s.name, s.id]));
+    const logMap = new Map(logs.map(l => [logMergeKey(l), l]));
+    incomingLogs.forEach(l => {
+      if (!l.timestamp) return;
+      const normalized = {
+        timestamp: l.timestamp,
+        localDate: l.localDate || (l.timestamp ? l.timestamp.slice(0, 10) : todayStr()),
+        classId: l.classId || classByName.get(l.className) || '',
+        className: l.className || '',
+        studentId: l.studentId || studentByLrn.get(l.studentLrn) || studentByName.get(l.studentName) || '',
+        studentName: l.studentName || '',
+        studentLrn: l.studentLrn || '',
+        type: l.type === 'departure' ? 'departure' : 'arrival',
+        isLate: !!l.isLate
+      };
+      if (!logMap.has(logMergeKey(normalized))) logMap.set(logMergeKey(normalized), normalized);
+    });
+
+    logs = Array.from(logMap.values()).sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+
+    await dbClear('classes');  await dbPutAll('classes', classes);
+    await dbClear('students'); await dbPutAll('students', students);
+    await dbClear('logs');
+    const restoredLogs = [];
+    for (const l of logs) {
+      const entry = { ...l };
+      delete entry.id;
+      const id = await dbAdd('logs', entry);
+      entry.id = id;
+      restoredLogs.push(entry);
+    }
+    logs = restoredLogs.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+
+    const newestTimestamp = logs.reduce((max, l) => l.timestamp > max ? l.timestamp : max, '');
+    if (newestTimestamp) await dbSetSetting('last_sync_time', newestTimestamp);
+    if (result.schoolYearStart) {
+      schoolYearStart = result.schoolYearStart;
+      await dbSetSetting('school_year_start', schoolYearStart);
+      refreshTerms();
+    }
+    await dbSetSetting('roster_dirty', false);
+    await clearPendingDeletes();
+
+    populateDropdowns();
+    renderClasses();
+    renderStudents();
+    renderLog(false);
+    renderTodayList();
+    if (document.getElementById('page-summary').classList.contains('active')) renderSummary();
+
+    if (msg) msg.innerHTML = `<div class="sync-status ok">✅ Pull complete: ${incomingClasses.length} class(es), ${incomingStudents.length} student(s), ${incomingLogs.length} log(s). Existing local logs were skipped.</div>`;
+    showToast('Pulled latest data from Google Sheets.', 'ok');
+  } catch (e) {
+    if (msg) msg.innerHTML = `<div class="sync-status err">Pull failed: ${e.message}</div>`;
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '⬇ Pull from Google Sheets'; }
+  }
+}
+
 let pwaInstallPrompt = null;
 
 // Detect iOS environment for install guidance
@@ -4231,6 +4473,7 @@ async function saveEditStudent() {
   
   students.sort((a, b) => a.name.localeCompare(b.name));
   await saveStudents();
+  scheduleRosterSync();
   
   closeEditStudentModalDirect();
   renderStudents();
@@ -4904,6 +5147,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   autoSyncEnabled = !!(await dbGetSetting('auto_sync'));
   schoolYearStart = await dbGetSetting('school_year_start') || '';
   refreshTerms();
+  syncPendingWhenOnline('boot');
 
   populateDropdowns();
   initSummaryPeriod();
@@ -4927,6 +5171,7 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').catch(() => {});
   });
 }
+window.addEventListener('online', () => syncPendingWhenOnline('online'));
 </script>
 </body>
 </html>
