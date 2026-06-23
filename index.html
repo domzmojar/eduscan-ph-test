@@ -3614,57 +3614,98 @@ async function pullFromSheets({ silent = false } = {}) {
             refreshTerms();
         }
 
-        // ── MERGE LOGS (new + edits) ──────────────────────────────────────
-        // Two passes:
-        //   Pass A — NEW logs: timestamp absent from local IDB → dbAdd
-        //   Pass B — EDITED logs: timestamp already exists but a field changed
-        //            (e.g. isLate flipped, type corrected) → dbPut to overwrite
+        // ── MERGE LOGS (new + edits, duplicate-safe) ─────────────────────
         //
-        // "Already up to date" only fires when NEITHER pass finds anything,
-        // which is why edited logs previously showed that misleading message.
+        // Root cause of duplicates:
+        //   When a teacher edits a log (e.g. changes time or date), saveEditLog()
+        //   rebuilds log.timestamp from the new date+time inputs. The GAS sheet
+        //   then stores this NEW timestamp as the System ID (col A). When Device B
+        //   pulls, the Sheet log has the NEW timestamp but Device B's IDB still
+        //   has the ORIGINAL timestamp → timestamp lookup misses → treated as a
+        //   brand-new log → duplicate.
+        //
+        // Three-tier lookup (mirrors what the GAS doPost already does for push):
+        //
+        //   Tier 1 — Exact timestamp match
+        //     Pulled log ts === local log ts  →  same record, check for field edits
+        //
+        //   Tier 2 — Semantic match (studentLrn|localDate|type)
+        //     Timestamp changed (teacher edited time/date) but it's the same
+        //     real-world attendance event.  Update the local record in-place and
+        //     update its timestamp to the new value so future pulls don't re-match.
+        //
+        //   Tier 3 — No match at all
+        //     Genuinely new log from another device  →  insert.
+        //
+        // Both maps are kept in sync as we process each pulled log so that a
+        // batch pull with two edits to the same student doesn't double-insert.
+
         let importedLogs = 0;
         let updatedLogs  = 0;
 
         if (result.logs?.length) {
-            // Build a map of timestamp → local log for quick lookup
-            const existingByTs = new Map(logs.map(l => [l.timestamp, l]));
+            // Build BOTH lookup maps upfront
+            const existingByTs  = new Map(logs.map(l => [l.timestamp, l]));
+            const semanticKey   = l => `${l.studentLrn || l.studentName}|${l.localDate}|${l.type}`;
+            const existingBySem = new Map(logs.map(l => [semanticKey(l), l]));
 
-            // Helper: compare the fields the Sheet can change
-            const logSignature = l =>
-                `${l.type}|${l.isLate ? '1' : '0'}|${l.studentName}|${l.studentLrn}|${l.className}`;
+            // Fields that constitute a meaningful change worth updating
+            const logSignature  = l =>
+                `${l.timestamp}|${l.type}|${l.isLate ? '1' : '0'}|${l.studentName}|${l.studentLrn}|${l.className}|${l.localDate}`;
 
             for (const l of result.logs) {
                 const { _pulledFromSheet, ...cleanLog } = l;
                 if (!cleanLog.enrolledDate) cleanLog.enrolledDate = cleanLog.localDate || todayStr();
 
-                const existing = existingByTs.get(cleanLog.timestamp);
-
-                if (!existing) {
-                    // ── Pass A: brand-new log ────────────────────────────
-                    const newId = await dbAdd('logs', cleanLog);
-                    cleanLog.id = newId;
-                    logs.push(cleanLog);
-                    existingByTs.set(cleanLog.timestamp, cleanLog);
-                    importedLogs++;
-                } else if (logSignature(existing) !== logSignature(cleanLog)) {
-                    // ── Pass B: same timestamp, different content → edit ──
-                    // Preserve the local IDB id so dbPut overwrites the right row
-                    const merged = { ...existing, ...cleanLog, id: existing.id };
-                    await dbPutAll('logs', [merged]);
-                    // Update the in-memory array in place
-                    const idx = logs.findIndex(x => x.id === existing.id);
-                    if (idx !== -1) logs[idx] = merged;
-                    existingByTs.set(cleanLog.timestamp, merged);
-                    updatedLogs++;
+                // ── Tier 1: exact timestamp match ─────────────────────────
+                const byTs = existingByTs.get(cleanLog.timestamp);
+                if (byTs) {
+                    if (logSignature(byTs) !== logSignature(cleanLog)) {
+                        // Same record, some field changed (e.g. isLate toggled)
+                        const merged = { ...byTs, ...cleanLog, id: byTs.id };
+                        await dbPutAll('logs', [merged]);
+                        const idx = logs.findIndex(x => x.id === byTs.id);
+                        if (idx !== -1) logs[idx] = merged;
+                        existingByTs.set(cleanLog.timestamp, merged);
+                        existingBySem.set(semanticKey(merged), merged);
+                        updatedLogs++;
+                    }
+                    // else identical — skip
+                    continue;
                 }
-                // else: identical — skip
+
+                // ── Tier 2: semantic match (timestamp changed by edit) ────
+                const bySem = existingBySem.get(semanticKey(cleanLog));
+                if (bySem) {
+                    // Teacher edited the time/date on Device A, so the Sheet
+                    // now has a new timestamp for the same attendance event.
+                    // Overwrite the local record and update its timestamp so
+                    // future pulls don't re-match this as a new log.
+                    const merged = { ...bySem, ...cleanLog, id: bySem.id };
+                    await dbPutAll('logs', [merged]);
+                    const idx = logs.findIndex(x => x.id === bySem.id);
+                    if (idx !== -1) logs[idx] = merged;
+                    // Remove the old timestamp key, add the new one
+                    existingByTs.delete(bySem.timestamp);
+                    existingByTs.set(cleanLog.timestamp, merged);
+                    existingBySem.set(semanticKey(merged), merged);
+                    updatedLogs++;
+                    continue;
+                }
+
+                // ── Tier 3: genuinely new log ─────────────────────────────
+                const newId = await dbAdd('logs', cleanLog);
+                cleanLog.id = newId;
+                logs.push(cleanLog);
+                existingByTs.set(cleanLog.timestamp, cleanLog);
+                existingBySem.set(semanticKey(cleanLog), cleanLog);
+                importedLogs++;
             }
 
             if (importedLogs > 0 || updatedLogs > 0) {
-                // Advance the watermark so syncToSheets() never re-pushes
-                // pulled logs. Watermark = latest timestamp across all pulled logs.
-                const allPulledTs = result.logs.map(l => l.timestamp).sort();
-                const latestPulled = allPulledTs.at(-1);
+                // Advance watermark to latest Sheet timestamp so syncToSheets()
+                // never re-pushes logs that are already in the Sheet.
+                const latestPulled = result.logs.map(l => l.timestamp).sort().at(-1);
                 const currentWatermark = await dbGetSetting('last_sync_time');
                 if (!currentWatermark || latestPulled > currentWatermark) {
                     await dbSetSetting('last_sync_time', latestPulled);
