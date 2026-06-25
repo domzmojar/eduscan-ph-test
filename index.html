@@ -4983,11 +4983,6 @@ async function handleLogin(event) {
 
 // 2. SIGNUP
 async function handleSignup(event) {
-  const { data, error } = await supabaseClient.auth.signUp({ ... });
-
-alert('error: ' + JSON.stringify(error) + ' | type: ' + typeof error);
-alert('data.user: ' + JSON.stringify(data?.user?.id));
-  
     event.preventDefault();
     if (!supabaseClient) return showToast('Auth not configured.', 'err');
 
