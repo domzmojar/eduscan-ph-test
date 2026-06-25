@@ -5012,7 +5012,7 @@ async function handleSignup(event) {
     signupBtn.disabled = false;
     signupBtn.innerHTML = '<span>Create Account</span>';
 
-    if (error) {
+    if (error && error.message) {
         document.getElementById('signupErrorText').textContent = error.message;
         document.getElementById('signupError').classList.add('show');
     } else {
