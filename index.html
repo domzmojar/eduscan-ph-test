@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -4993,50 +4994,52 @@ async function handleSignup(event) {
     const signupBtn = document.getElementById('signupBtn');
 
     if (!name) return;
-    if (!isValidEmail(email)) {
-        document.getElementById('signupEmail').classList.add('error');
-        document.getElementById('signupEmailError').classList.add('show');
-        return;
-    }
-    if (password !== confirmPassword) {
-        document.getElementById('signupConfirmPassword').classList.add('error');
-        document.getElementById('signupConfirmError').classList.add('show');
-        return;
-    }
-    if (password.length < 6) {
-        showToast('Password must be at least 6 characters.', 'err');
-        return;
-    }
+    if (!isValidEmail(email)) { document.getElementById('signupEmail').classList.add('error'); document.getElementById('signupEmailError').classList.add('show'); return; }
+    if (password !== confirmPassword) { document.getElementById('signupConfirmPassword').classList.add('error'); document.getElementById('signupConfirmError').classList.add('show'); return; }
+    if (password.length < 6) { showToast('Password must be at least 6 characters.', 'err'); return; }
 
     signupBtn.disabled = true;
     signupBtn.innerHTML = '<div class="spinner"></div><span>Creating account...</span>';
 
-    try {
-        const { data, error } = await supabaseClient.auth.signUp({
-            email,
-            password,
-            options: { data: { full_name: name } }
-        });
-
-        if (error) throw error;
-
-        if (data.user) {
-            // Always redirect to login after signup regardless of confirmation setting
-            showToast('Account created! Please sign in. 🎉', 'ok');
-            showLogin();
-            document.getElementById('loginEmail').value = email;
-        } else {
-            showToast('Something went wrong. Please try again.', 'err');
+    const { data, error } = await supabaseClient.auth.signUp({
+        email,
+        password,
+        options: {
+            data: { full_name: name }
         }
+    });
 
-    } catch (err) {
-        const msg = err?.message || err?.msg || err?.error_description || 'Signup failed. Please try again.';
+    signupBtn.disabled = false;
+    signupBtn.innerHTML = '<span>Create Account</span>';
+
+        if (error) {
+        // Safely extract error message — Supabase sometimes returns object without .message
+        let msg = 'Signup failed. Please try again.';
+        if (error.message) {
+            msg = error.message;
+        } else if (error.msg) {
+            msg = error.msg;
+        } else if (error.error_description) {
+            msg = error.error_description;
+        } else if (typeof error === 'string') {
+            msg = error;
+        }
         document.getElementById('signupErrorText').textContent = msg;
         document.getElementById('signupError').classList.add('show');
-        console.error('Signup error:', err);
-    } finally {
-        signupBtn.disabled = false;
-        signupBtn.innerHTML = '<span>Create Account</span>';
+    
+        // Log full error to console for debugging
+        console.error('Signup error full object:', JSON.stringify(error));
+    } else {
+        if (data.session) {
+            // Email confirmation OFF — user immediately signed in
+            document.getElementById('auth-overlay').classList.add('hidden');
+            showToast('Account created! Welcome to EduScan PH 🎉', 'ok');
+        } else {
+            // Email confirmation ON — ask them to verify
+            showToast('Account created! Check your email to verify.', 'ok');
+            showLogin();
+            document.getElementById('loginEmail').value = email;
+        }
     }
 }
 
