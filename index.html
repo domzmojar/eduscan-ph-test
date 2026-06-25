@@ -5016,15 +5016,20 @@ async function handleSignup(event) {
         document.getElementById('signupErrorText').textContent = error.message;
         document.getElementById('signupError').classList.add('show');
     } else {
-        if (data.session) {
-            // If email confirmation is disabled, they sign in immediately
-            document.getElementById('signupSuccess').classList.add('show');
-        } else {
-            showToast('Account created! Check your email to verify.', 'ok');
-            showLogin();
-            document.getElementById('loginEmail').value = email;
-        }
-    }
+      } else {
+      if (data.session) {
+          // Email confirmation disabled — user is immediately signed in
+          // onAuthStateChange will fire, but let's also explicitly call showLogin 
+          // in case there's a timing issue, or just trust the state change:
+          showToast('Account created! You are now signed in.', 'ok');
+          // Force UI update in case onAuthStateChange doesn't fire fast enough
+          document.getElementById('auth-overlay').classList.add('hidden');
+      } else {
+          showToast('Account created! Check your email to verify.', 'ok');
+          showLogin();
+          document.getElementById('loginEmail').value = email;
+      }
+  }
 }
 
 // 3. RESET PASSWORD (Sends Email)
