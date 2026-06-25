@@ -5013,9 +5013,10 @@ async function handleSignup(event) {
     signupBtn.innerHTML = '<span>Create Account</span>';
 
     if (error) {
-        document.getElementById('signupErrorText').textContent = error.message;
-        document.getElementById('signupError').classList.add('show');
-    } else {
+    document.getElementById('signupErrorText').textContent = 
+        error?.message || error?.msg || JSON.stringify(error) || 'An error occurred.';
+    document.getElementById('signupError').classList.add('show');
+} else {
         if (data.session) {
             // If email confirmation is disabled, they sign in immediately
             document.getElementById('signupSuccess').classList.add('show');
