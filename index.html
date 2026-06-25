@@ -5012,14 +5012,30 @@ async function handleSignup(event) {
     signupBtn.disabled = false;
     signupBtn.innerHTML = '<span>Create Account</span>';
 
-    if (error) {
-        document.getElementById('signupErrorText').textContent = error.message;
+        if (error) {
+        // Safely extract error message — Supabase sometimes returns object without .message
+        let msg = 'Signup failed. Please try again.';
+        if (error.message) {
+            msg = error.message;
+        } else if (error.msg) {
+            msg = error.msg;
+        } else if (error.error_description) {
+            msg = error.error_description;
+        } else if (typeof error === 'string') {
+            msg = error;
+        }
+        document.getElementById('signupErrorText').textContent = msg;
         document.getElementById('signupError').classList.add('show');
+    
+        // Log full error to console for debugging
+        console.error('Signup error full object:', JSON.stringify(error));
     } else {
         if (data.session) {
-            // If email confirmation is disabled, they sign in immediately
-            document.getElementById('signupSuccess').classList.add('show');
+            // Email confirmation OFF — user immediately signed in
+            document.getElementById('auth-overlay').classList.add('hidden');
+            showToast('Account created! Welcome to EduScan PH 🎉', 'ok');
         } else {
+            // Email confirmation ON — ask them to verify
             showToast('Account created! Check your email to verify.', 'ok');
             showLogin();
             document.getElementById('loginEmail').value = email;
