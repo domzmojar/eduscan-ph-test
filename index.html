@@ -467,7 +467,7 @@
   justify-content: space-between;
   padding: 0.85rem 0.5rem;
   border-bottom: 1px solid var(--border);
-  gap: 1rem;
+  gap: 0.65rem;
   transition: background 0.15s;
 }
 .log-feed-item:hover { background: var(--bg); }
@@ -482,15 +482,23 @@
 .log-feed-time .time { font-weight: 700; font-size: 0.9rem; color: var(--text); line-height: 1.2; }
 .log-feed-time .date { font-size: 0.7rem; color: var(--text-muted); }
 
-.log-feed-info { flex: 1; min-width: 0; }
-.log-feed-name { 
-  font-weight: 600; font-size: 0.95rem; 
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; 
-  display: flex; align-items: center; gap: 6px;
+.log-feed-info { flex: 1; min-width: 0; overflow: hidden; }
+.log-feed-name {
+  font-weight: 600; font-size: 0.95rem;
+  display: flex; align-items: center; gap: 5px;
+  flex-wrap: wrap; line-height: 1.3;
 }
-.log-feed-meta { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
+.log-feed-name .log-name-text {
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  flex-shrink: 1; min-width: 0;
+}
+.log-feed-meta { font-size: 0.75rem; color: var(--text-muted); margin-top: 3px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-.log-feed-actions { display: flex; align-items: center; gap: 0.5rem; }
+.log-feed-actions {
+  display: flex; flex-direction: column; align-items: flex-end;
+  gap: 0.3rem; flex-shrink: 0;
+}
 
 /* ── AUTH SYSTEM OVERLAY ── */
 #auth-overlay {
@@ -1058,7 +1066,7 @@
       <div class="info-days-bar"><div class="info-days-fill" id="info-days-fill"></div></div>
       <div class="info-days-label" id="info-days-label"></div>
     </div>
-    <button class="btn-info-upgrade" id="info-popup-upgrade-btn" onclick="closeAccessInfoPopup(); showAccessLock(true, true);">Upgrade to Lifetime — ₱1,499</button>
+    <button class="btn-info-upgrade" id="info-popup-upgrade-btn" onclick="closeAccessInfoPopup(); showAccessLock(true);">Upgrade to Lifetime — ₱1,499</button>
     <button class="btn-info-close" onclick="closeAccessInfoPopup()">Close</button>
   </div>
 </div>
@@ -2590,7 +2598,9 @@ function buildLogRowHTML(l) {
         <span class="date">${dateStr}</span>
       </div>
       <div class="log-feed-info">
-        <div class="log-feed-name">${escapeHTML(l.studentName)} ${lateTag}</div>
+        <div class="log-feed-name">
+          <span class="log-name-text">${escapeHTML(l.studentName)}</span>${lateTag}
+        </div>
         <div class="log-feed-meta">${escapeHTML(l.className || 'Unknown Class')} · LRN ${escapeHTML(l.studentLrn || 'N/A')}</div>
       </div>
       <div class="log-feed-actions">
@@ -4925,51 +4935,12 @@ function renderAccessUI(access) {
     }
 }
 
-// dismissible=true  → opened from an active trial (badge tap or "Upgrade" button mid-trial)
-// dismissible=false → trial truly expired; blocks all usage
-// fromActiveTrial   → when true, show "upgrade" copy instead of "expired" copy
-function showAccessLock(dismissible, fromActiveTrial) {
-    const overlay  = document.getElementById('access-lock-overlay');
-    const title    = document.getElementById('lock-title');
-    const message  = document.getElementById('lock-message');
-    const lockCard = overlay.querySelector('.lock-card');
-
-    // Swap copy based on context
-    if (fromActiveTrial) {
-        title.textContent   = 'Upgrade to Lifetime Access';
-        message.textContent = 'Unlock permanent access to EduScan PH with a one-time payment. Keep all your data, scanning, reports, and sync — forever.';
-    } else {
-        title.textContent   = 'Your free trial has ended';
-        message.textContent = 'Your 7-day free trial of EduScan PH is over. Upgrade to lifetime access to keep using attendance scanning, reports, and sync.';
-    }
-
-    // Inject or remove the ✕ close button
-    const existingClose = lockCard.querySelector('.lock-close-btn');
-    if (dismissible) {
-        if (!existingClose) {
-            const closeBtn = document.createElement('button');
-            closeBtn.className = 'lock-close-btn';
-            closeBtn.setAttribute('aria-label', 'Close');
-            closeBtn.innerHTML = '✕';
-            closeBtn.style.cssText = [
-                'position:absolute', 'top:12px', 'right:14px',
-                'background:none', 'border:none', 'font-size:1.1rem',
-                'color:#9ca3af', 'cursor:pointer', 'line-height:1',
-                'padding:4px 6px', 'border-radius:6px', 'transition:color 0.15s'
-            ].join(';');
-            closeBtn.onmouseenter = () => closeBtn.style.color = '#374151';
-            closeBtn.onmouseleave = () => closeBtn.style.color = '#9ca3af';
-            closeBtn.onclick = (e) => { e.stopPropagation(); overlay.classList.add('hidden'); };
-            lockCard.style.position = 'relative';
-            lockCard.insertBefore(closeBtn, lockCard.firstChild);
-        }
-        overlay.onclick = (e) => { if (e.target === overlay) overlay.classList.add('hidden'); };
-    } else {
-        if (existingClose) existingClose.remove();
-        overlay.onclick = null;
-    }
-
+// dismissible=true lets the badge tap open it as an info screen even mid-trial;
+// dismissible=false (trial actually expired) removes that escape hatch.
+function showAccessLock(dismissible) {
+    const overlay = document.getElementById('access-lock-overlay');
     overlay.classList.remove('hidden');
+    overlay.onclick = dismissible ? (e) => { if (e.target === overlay) overlay.classList.add('hidden'); } : null;
 }
 
 async function recheckAccess(btn) {
