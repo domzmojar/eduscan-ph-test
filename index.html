@@ -2707,6 +2707,9 @@ function onLogSearch(val) {
   renderLog(true);
 }
 
+// reset=true  → full re-render from top (tab open, search change, clear all)
+// reset=false → patch only the single row that changed (edit / delete already
+//               removed from logs[] before this is called)
 function renderLog(reset = true) {
   const container = document.getElementById('logs-feed-container');
   const filtered  = getFilteredLogs();
@@ -2722,20 +2725,34 @@ function renderLog(reset = true) {
   if (reset) {
     logRenderedCount = LOG_PAGE_SIZE;
     logScrollHandlerAttached = false;
-  }
-  logRenderedCount = Math.min(logRenderedCount || LOG_PAGE_SIZE, filtered.length);
-
-  const visible = filtered.slice(0, logRenderedCount);
-
-  // Full re-render on reset (tab open, search change, delete); on scroll
-  // we APPEND only the new rows to avoid re-painting the whole list.
-  if (reset) {
-    container.innerHTML = visible.map(buildLogRowHTML).join('');
+    logRenderedCount = Math.min(logRenderedCount, filtered.length);
+    container.innerHTML = filtered.slice(0, logRenderedCount).map(buildLogRowHTML).join('');
     container.scrollTop = 0;
-    // Remove any stale sentinel before re-attaching
-    const old = container.querySelector('.log-feed-sentinel');
-    if (old) old.remove();
+    _updateLogSentinel(container, filtered.length);
+    attachLogScrollHandler();
+    return;
   }
+
+  // ── Non-reset: surgically update only rows that are already visible ──
+  // Walk every rendered .log-feed-item and replace it if its log still
+  // exists in the filtered list, or remove it if it was deleted.
+  const itemEls = Array.from(container.querySelectorAll('.log-feed-item'));
+  itemEls.forEach(el => {
+    const btn = el.querySelector('.log-feed-edit');
+    if (!btn) return;
+    const m = btn.getAttribute('onclick').match(/\d+/);
+    if (!m) return;
+    const id = parseInt(m[0]);
+    const log = filtered.find(l => l.id === id);
+    if (log) {
+      // Replace this row's HTML in-place — preserves scroll position perfectly
+      const updated = document.createElement('div');
+      updated.innerHTML = buildLogRowHTML(log).trim();
+      el.replaceWith(updated.firstChild);
+    } else {
+      el.remove(); // was deleted
+    }
+  });
   _updateLogSentinel(container, filtered.length);
   attachLogScrollHandler();
 }
