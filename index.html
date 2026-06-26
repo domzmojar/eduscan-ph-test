@@ -602,9 +602,10 @@
 
 /* Trial / Lifetime badge in header */
 #access-badge {
-    font-size: 0.72rem; font-weight: 700; padding: 5px 10px; border-radius: 20px;
+    font-size: 0.72rem; font-weight: 700; padding: 10px 12px; border-radius: 20px;
     display: flex; align-items: center; gap: 5px; white-space: nowrap;
     border: 1px solid transparent;
+    min-height: 44px; min-width: 44px; box-sizing: border-box;
 }
 #access-badge.tier-trial   { background: #fef3c7; color: #92400e; border-color: #fde68a; }
 #access-badge.tier-lifetime{ background: #d1fae5; color: #065f46; border-color: #a7f3d0; }
@@ -616,7 +617,9 @@
     position: fixed; inset: 0; z-index: 9001; display: flex; align-items: flex-end;
     justify-content: center; padding: 16px; background: rgba(0,0,0,0.35);
     backdrop-filter: blur(3px);
+    animation: backdropFadeIn 0.22s ease;
 }
+@keyframes backdropFadeIn { from { opacity: 0; } to { opacity: 1; } }
 #access-info-popup.hidden { display: none !important; }
 #feedback-modal.hidden { display: none !important; }
 #access-info-popup .info-card {
@@ -645,12 +648,14 @@
 #access-info-popup .btn-info-upgrade {
     width: 100%; padding: 13px; border: none; border-radius: 10px;
     background: #22315e; color: #fff; font-size: 0.9rem; font-weight: 700;
-    cursor: pointer; margin-bottom: 8px; transition: background 0.15s;
+    cursor: pointer; margin-bottom: 10px; transition: background 0.15s;
+    display: block;
 }
 #access-info-popup .btn-info-upgrade:hover { background: #1a2647; }
 #access-info-popup .btn-info-close {
     width: 100%; padding: 11px; border: 1.5px solid #e5e7eb; border-radius: 10px;
     background: none; color: #6b7280; font-size: 0.88rem; font-weight: 600; cursor: pointer;
+    display: block;
 }
 #access-info-popup .btn-info-close:hover { background: #f9fafb; }
 
@@ -4838,7 +4843,16 @@ async function checkAccess(userId, { silent } = {}) {
 let _lastKnownAccess = null; // cached by renderAccessUI so badge click can read it
 
 function handleBadgeClick() {
-    if (!_lastKnownAccess) return;
+    if (!_lastKnownAccess) {
+        console.warn('[EduScan] handleBadgeClick: _lastKnownAccess not yet set — ignoring tap');
+        return;
+    }
+    // Toggle: if popup is already open, close it
+    const popup = document.getElementById('access-info-popup');
+    if (!popup.classList.contains('hidden')) {
+        closeAccessInfoPopup();
+        return;
+    }
     if (_lastKnownAccess.tier === 'expired') {
         showAccessLock(false); // truly expired — show the payment wall
     } else {
@@ -4861,7 +4875,7 @@ function showAccessInfoPopup(access) {
         icon.className = 'info-icon lifetime';
         icon.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14 2 9.27l6.91-1.01L12 2z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>';
         title.textContent = 'Lifetime Access';
-        sub.textContent   = 'EduScan PH — No expiry';
+        sub.textContent   = 'EduScan PH · No expiry';
         body.textContent  = 'You have permanent access to EduScan PH. All features are unlocked, forever.';
         progress.style.display = 'none';
         upgradeBtn.style.display = 'none';
@@ -4871,13 +4885,13 @@ function showAccessInfoPopup(access) {
         icon.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/><path d="M12 6v6l4 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
         const dl = access.daysLeft;
         title.textContent = `${dl} ${dl === 1 ? 'Day' : 'Days'} Left in Trial`;
-        sub.textContent   = 'Free trial — EduScan PH';
+        sub.textContent   = 'EduScan PH · Free trial';
         body.textContent  = `You're using the full app free for ${TRIAL_DAYS} days. Once your trial ends, upgrade to keep all your data and features.`;
         progress.style.display = 'block';
         const pct = (dl / TRIAL_DAYS) * 100;
         fill.style.width = `${pct}%`;
         fill.style.background = dl <= 2 ? '#ef4444' : dl <= 4 ? '#f59e0b' : '#059669';
-        label.textContent = `${dl} of ${TRIAL_DAYS} days remaining`;
+        label.textContent = `${dl} of ${TRIAL_DAYS} days remaining (${Math.round(pct)}% left)`;
         upgradeBtn.style.display = 'block';
     }
 
