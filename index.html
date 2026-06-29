@@ -1299,14 +1299,14 @@
           <div style="display:flex; align-items:center; gap:8px; padding:0.6rem 0.75rem; flex:1; border-right:1px solid var(--border);">
             <span style="font-size:1rem; line-height:1;">🕐</span>
             <div style="flex:1; min-width:0;">
-              <div style="font-size:0.7rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:2px;">Start time</div>
+              <div style="font-size:0.7rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:2px;">AM time</div>
               <input type="time" id="class-start-time" value="07:30" style="border:none; outline:none; background:transparent; font-size:0.95rem; font-weight:600; color:var(--text); width:100%; padding:0;">
             </div>
           </div>
           <div style="display:flex; align-items:center; gap:8px; padding:0.6rem 0.75rem; flex:1; border-right:1px solid var(--border);">
             <span style="font-size:1rem; line-height:1;">🕔</span>
             <div style="flex:1; min-width:0;">
-              <div style="font-size:0.7rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:2px;">Dismiss time</div>
+              <div style="font-size:0.7rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:2px;">PM time</div>
               <input type="time" id="class-dismiss-time" value="17:00" style="border:none; outline:none; background:transparent; font-size:0.95rem; font-weight:600; color:var(--text); width:100%; padding:0;">
             </div>
           </div>
@@ -1321,7 +1321,7 @@
             </div>
           </div>
         </div>
-        <p style="font-size:0.73rem; color:var(--text-muted); margin-top:0.4rem;">Late flag triggers after start + grace. Cut-PM triggers if scanned out before dismiss time.</p>
+        <p style="font-size:0.73rem; color:var(--text-muted); margin-top:0.4rem;">Late (upper half) triggers after AM time + grace. Cutting class (lower half, shaded) triggers if not scanned by PM time + grace.</p>
       </div>
       <button class="btn full" onclick="addClass()">Save class</button>
     </div>
@@ -1759,14 +1759,14 @@
           <div style="display:flex; align-items:center; gap:8px; padding:0.6rem 0.75rem; flex:1; border-right:1px solid var(--border);">
             <span style="font-size:1rem; line-height:1;">🕐</span>
             <div style="flex:1; min-width:0;">
-              <div style="font-size:0.7rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:2px;">Start time</div>
+              <div style="font-size:0.7rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:2px;">AM time</div>
               <input type="time" id="edit-class-start-time" style="border:none; outline:none; background:transparent; font-size:0.95rem; font-weight:600; color:var(--text); width:100%; padding:0;">
             </div>
           </div>
           <div style="display:flex; align-items:center; gap:8px; padding:0.6rem 0.75rem; flex:1; border-right:1px solid var(--border);">
             <span style="font-size:1rem; line-height:1;">🕔</span>
             <div style="flex:1; min-width:0;">
-              <div style="font-size:0.7rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:2px;">Dismiss time</div>
+              <div style="font-size:0.7rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:2px;">PM time</div>
               <input type="time" id="edit-class-dismiss-time" style="border:none; outline:none; background:transparent; font-size:0.95rem; font-weight:600; color:var(--text); width:100%; padding:0;">
             </div>
           </div>
@@ -1781,7 +1781,7 @@
             </div>
           </div>
         </div>
-        <p style="font-size:0.73rem; color:var(--text-muted); margin-top:0.4rem; margin-bottom:0.75rem;">Late flag triggers after start + grace. Cut-PM triggers if scanned out before dismiss time.</p>
+        <p style="font-size:0.73rem; color:var(--text-muted); margin-top:0.4rem; margin-bottom:0.75rem;">Late (upper half) triggers after AM time + grace. Cutting class (lower half, shaded) triggers if not scanned by PM time + grace.</p>
       </div>
       <button class="btn full" onclick="saveEditClass()">Save changes</button>
     </div>
@@ -2376,10 +2376,11 @@ async function handleQRScan(rawData) {
 
     if (scanMode === 'arrival') {
       const cls = classes.find(c => c.id === currentClassId);
-      if (cls && cls.startTime) {
+      const amTime = cls && (cls.amTime || cls.startTime);
+      if (amTime) {
         // Use Philippine time consistently — see nowPHTime() comment above.
         const { h: nowH, m: nowM } = nowPHTime();
-        const [h, m]    = cls.startTime.split(':').map(Number);
+        const [h, m]    = amTime.split(':').map(Number);
         const grace     = cls.graceMins != null ? cls.graceMins : 5;
         const cutoffMin = h * 60 + m + grace;
         const nowMin    = nowH * 60 + nowM;
@@ -2468,7 +2469,7 @@ async function addClass() {
   const startTime  = document.getElementById('class-start-time').value || '07:30';
   const dismissTime = document.getElementById('class-dismiss-time').value || '17:00';
   const graceMins  = parseInt(document.getElementById('class-grace-mins').value) || 5;
-  classes.push({ id: makeId('class'), name, gradeLevel, section, startTime, dismissTime, graceMins, updatedAt: nowIso() });
+  classes.push({ id: makeId('class'), name, gradeLevel, section, amTime: startTime, pmTime: dismissTime, startTime, dismissTime, graceMins, updatedAt: nowIso() });
   await saveClasses();
   scheduleRosterSync();
   glInput.value = ''; secInput.value = '';
@@ -2511,14 +2512,15 @@ function renderClasses() {
   }
   tbody.innerHTML = classes.map(c => {
     const count     = students.filter(s => s.classId === c.id).length;
-    const startTime = c.startTime || '—';
+    const amTime    = c.amTime || c.startTime || '—';
+    const pmTime    = c.pmTime || c.dismissTime || '—';
     const grace     = c.graceMins != null ? `${c.graceMins}m grace` : '';
     return `
     <tr class="class-row-clickable" onclick="openClassRosterModal('${escapeAttr(c.id)}')">
       <td>
         <strong style="color:var(--primary);">${escapeHTML(c.name)}</strong><br>
         <span style="font-size:0.75rem;color:var(--text-muted);">
-          ${count} student${count !== 1 ? 's' : ''} · starts ${startTime}${grace ? ' · ' + grace : ''} · tap to view roster
+          ${count} student${count !== 1 ? 's' : ''} · AM ${amTime} · PM ${pmTime}${grace ? ' · ' + grace : ''} · tap to view roster
         </span>
       </td>
       <td style="text-align:right; white-space:nowrap;" onclick="event.stopPropagation()">
@@ -3985,8 +3987,8 @@ function openEditClassModal(classId) {
   document.getElementById('edit-class-id').value            = cls.id;
   document.getElementById('edit-class-grade-level').value   = gl;
   document.getElementById('edit-class-section').value       = sec;
-  document.getElementById('edit-class-start-time').value    = cls.startTime || '07:30';
-  document.getElementById('edit-class-dismiss-time').value  = cls.dismissTime || '17:00';
+  document.getElementById('edit-class-start-time').value    = cls.amTime || cls.startTime || '07:30';
+  document.getElementById('edit-class-dismiss-time').value  = cls.pmTime || cls.dismissTime || '17:00';
   document.getElementById('edit-class-grace-mins').value    = cls.graceMins != null ? cls.graceMins : 5;
   document.getElementById('edit-class-modal').classList.add('open');
   document.body.style.overflow = 'hidden';
@@ -4004,7 +4006,7 @@ async function saveEditClass() {
   const cls = classes.find(c => c.id === id);
   if (!cls) return;
   cls.name = name; cls.gradeLevel = gradeLevel; cls.section = section;
-  cls.startTime = startTime; cls.dismissTime = dismissTime; cls.graceMins = graceMins; cls.updatedAt = nowIso();
+  cls.amTime = startTime; cls.pmTime = dismissTime; cls.startTime = startTime; cls.dismissTime = dismissTime; cls.graceMins = graceMins; cls.updatedAt = nowIso();
   await saveClasses();
   scheduleRosterSync();
   closeEditClassModalDirect();
