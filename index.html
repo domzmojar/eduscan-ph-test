@@ -3542,19 +3542,9 @@ async function printSummaryReport() {
       return `<xdr:col>${col}</xdr:col><xdr:colOff>${colOff}</xdr:colOff><xdr:row>${row}</xdr:row><xdr:rowOff>${rowOff}</xdr:rowOff>`;
     }
 
-    function triangleShape(id, filled, isUpper) {
-      // Upper triangle: points (0,0)→(1,0)→(0,1) in relative cell coords
-      // Lower triangle: points (1,0)→(1,1)→(0,1)
-      // custGeom using w=914400 (1 inch EMU placeholder — Excel ignores for twoCell)
-      const pts = isUpper
-        ? 'x1=0,y1=0 x2=l,y2=0 x3=0,y3=b'
-        : 'x1=r,y1=0 x2=r,y2=b x3=0,y3=b';
-      // Use preset triangle paths via custGeom with 3-pt polygon
-      const fillXml = filled
-        ? `<a:solidFill><a:srgbClr val="BFBFBF"/></a:solidFill>`
-        : `<a:noFill/>`;
-      // Diagonal line for every cell (draw on upper triangle only to avoid dupe)
-      const lnXml = isUpper
+    function triangleShape(id, filled, isUpper, drawDiagLine) {
+      // diagonal line only when explicitly requested (upper shape + shading condition exists)
+      const lnXml = drawDiagLine
         ? `<a:ln w="6350"><a:solidFill><a:srgbClr val="000000"/></a:solidFill></a:ln>`
         : `<a:ln w="0"><a:noFill/></a:ln>`;
       return `<xdr:sp macro="" textlink=""><xdr:nvSpPr><xdr:cNvPr id="${id}" name="tri${id}"/><xdr:cNvSpPr><a:spLocks noGrp="1"/></xdr:cNvSpPr></xdr:nvSpPr><xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="914400" cy="457200"/></a:xfrm><a:custGeom><a:avLst/><a:gdLst/><a:ahLst/><a:cxnLst/><a:rect l="0" t="0" r="r" b="b"/><a:pathLst><a:path w="1" h="1"><a:moveTo><a:pt x="${isUpper?'0':'1'}" y="${isUpper?'0':'0'}"/></a:moveTo><a:lnTo><a:pt x="${isUpper?'1':'1'}" y="${isUpper?'0':'1'}"/></a:lnTo><a:lnTo><a:pt x="${isUpper?'0':'0'}" y="${isUpper?'1':'1'}"/></a:lnTo><a:close/></a:path></a:pathLst></a:custGeom><a:solidFill>${filled?'<a:srgbClr val="BFBFBF"/>':'<a:schemeClr val="bg1"/>'}</a:solidFill>${lnXml}</xdr:spPr><xdr:style><a:lnRef idx="0"><a:scrgbClr r="0" g="0" b="0"/></a:lnRef><a:fillRef idx="0"><a:scrgbClr r="0" g="0" b="0"/></a:fillRef><a:effectRef idx="0"><a:scrgbClr r="0" g="0" b="0"/></a:effectRef><a:fontRef idx="none"><a:scrgbClr r="0" g="0" b="0"/></a:fontRef></xdr:style><xdr:txBody><a:bodyPr/><a:lstStyle/><a:p/></xdr:txBody></xdr:sp>`;
@@ -3562,8 +3552,11 @@ async function printSummaryReport() {
 
     const drawUpper = (state === 'lateAM' || state === 'both');
     const drawLower = (state === 'cutPM'  || state === 'both');
+    // Draw diagonal line on upper shape always (it IS the hypotenuse = the slash)
+    // For cutPM: upper unfilled but line still needed to show the split
+    const diagLine = true;
 
-    anchors += `<xdr:twoCellAnchor editAs="oneCell"><xdr:from>${cellAnchor(fromRow, fromCol, 0, 0)}</xdr:from><xdr:to>${cellAnchor(toRow, toCol, 0, 0)}</xdr:to>${triangleShape(shapeId++, drawUpper, true)}${triangleShape(shapeId++, drawLower, false)}<xdr:clientData/></xdr:twoCellAnchor>`;
+    anchors += `<xdr:twoCellAnchor editAs="oneCell"><xdr:from>${cellAnchor(fromRow, fromCol, 0, 0)}</xdr:from><xdr:to>${cellAnchor(toRow, toCol, 0, 0)}</xdr:to>${triangleShape(shapeId++, drawUpper, true, diagLine)}${triangleShape(shapeId++, drawLower, false, false)}<xdr:clientData/></xdr:twoCellAnchor>`;
   }
 
   const drawingXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">${anchors}</xdr:wsDr>`;
