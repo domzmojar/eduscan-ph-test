@@ -15,6 +15,7 @@
   <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 
   <style>
     :root {
@@ -1285,8 +1286,12 @@
     <div class="card">
       <h2>Add class</h2>
       <div class="form-group">
-        <label for="class-name-input">Class / section name</label>
-        <input type="text" id="class-name-input" placeholder="e.g. Grade 7 - Sampaguita">
+        <label for="class-grade-level-input">Grade Level</label>
+        <input type="text" id="class-grade-level-input" placeholder="e.g. Grade 7">
+      </div>
+      <div class="form-group">
+        <label for="class-section-input">Section</label>
+        <input type="text" id="class-section-input" placeholder="e.g. Sampaguita">
       </div>
       <div class="form-group">
         <label>Schedule</label>
@@ -1734,8 +1739,12 @@
     <div class="modal-body">
       <input type="hidden" id="edit-class-id">
       <div class="form-group">
-        <label for="edit-class-name">Class / section name</label>
-        <input type="text" id="edit-class-name" placeholder="e.g. Grade 7 - Sampaguita">
+        <label for="edit-class-grade-level">Grade Level</label>
+        <input type="text" id="edit-class-grade-level" placeholder="e.g. Grade 7">
+      </div>
+      <div class="form-group">
+        <label for="edit-class-section">Section</label>
+        <input type="text" id="edit-class-section" placeholder="e.g. Sampaguita">
       </div>
       <div class="form-group">
         <label>Schedule</label>
@@ -2436,15 +2445,18 @@ function renderTodayList() {
 
 // ── CLASSES ───────────────────────────────────────────────────────────────
 async function addClass() {
-  const input     = document.getElementById('class-name-input');
-  const name      = input.value.trim();
+  const glInput  = document.getElementById('class-grade-level-input');
+  const secInput = document.getElementById('class-section-input');
+  const gradeLevel = glInput.value.trim();
+  const section    = secInput.value.trim();
+  if (!gradeLevel || !section) return showToast('Enter both Grade Level and Section.', 'warn');
+  const name      = gradeLevel + ' - ' + section;
   const startTime = document.getElementById('class-start-time').value || '07:30';
   const graceMins = parseInt(document.getElementById('class-grace-mins').value) || 5;
-  if (!name) return showToast('Enter a class name.', 'warn');
-  classes.push({ id: makeId('class'), name, startTime, graceMins, updatedAt: nowIso() });
+  classes.push({ id: makeId('class'), name, gradeLevel, section, startTime, graceMins, updatedAt: nowIso() });
   await saveClasses();
   scheduleRosterSync();
-  input.value = '';
+  glInput.value = ''; secInput.value = '';
   renderClasses(); populateDropdowns();
   showToast('Class saved.', 'ok');
 }
@@ -3054,7 +3066,7 @@ function renderSummary() {
   renderActionableList(range, logsInRange);
 }
 
-function printSummaryReport() {
+async function printSummaryReport() {
   const range = getActiveDateRange();
   if (!range) return showToast('Select a date range first.', 'warn');
 
@@ -3093,28 +3105,44 @@ function printSummaryReport() {
 
   const profile = getSF2Profile();
   const selectedClass = classes.find(c => c.id === selectedClassId);
-  const sectionName = selectedClass ? selectedClass.name : '';
+  const sectionName = selectedClass ? (selectedClass.section || selectedClass.name) : '';
+  // Auto-populate gradeLevel from class; fall back to global profile field
+  const sf2GradeLevel = selectedClass
+    ? (selectedClass.gradeLevel || (selectedClass.name.includes(' - ') ? selectedClass.name.split(' - ')[0].trim() : selectedClass.name))
+    : (profile.gradeLevel || '');
 
   let totalDayPresentM = new Array(numDays).fill(0);
   let totalDayPresentF = new Array(numDays).fill(0);
 
+  // AM/PM state per student per day:
+  //   'present'  — arrival on-time + departure logged
+  //   'absent'   — no arrival
+  //   'lateAM'   — arrival isLate=true
+  //   'cutPM'    — arrival present but no departure log
+  //   'both'     — late arrival AND no departure
   function buildStudentData(studentList, totalsArr) {
     return studentList.map(s => {
-      const sLogs = logsInMonth.filter(l => l.studentId === s.id && l.type === 'arrival');
-      const logByDay = {};
-      sLogs.forEach(l => {
+      const sArrLogs = logsInMonth.filter(l => l.studentId === s.id && l.type === 'arrival');
+      const sDepLogs = logsInMonth.filter(l => l.studentId === s.id && l.type === 'departure');
+      const arrByDay = {};
+      sArrLogs.forEach(l => {
         const d = getLogDate(l);
-        if (!logByDay[d] || l.timestamp < logByDay[d].timestamp) logByDay[d] = l;
+        if (!arrByDay[d] || l.timestamp < arrByDay[d].timestamp) arrByDay[d] = l;
       });
+      const depDays = new Set(sDepLogs.map(l => getLogDate(l)));
       let absCount = 0, tardyCount = 0;
       const dayCodes = schoolDays.map((d, i) => {
-        const log = logByDay[d];
         const enrolledOnDay = !s.enrolledDate || d >= s.enrolledDate;
         if (!enrolledOnDay) return '';
-        if (!log) { absCount++; return 'x'; }
-        if (log.isLate) { tardyCount++; totalsArr[i]++; return 'T'; }
+        const arr = arrByDay[d];
+        if (!arr) { absCount++; return 'absent'; }
+        const late = !!arr.isLate;
+        const hasDep = depDays.has(d);
         totalsArr[i]++;
-        return '';
+        if (late && !hasDep) { tardyCount++; return 'both'; }
+        if (late)            { tardyCount++; return 'lateAM'; }
+        if (!hasDep)                         return 'cutPM';
+        return 'present';
       });
       const sf2Name = s.lastName
         ? buildStudentName(s.lastName, s.firstName, s.middleName)
@@ -3252,7 +3280,7 @@ function printSummaryReport() {
   M1(r1,2,r1,10);
   put1(r1,12, styleCell('Grade Level', { align:'left', border:false, wrap:false }));
   M1(r1,12,r1,13);
-  put1(r1,14, styleCell(profile.gradeLevel || '', { border:true, align:'left' }));
+  put1(r1,14, styleCell(sf2GradeLevel || '', { border:true, align:'left' }));
   M1(r1,14,r1,15);
   put1(r1,17, styleCell('Section', { align:'left', border:false, wrap:false }));
   put1(r1,18, styleCell(sectionName || '', { border:true, align:'left' }));
@@ -3281,13 +3309,25 @@ function printSummaryReport() {
   M1(R_HDR1, REM_COL, R_HDR3, REM_SPAN_END);
   r1 = R_HDR3 + 1;
 
+  // Track cells needing triangle shapes: { row, col, state }
+  const triangleCells = [];
+
   function writeStudentRow1(rowIdx, student) {
     put1(rowIdx, 0, styleCell(student ? student.name : '', { align:'left', size:8 }));
     M1(rowIdx,0,rowIdx,NAME_SPAN-1);
     put1(rowIdx, LRN_COL, styleCell(student ? student.lrn : '', { size:7.5 }));
     for (let i = 0; i < numDays; i++) {
       const code = student ? (student.dayCodes[i] || '') : '';
-      put1(rowIdx, DAY_START+i, styleCell(code, { size:7, fill: (!student || code) ? null : grayFill }));
+      let cellVal = '';
+      let cellFill = null;
+      if (code === 'absent') { cellVal = 'x'; }
+      else if (code === 'lateAM' || code === 'cutPM' || code === 'both') {
+        // Leave text blank — triangle shape will be drawn on top
+        triangleCells.push({ aoa1row: rowIdx, col: DAY_START + i, state: code });
+      }
+      // present or '' = blank with gray fill if enrolled
+      if (!student || (!cellVal && code === '')) cellFill = grayFill;
+      put1(rowIdx, DAY_START+i, styleCell(cellVal, { size:7, fill: cellFill }));
     }
     put1(rowIdx, ABS_COL, styleCell(student ? (student.absCount || '') : '', { size:8 }));
     put1(rowIdx, TAR_COL, styleCell(student ? (student.tardyCount || '') : '', { size:8 }));
@@ -3468,8 +3508,115 @@ function printSummaryReport() {
   XLSX.utils.book_append_sheet(wb, ws2, 'SF2 (Guidelines)');
 
   const filename = `SF2_${sectionName.replace(/[^a-zA-Z0-9]/g,'_')}_${monthFrom.slice(0,7)}.xlsx`;
-  XLSX.writeFile(wb, filename);
-  showToast('SF2 exported ✓  (Official DepEd format)', 'ok');
+
+  // ── TRIANGLE SHAPE INJECTION ──────────────────────────────────────────────
+  // If no cells need triangles, use simple writeFile. Otherwise inject via JSZip.
+  if (triangleCells.length === 0 || typeof JSZip === 'undefined') {
+    XLSX.writeFile(wb, filename);
+    showToast('SF2 exported ✓  (Official DepEd format)', 'ok');
+    return;
+  }
+
+  // Build xl/drawings/drawing1.xml with one two-cell-anchor per flagged cell.
+  // Each anchor contains up to 2 triangle shapes (upper = lateAM, lower = cutPM).
+  // State: 'lateAM' = upper shaded; 'cutPM' = lower shaded; 'both' = both shaded.
+  // We need the Excel row/col indices that correspond to aoa1 row/col.
+  // xlsx-js-style uses 0-based AOA rows → Excel row = aoa1row (0-based).
+  // Column = col (0-based). EMU/offset not needed with twoCell anchor + editAs=oneCell.
+
+  // col widths for precise anchor offsets: NAME_SPAN cols (A-C) ~20ch, LRN ~10ch, day cols ~2ch
+  // We use row/col indices directly — Excel positions shapes from cell bounds.
+
+  const GRAY_FILL_RGB  = 'FF808080'; // shaded triangle fill (medium gray)
+  const DIAG_LINE_RGB  = 'FF000000'; // diagonal border line
+
+  let shapeId = 1;
+  let anchors = '';
+
+  for (const { aoa1row, col, state } of triangleCells) {
+    // Two-cell anchor: from = top-left of cell, to = bottom-right of same cell
+    const fromRow = aoa1row, fromCol = col;
+    const toRow   = aoa1row + 1, toCol = col + 1;
+
+    function cellAnchor(row, col, rowOff, colOff) {
+      return `<xdr:col>${col}</xdr:col><xdr:colOff>${colOff}</xdr:colOff><xdr:row>${row}</xdr:row><xdr:rowOff>${rowOff}</xdr:rowOff>`;
+    }
+
+    function triangleShape(id, filled, isUpper) {
+      // Upper triangle: points (0,0)→(1,0)→(0,1) in relative cell coords
+      // Lower triangle: points (1,0)→(1,1)→(0,1)
+      // custGeom using w=914400 (1 inch EMU placeholder — Excel ignores for twoCell)
+      const pts = isUpper
+        ? 'x1=0,y1=0 x2=l,y2=0 x3=0,y3=b'
+        : 'x1=r,y1=0 x2=r,y2=b x3=0,y3=b';
+      // Use preset triangle paths via custGeom with 3-pt polygon
+      const fillXml = filled
+        ? `<a:solidFill><a:srgbClr val="BFBFBF"/></a:solidFill>`
+        : `<a:noFill/>`;
+      // Diagonal line for every cell (draw on upper triangle only to avoid dupe)
+      const lnXml = isUpper
+        ? `<a:ln w="6350"><a:solidFill><a:srgbClr val="000000"/></a:solidFill></a:ln>`
+        : `<a:ln w="0"><a:noFill/></a:ln>`;
+      return `<xdr:sp macro="" textlink=""><xdr:nvSpPr><xdr:cNvPr id="${id}" name="tri${id}"/><xdr:cNvSpPr><a:spLocks noGrp="1"/></xdr:cNvSpPr></xdr:nvSpPr><xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="914400" cy="457200"/></a:xfrm><a:custGeom><a:avLst/><a:gdLst/><a:ahLst/><a:cxnLst/><a:rect l="0" t="0" r="r" b="b"/><a:pathLst><a:path w="1" h="1"><a:moveTo><a:pt x="${isUpper?'0':'1'}" y="${isUpper?'0':'0'}"/></a:moveTo><a:lnTo><a:pt x="${isUpper?'1':'1'}" y="${isUpper?'0':'1'}"/></a:lnTo><a:lnTo><a:pt x="${isUpper?'0':'0'}" y="${isUpper?'1':'1'}"/></a:lnTo><a:close/></a:path></a:pathLst></a:custGeom><a:solidFill>${filled?'<a:srgbClr val="BFBFBF"/>':'<a:schemeClr val="bg1"/>'}</a:solidFill>${lnXml}</xdr:spPr><xdr:style><a:lnRef idx="0"><a:scrgbClr r="0" g="0" b="0"/></a:lnRef><a:fillRef idx="0"><a:scrgbClr r="0" g="0" b="0"/></a:fillRef><a:effectRef idx="0"><a:scrgbClr r="0" g="0" b="0"/></a:effectRef><a:fontRef idx="none"><a:scrgbClr r="0" g="0" b="0"/></a:fontRef></xdr:style><xdr:txBody><a:bodyPr/><a:lstStyle/><a:p/></xdr:txBody></xdr:sp>`;
+    }
+
+    const drawUpper = (state === 'lateAM' || state === 'both');
+    const drawLower = (state === 'cutPM'  || state === 'both');
+
+    anchors += `<xdr:twoCellAnchor editAs="oneCell"><xdr:from>${cellAnchor(fromRow, fromCol, 0, 0)}</xdr:from><xdr:to>${cellAnchor(toRow, toCol, 0, 0)}</xdr:to>${triangleShape(shapeId++, drawUpper, true)}${triangleShape(shapeId++, drawLower, false)}<xdr:clientData/></xdr:twoCellAnchor>`;
+  }
+
+  const drawingXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">${anchors}</xdr:wsDr>`;
+
+  try {
+    // Write workbook to array buffer, then patch via JSZip
+    const wbArrayBuf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const zip = await JSZip.loadAsync(wbArrayBuf);
+
+    // Add drawing file
+    zip.file('xl/drawings/drawing1.xml', drawingXml);
+
+    // Wire drawing relationship into xl/worksheets/_rels/sheet1.xml.rels
+    const relsPath = 'xl/worksheets/_rels/sheet1.xml.rels';
+    let relsXml = '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>';
+    try { relsXml = await zip.file(relsPath)?.async('string') || relsXml; } catch(e) {}
+    if (!relsXml.includes('drawing1.xml')) {
+      relsXml = relsXml.replace('</Relationships>',
+        '<Relationship Id="rId9001" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing1.xml"/></Relationships>');
+    }
+    zip.file(relsPath, relsXml);
+
+    // Add <drawing r:id="rId9001"/> to sheet1.xml before </worksheet>
+    const sheet1Path = 'xl/worksheets/sheet1.xml';
+    let sheet1Xml = await zip.file(sheet1Path).async('string');
+    if (!sheet1Xml.includes('drawing r:id')) {
+      sheet1Xml = sheet1Xml.replace('</worksheet>',
+        '<drawing xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:id="rId9001"/></worksheet>');
+    }
+    zip.file(sheet1Path, sheet1Xml);
+
+    // Register content type for drawing
+    const ctPath = '[Content_Types].xml';
+    let ctXml = await zip.file(ctPath).async('string');
+    if (!ctXml.includes('drawing1.xml')) {
+      ctXml = ctXml.replace('</Types>',
+        '<Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/></Types>');
+    }
+    zip.file(ctPath, ctXml);
+
+    // Generate and download
+    const blob = await zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 3000);
+    showToast('SF2 exported ✓  (Official DepEd format)', 'ok');
+  } catch(err) {
+    console.error('SF2 triangle export error:', err);
+    // Fallback to plain export
+    XLSX.writeFile(wb, filename);
+    showToast('SF2 exported ✓  (plain fallback — check console)', 'warn');
+  }
 }
 
 function renderActionableList(range, logsInRange) {
@@ -3798,23 +3945,34 @@ function closeModalDirect()  { document.getElementById('modal-backdrop').classLi
 function openEditClassModal(classId) {
   const cls = classes.find(c => c.id === classId);
   if (!cls) return;
-  document.getElementById('edit-class-id').value         = cls.id;
-  document.getElementById('edit-class-name').value       = cls.name;
-  document.getElementById('edit-class-start-time').value = cls.startTime || '07:30';
-  document.getElementById('edit-class-grace-mins').value = cls.graceMins != null ? cls.graceMins : 5;
+  // Backward compat: if gradeLevel/section missing, try to split from name
+  let gl = cls.gradeLevel || '', sec = cls.section || '';
+  if (!gl && !sec && cls.name) {
+    const parts = cls.name.split(' - ');
+    gl = parts[0] ? parts[0].trim() : '';
+    sec = parts.slice(1).join(' - ').trim() || cls.name;
+  }
+  document.getElementById('edit-class-id').value            = cls.id;
+  document.getElementById('edit-class-grade-level').value   = gl;
+  document.getElementById('edit-class-section').value       = sec;
+  document.getElementById('edit-class-start-time').value    = cls.startTime || '07:30';
+  document.getElementById('edit-class-grace-mins').value    = cls.graceMins != null ? cls.graceMins : 5;
   document.getElementById('edit-class-modal').classList.add('open');
   document.body.style.overflow = 'hidden';
 }
 
 async function saveEditClass() {
-  const id        = document.getElementById('edit-class-id').value;
-  const name      = document.getElementById('edit-class-name').value.trim();
-  const startTime = document.getElementById('edit-class-start-time').value || '07:30';
-  const graceMins = parseInt(document.getElementById('edit-class-grace-mins').value) || 0;
-  if (!name) return showToast('Class name cannot be empty.', 'warn');
+  const id         = document.getElementById('edit-class-id').value;
+  const gradeLevel = document.getElementById('edit-class-grade-level').value.trim();
+  const section    = document.getElementById('edit-class-section').value.trim();
+  const startTime  = document.getElementById('edit-class-start-time').value || '07:30';
+  const graceMins  = parseInt(document.getElementById('edit-class-grace-mins').value) || 0;
+  if (!gradeLevel || !section) return showToast('Grade Level and Section cannot be empty.', 'warn');
+  const name = gradeLevel + ' - ' + section;
   const cls = classes.find(c => c.id === id);
   if (!cls) return;
-  cls.name = name; cls.startTime = startTime; cls.graceMins = graceMins; cls.updatedAt = nowIso();
+  cls.name = name; cls.gradeLevel = gradeLevel; cls.section = section;
+  cls.startTime = startTime; cls.graceMins = graceMins; cls.updatedAt = nowIso();
   await saveClasses();
   scheduleRosterSync();
   closeEditClassModalDirect();
@@ -4067,6 +4225,8 @@ function getRosterPayload() {
     classes: classes.map(c => ({
       id: c.id,
       name: c.name,
+      gradeLevel: c.gradeLevel || '',
+      section: c.section || '',
       startTime: c.startTime || '',
       graceMins: c.graceMins != null ? c.graceMins : '',
       updatedAt: c.updatedAt || ''
