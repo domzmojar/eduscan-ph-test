@@ -3058,14 +3058,10 @@ function printSummaryReport() {
   const range = getActiveDateRange();
   if (!range) return showToast('Select a date range first.', 'warn');
 
-  // ── Class filter: require a class to be selected ──────────────────────────
   const sf2ClassEl = document.getElementById('sf2-class-select');
   const selectedClassId = sf2ClassEl ? sf2ClassEl.value || null : null;
   if (!selectedClassId) return showToast('Please select a class before generating SF2.', 'warn');
 
-  // SF2 is strictly a monthly form — always generate for the full calendar
-  // month containing whichever date is active, regardless of which period
-  // tab (daily/weekly/custom) the teacher happens to be viewing.
   const [ry, rm] = range.from.split('-').map(Number);
   const monthStart = new Date(ry, rm - 1, 1);
   const monthEnd   = new Date(ry, rm, 0);
@@ -3073,15 +3069,12 @@ function printSummaryReport() {
   const monthTo    = dateToStr(monthEnd);
   const monthLabel = monthStart.toLocaleDateString('en-PH', { month: 'long', year: 'numeric' });
 
-  // ── Official school-day grid: every Mon–Fri in the month, not just days ──
-  // with logged data, since the official form has a column for every class
-  // day whether or not every student happened to have a scan that day.
-  const DOW_LETTER = ['','M','T','W','TH','F','']; // index = JS getDay() (0=Sun..6=Sat)
+  const DOW_LETTER = ['','M','T','W','TH','F',''];
   const schoolDays = [];
   for (let d = new Date(monthStart); d <= monthEnd; d.setDate(d.getDate() + 1)) {
     const dow = d.getDay();
-    if (dow === 0 || dow === 6) continue; // weekends are not class days
-    schoolDays.push(dateToStr(d));
+    if (dow === 0 || dow === 6) continue;
+    schoolDays.push(dateToStr(new Date(d)));
   }
   const numDays = schoolDays.length;
   if (numDays === 0) return showToast('No school days found in this month.', 'warn');
@@ -3091,7 +3084,6 @@ function printSummaryReport() {
     return d >= monthFrom && d <= monthTo;
   });
 
-  // ── Enrolled students for the SELECTED CLASS, split by sex ───────────────
   const monthRange = { from: monthFrom, to: monthTo };
   const enrolled   = studentsEnrolledInRange(selectedClassId, monthRange);
   const males      = enrolled.filter(s => s.gender === 'M');
@@ -3099,14 +3091,10 @@ function printSummaryReport() {
   const ungrouped  = enrolled.filter(s => s.gender !== 'M' && s.gender !== 'F');
   const femalesPlusMissing = [...females, ...ungrouped];
 
-  // ── School profile fields ─────────────────────────────────────────────────
   const profile = getSF2Profile();
-
-  // ── Section name ──────────────────────────────────────────────────────────
   const selectedClass = classes.find(c => c.id === selectedClassId);
   const sectionName = selectedClass ? selectedClass.name : '';
 
-  // ── Per-student attendance builder ───────────────────────────────────────
   let totalDayPresentM = new Array(numDays).fill(0);
   let totalDayPresentF = new Array(numDays).fill(0);
 
@@ -3118,13 +3106,12 @@ function printSummaryReport() {
         const d = getLogDate(l);
         if (!logByDay[d] || l.timestamp < logByDay[d].timestamp) logByDay[d] = l;
       });
-
       let absCount = 0, tardyCount = 0;
       const dayCodes = schoolDays.map((d, i) => {
         const log = logByDay[d];
         const enrolledOnDay = !s.enrolledDate || d >= s.enrolledDate;
         if (!enrolledOnDay) return '';
-        if (!log) { absCount++; return 'X'; }
+        if (!log) { absCount++; return 'x'; }
         if (log.isLate) { tardyCount++; totalsArr[i]++; return 'T'; }
         totalsArr[i]++;
         return '';
@@ -3132,7 +3119,7 @@ function printSummaryReport() {
       const sf2Name = s.lastName
         ? buildStudentName(s.lastName, s.firstName, s.middleName)
         : s.name;
-      return { name: sf2Name, lrn: s.lrn || '', gender: s.gender || '?', dayCodes, absCount, tardyCount };
+      return { name: sf2Name, lrn: s.lrn || '', dayCodes, absCount, tardyCount };
     });
   }
 
@@ -3145,8 +3132,7 @@ function printSummaryReport() {
     if (rm < 6) juneYear = ry - 1;
     const june1 = new Date(juneYear, 5, 1);
     while (june1.getDay() !== 5) june1.setDate(june1.getDate() + 1);
-    const firstFriday = dateToStr(june1);
-    return studentsEnrolledAsOf(selectedClassId, firstFriday).length;
+    return studentsEnrolledAsOf(selectedClassId, dateToStr(june1)).length;
   })();
 
   const registeredEndOfMonth = enrolled.length;
@@ -3158,11 +3144,11 @@ function printSummaryReport() {
     schoolDays.forEach(d => { if (!s.enrolledDate || d >= s.enrolledDate) totalStudentDays++; });
   });
   const presentStudentDays = allArrivalLogs.filter(l => enrolled.some(s => s.id === l.studentId)).length;
-  const ada = numDays > 0 ? (presentStudentDays / numDays).toFixed(1) : '—';
+  const ada = numDays > 0 ? (presentStudentDays / numDays).toFixed(1) : '0';
   const pctEnrolment = enrolledAsOfFirstFriday > 0
-    ? ((registeredEndOfMonth / enrolledAsOfFirstFriday) * 100).toFixed(1) : '—';
+    ? ((registeredEndOfMonth / enrolledAsOfFirstFriday) * 100).toFixed(1) + '%' : '0%';
   const pctAttendance = totalStudentDays > 0
-    ? ((presentStudentDays / totalStudentDays) * 100).toFixed(1) : '—';
+    ? ((presentStudentDays / totalStudentDays) * 100).toFixed(1) + '%' : '0%';
 
   let fiveConsecutiveCount = 0;
   enrolled.forEach(s => {
@@ -3177,85 +3163,371 @@ function printSummaryReport() {
     if (maxStreak >= 5) fiveConsecutiveCount++;
   });
 
-  // ── Build XLSX workbook ───────────────────────────────────────────────────
+  let droppedOut = 0, transferredOut = 0, transferredIn = 0;
+
   if (typeof XLSX === 'undefined') return showToast('XLSX library not loaded yet. Try again in a moment.', 'warn');
 
-  const wb = XLSX.utils.book_new();
+  // ─────────────────────────────────────────────────────────────────────────
+  // OFFICIAL SF2 LAYOUT — SINGLE SHEET matching DepEd template exactly
+  //
+  // Column mapping (0-indexed for SheetJS):
+  //   0  = A  (narrow ~4.1)
+  //   1  = B  (Name, width 32)
+  //   2  = C  (LRN, width 14)
+  //   3+ = D… one col per school day (width ~3.5 each, max 25 days)
+  //   3+numDays   = ABSENT
+  //   3+numDays+1 = TARDY
+  //   3+numDays+2 = REMARKS (spans 3 cols)
+  //
+  // Row map (0-indexed):
+  //   0  = R1  blank
+  //   1  = R2  title
+  //   2  = R3  subtitle
+  //   3  = R4  blank
+  //   4  = R5  blank
+  //   5  = R6  School ID | School Year | Month
+  //   6  = R7  blank
+  //   7  = R8  Name of School | Grade Level | Section
+  //   8  = R9  blank
+  //   9  = R10 col headers row1 (NAME | dates | Total | REMARKS)
+  //   10 = R11 col headers row2 (date numbers)
+  //   11 = R12 col headers row3 (day letters + ABSENT + TARDY)
+  //   12 = R13 blank
+  //   13..13+maleData.length-1  = MALE student rows
+  //   mTotRow = MALE TOTAL per day
+  //   mTotRow+1..mTotRow+1+femaleData.length-1 = FEMALE student rows
+  //   fTotRow = FEMALE TOTAL per day
+  //   fTotRow+1 = Combined TOTAL PER DAY
+  //   fTotRow+2 = blank
+  //   (then guidelines + summary block)
+  // ─────────────────────────────────────────────────────────────────────────
 
-  // Day-number header row + DOW row
+  const MALE_ROWS   = Math.max(maleData.length, 21);   // pad to 21 like official
+  const FEMALE_ROWS = Math.max(femaleData.length, 25);  // pad to 25 like official
+
+  const R_TITLE    = 1;   // row index (0-based)
+  const R_SUB      = 2;
+  const R_INFO1    = 5;   // School ID / School Year / Month
+  const R_INFO2    = 7;   // Name of School / Grade Level / Section
+  const R_HDR1     = 9;   // LEARNER'S NAME | dates header
+  const R_HDR2     = 10;  // date numbers
+  const R_HDR3     = 11;  // day letters + ABSENT TARDY
+  const R_MSTART   = 13;  // first male student row
+  const R_MTOT     = R_MSTART + MALE_ROWS;
+  const R_FSTART   = R_MTOT + 1;
+  const R_FTOT     = R_FSTART + FEMALE_ROWS;
+  const R_COMB     = R_FTOT + 1;
+  const R_BLANK2   = R_COMB + 1;
+  const R_GUIDE    = R_BLANK2 + 1;    // guidelines start
+
+  const C_A    = 0;  // row number / blank narrow col
+  const C_NAME = 1;  // B: Learner name
+  const C_LRN  = 2;  // C: LRN
+  const C_DAY0 = 3;  // D: first day column
+  const C_ABS  = C_DAY0 + numDays;
+  const C_TAR  = C_ABS + 1;
+  const C_REM  = C_TAR + 1;
+  const TOTAL_COLS = C_REM + 3;  // remarks spans 3 cols
+
+  // Build AOA (array of arrays) — total rows needed
+  const totalRows = R_GUIDE + 30;
+  const aoa = Array.from({ length: totalRows }, () => Array(TOTAL_COLS).fill(null));
+
+  // Helper to set cell
+  const S = (r, c, v) => { if (aoa[r]) aoa[r][c] = v; };
+
+  // Row 1 (idx 1): Title
+  S(R_TITLE, C_NAME, 'School Form 2 (SF2) Daily Attendance Report of Learners');
+  // Row 2 (idx 2): Subtitle
+  S(R_SUB, C_NAME, '(This replaced Form 1, Form 2 & STS Form 4 - Absenteeism and Dropout Profile)');
+  // Row 5 (idx 5): School ID | School Year | Month
+  S(R_INFO1, C_A,   'School ID');
+  S(R_INFO1, C_NAME, profile.schoolId || '');
+  S(R_INFO1, C_DAY0 + 4, 'School Year');
+  S(R_INFO1, C_DAY0 + 6, profile.schoolYear || '');
+  S(R_INFO1, C_ABS - 2, 'Report for the Month of');
+  S(R_INFO1, C_ABS,  monthLabel);
+  // Row 7 (idx 7): Name of School | Grade Level | Section
+  S(R_INFO2, C_A,   'Name of School');
+  S(R_INFO2, C_NAME, profile.schoolName || '');
+  S(R_INFO2, C_DAY0 + 8, 'Grade Level');
+  S(R_INFO2, C_DAY0 + 10, profile.gradeLevel || '');
+  S(R_INFO2, C_ABS - 3, 'Section');
+  S(R_INFO2, C_ABS, sectionName);
+
+  // Row 9 (idx 9): Header row 1
+  S(R_HDR1, C_A, '#');
+  S(R_HDR1, C_NAME, "LEARNER'S NAME\r\n(Last Name, First Name, Middle Name)");
+  S(R_HDR1, C_LRN,  'LRN');
+  // Day columns: group by week — date numbers in R_HDR2, DOW letters in R_HDR3
   const dayNums = schoolDays.map(d => parseInt(d.split('-')[2], 10));
-  const dayDows = schoolDays.map(d => { const [dy,dm,dd] = d.split('-').map(Number); return DOW_LETTER[new Date(dy,dm-1,dd).getDay()]; });
+  const dayDows = schoolDays.map(d => {
+    const [dy,dm,dd] = d.split('-').map(Number);
+    return DOW_LETTER[new Date(dy,dm-1,dd).getDay()];
+  });
+  dayNums.forEach((n, i) => S(R_HDR2, C_DAY0 + i, n));
+  dayDows.forEach((w, i) => S(R_HDR3, C_DAY0 + i, w));
 
-  function buildSheet(studentRows, sectionLabel, totalsArr, isFirstPage) {
-    const aoa = []; // array of arrays
+  S(R_HDR1, C_ABS, 'Total for the Month');
+  S(R_HDR3, C_ABS, 'ABSENT');
+  S(R_HDR3, C_TAR, 'TARDY');
+  S(R_HDR1, C_REM, 'REMARK/S\r\n(If DROPPED OUT, state reason/legend #2.\r\nIf TRANSFERRED IN/OUT, write school name.)');
 
-    // Header block
-    aoa.push(['School Form 2 (SF2) Daily Attendance Report of Learners']);
-    aoa.push(['(This replaced Form 1, Form 2 & STS Form 4 – Absenteeism and Dropout Profile)']);
-    aoa.push([]);
-    aoa.push(['School ID:', profile.schoolId || '', '', 'School Year:', profile.schoolYear || '', '', 'Month:', monthLabel]);
-    aoa.push(['Name of School:', profile.schoolName || '', '', 'Grade Level:', profile.gradeLevel || '', '', 'Section:', sectionName]);
-    aoa.push([]);
+  // MALE section
+  S(R_MSTART - 1, C_A, 'MALE');
+  maleData.forEach((r, i) => {
+    const row = R_MSTART + i;
+    S(row, C_A, i + 1);
+    S(row, C_NAME, r.name);
+    S(row, C_LRN, r.lrn);
+    r.dayCodes.forEach((code, di) => S(row, C_DAY0 + di, code || null));
+    S(row, C_ABS, r.absCount || null);
+    S(row, C_TAR, r.tardyCount || null);
+  });
+  // Pad empty male rows to MALE_ROWS
+  for (let i = maleData.length; i < MALE_ROWS; i++) {
+    S(R_MSTART + i, C_A, i + 1);
+  }
+  // MALE total row
+  S(R_MTOT, C_A, 'MALE');
+  S(R_MTOT, C_NAME, 'TOTAL Per Day');
+  totalDayPresentM.forEach((v, i) => S(R_MTOT, C_DAY0 + i, v || null));
 
-    // Section label
-    aoa.push([sectionLabel]);
+  // FEMALE section
+  S(R_FSTART - 1, C_A, 'FEMALE');
+  femaleData.forEach((r, i) => {
+    const row = R_FSTART + i;
+    S(row, C_A, i + 1);
+    S(row, C_NAME, r.name);
+    S(row, C_LRN, r.lrn);
+    r.dayCodes.forEach((code, di) => S(row, C_DAY0 + di, code || null));
+    S(row, C_ABS, r.absCount || null);
+    S(row, C_TAR, r.tardyCount || null);
+  });
+  for (let i = femaleData.length; i < FEMALE_ROWS; i++) {
+    S(R_FSTART + i, C_A, i + 1);
+  }
+  // FEMALE total row
+  S(R_FTOT, C_A, 'FEMALE');
+  S(R_FTOT, C_NAME, 'TOTAL Per Day');
+  totalDayPresentF.forEach((v, i) => S(R_FTOT, C_DAY0 + i, v || null));
 
-    // Column headers
-    const hRow1 = ["LEARNER'S NAME\n(Last Name, First Name, Middle Name)", 'LRN', ...dayNums, 'ABSENT', 'TARDY', 'REMARKS'];
-    const hRow2 = ['', '', ...dayDows, '', '', ''];
-    aoa.push(hRow1);
-    aoa.push(hRow2);
+  // Combined total row
+  const combinedTotals = totalDayPresentM.map((v, i) => v + totalDayPresentF[i]);
+  S(R_COMB, C_A, '');
+  S(R_COMB, C_NAME, 'Combined TOTAL PER DAY');
+  combinedTotals.forEach((v, i) => S(R_COMB, C_DAY0 + i, v || null));
 
-    // Student rows
-    studentRows.forEach(r => {
-      const row = [r.name, r.lrn || '', ...r.dayCodes, r.absCount || '', r.tardyCount || '', ''];
-      aoa.push(row);
-    });
+  // ─── GUIDELINES + SUMMARY BLOCK (matches official row 64-93 layout) ───────
+  const RG = R_GUIDE;
+  S(RG,   C_A,   'GUIDELINES:');
+  S(RG,   C_DAY0+8, '1. CODES FOR CHECKING ATTENDANCE');
+  S(RG,   C_ABS, 'Month:');
+  S(RG,   C_ABS+2, 'No. of Days of Classes:');
+  S(RG,   C_REM, 'Summary for the Month');
 
-    // Totals row
-    const totRow = [`◀ ${sectionLabel} | TOTAL Per Day ▶`, '', ...totalsArr, '', '', ''];
-    aoa.push(totRow);
+  S(RG+1, C_A,   "1. The attendance shall be accomplished daily. Refer to the codes for checking learners' attendance.");
+  S(RG+1, C_DAY0+8, 'blank=Present; (x)=Absent; Tardy (half shaded: Upper=Late Comer, Lower=Cutting Classes)');
+  S(RG+1, C_ABS, monthLabel);
+  S(RG+1, C_ABS+2, numDays);
+  S(RG+1, C_REM,   'M');
+  S(RG+1, C_REM+1, 'F');
+  S(RG+1, C_REM+2, 'TOTAL');
 
-    if (!isFirstPage) {
-      // Combined totals
-      const combinedTotals = totalDayPresentM.map((v, i) => v + totalDayPresentF[i]);
-      aoa.push(['◀ Combined TOTAL PER DAY ▶', '', ...combinedTotals, '', '', '']);
-      aoa.push([]);
+  S(RG+2, C_A,   "2. Dates shall be written in the preceding columns beside Learner's Name.");
+  S(RG+2, C_ABS, '* Enrolment as of (1st Friday of June)');
+  S(RG+2, C_REM, '');
+  S(RG+2, C_REM+1, '');
+  S(RG+2, C_REM+2, enrolledAsOfFirstFriday);
 
-      // Summary table
-      aoa.push(['SUMMARY FOR THE MONTH']);
-      aoa.push(['Month:', monthLabel]);
-      aoa.push(['No. of Days of Classes:', numDays]);
-      aoa.push([]);
-      aoa.push(['', 'M', 'F', 'TOTAL']);
-      aoa.push(['Enrolment as of 1st Friday of June', '', '', enrolledAsOfFirstFriday]);
-      aoa.push(['Registered Learner as of end of month', maleCount, femaleCount, registeredEndOfMonth]);
-      aoa.push(['% of Enrolment as of end of month', '', '', pctEnrolment + '%']);
-      aoa.push(['Average Daily Attendance', '', '', ada]);
-      aoa.push(['% of Attendance for the month', '', '', pctAttendance + '%']);
-      aoa.push(['Students with 5 consecutive absences', '', '', fiveConsecutiveCount]);
-      aoa.push([]);
-      aoa.push(['Generated by EduScan PH · ' + new Date().toLocaleString('en-PH')]);
-    }
+  S(RG+3, C_A,   '3. To compute the following:');
+  S(RG+3, C_DAY0+8, '2. REASONS/CAUSES OF DROP-OUTS');
+  S(RG+3, C_ABS, 'Late Enrollment during the month (beyond cut-off)');
+  S(RG+3, C_REM, '');
+  S(RG+3, C_REM+1, '');
+  S(RG+3, C_REM+2, '');
 
-    const ws = XLSX.utils.aoa_to_sheet(aoa);
+  S(RG+4, C_A,   'a.'); S(RG+4, C_NAME, 'Percentage of Enrolment =');
+  S(RG+4, C_LRN, 'Registered Learner as of End of the Month / Enrolment as of 1st Friday of June x 100');
+  S(RG+4, C_DAY0+8, 'a. Domestic-Related Factors');
+  S(RG+4, C_ABS, 'Registered Learner as of end of the month');
+  S(RG+4, C_REM, maleCount);
+  S(RG+4, C_REM+1, femaleCount);
+  S(RG+4, C_REM+2, registeredEndOfMonth);
 
-    // Column widths
-    const wscols = [{ wch: 38 }, { wch: 14 }, ...schoolDays.map(() => ({ wch: 4 })), { wch: 8 }, { wch: 8 }, { wch: 24 }];
-    ws['!cols'] = wscols;
+  S(RG+5, C_DAY0+8, 'a.1. Had to take care of siblings');
+  S(RG+5, C_ABS, 'Percentage of Enrolment as of end of the month');
+  S(RG+5, C_REM, '');
+  S(RG+5, C_REM+1, '');
+  S(RG+5, C_REM+2, pctEnrolment);
 
-    return ws;
+  S(RG+6, C_A,   'b.'); S(RG+6, C_NAME, 'Average Daily Attendance =');
+  S(RG+6, C_LRN, 'Total Daily Attendance / Number of School Days in reporting month');
+  S(RG+6, C_DAY0+8, 'a.2. Early marriage/pregnancy');
+  S(RG+6, C_ABS, 'Average Daily Attendance');
+  S(RG+6, C_REM, '');
+  S(RG+6, C_REM+1, '');
+  S(RG+6, C_REM+2, ada);
+
+  S(RG+7, C_DAY0+8, "a.3. Parents' attitude toward schooling");
+  S(RG+7, C_ABS, 'Percentage of Attendance for the month');
+  S(RG+7, C_REM, '');
+  S(RG+7, C_REM+1, '');
+  S(RG+7, C_REM+2, pctAttendance);
+
+  S(RG+8, C_A,   'c.'); S(RG+8, C_NAME, 'Percentage of Attendance for the month =');
+  S(RG+8, C_LRN, 'Average daily attendance / Registered Learner as of End of the month x 100');
+  S(RG+8, C_DAY0+8, 'a.4. Family problems');
+  S(RG+8, C_ABS, 'Number of students with 5 consecutive days of absences:');
+  S(RG+8, C_REM, '');
+  S(RG+8, C_REM+1, '');
+  S(RG+8, C_REM+2, fiveConsecutiveCount);
+
+  S(RG+9, C_DAY0+8, 'b. Individual-Related Factors');
+  S(RG+9, C_ABS, 'Drop out');
+  S(RG+9, C_REM, '');
+  S(RG+9, C_REM+1, '');
+  S(RG+9, C_REM+2, droppedOut);
+
+  S(RG+10, C_A,  '4. Every end of the month, the class adviser submits this form to the principal for recording into SF4. Once signed, it is returned to the adviser.');
+  S(RG+10, C_DAY0+8, 'b.1. Illness');
+  S(RG+10, C_ABS, 'Transferred out');
+  S(RG+10, C_REM, '');
+  S(RG+10, C_REM+1, '');
+  S(RG+10, C_REM+2, transferredOut);
+
+  S(RG+11, C_DAY0+8, 'b.2. Overage');
+  S(RG+11, C_ABS, 'Transferred in');
+  S(RG+11, C_REM, '');
+  S(RG+11, C_REM+1, '');
+  S(RG+11, C_REM+2, transferredIn);
+
+  S(RG+12, C_A,  '5. The adviser will extend necessary intervention including but not limited to home visitation to learner/s with 5 consecutive days of absences or those at risk of dropping out.');
+  S(RG+12, C_DAY0+8, 'b.3. Death');
+
+  S(RG+13, C_DAY0+8, 'b.4. Drug Abuse');
+  S(RG+13, C_ABS, 'I certify that this is a true and correct report.');
+
+  S(RG+14, C_A,  '6. Attendance performance of learner is expected to reflect in Form 137 and Form 138 every grading period.');
+  S(RG+14, C_DAY0+8, 'b.5. Poor academic performance');
+
+  S(RG+15, C_A,  '*');
+  S(RG+15, C_NAME,'Beginning of School Year cut-off report is every 1st Friday of School Calendar Days');
+  S(RG+15, C_DAY0+8, 'b.6. Lack of interest/Distractions');
+  S(RG+15, C_ABS, '(Signature of Teacher over Printed Name)');
+
+  S(RG+16, C_DAY0+8, 'b.7. Hunger/Malnutrition');
+
+  S(RG+17, C_DAY0+8, 'c. School-Related Factors');
+  S(RG+17, C_ABS, 'Attested by:');
+
+  S(RG+18, C_DAY0+8, 'c.1. Teacher Factor');
+
+  S(RG+19, C_DAY0+8, 'c.2. Physical condition of classroom');
+
+  S(RG+20, C_DAY0+8, 'c.3. Peer influence');
+  S(RG+20, C_ABS, '(Signature of School Head over Printed Name)');
+
+  S(RG+21, C_DAY0+8, 'd. Geographic/Environmental');
+
+  S(RG+22, C_DAY0+8, 'd.1. Distance between home and school');
+
+  S(RG+23, C_DAY0+8, 'd.2. Armed conflict (incl. Tribal wars & clan feuds)');
+
+  S(RG+24, C_DAY0+8, 'd.3. Calamities/Disasters');
+
+  S(RG+25, C_DAY0+8, 'e. Financial-Related');
+
+  S(RG+26, C_DAY0+8, 'e.1. Child labor, work');
+
+  S(RG+27, C_DAY0+8, 'f. Others');
+
+  S(RG+28, C_A, `School Form 2: Page ${profile.pageOf || '1'} of ___`);
+  S(RG+28, C_REM, 'Generated by EduScan PH · ' + new Date().toLocaleString('en-PH'));
+
+  // ─── Build worksheet from AOA ─────────────────────────────────────────────
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+
+  // ─── MERGES ───────────────────────────────────────────────────────────────
+  const merges = [];
+  const M = (rs, cs, re, ce) => merges.push({ s:{r:rs,c:cs}, e:{r:re,c:ce} });
+
+  M(R_TITLE, C_NAME, R_TITLE, TOTAL_COLS - 1);           // title spans all
+  M(R_SUB,   C_NAME, R_SUB,   TOTAL_COLS - 1);           // subtitle spans all
+  // Info row 1
+  M(R_INFO1, C_NAME, R_INFO1, C_DAY0 + 3);              // school ID value
+  M(R_INFO1, C_DAY0+6, R_INFO1, C_ABS - 3);             // school year value
+  M(R_INFO1, C_ABS,  R_INFO1, TOTAL_COLS - 1);          // month value
+  // Info row 2
+  M(R_INFO2, C_NAME, R_INFO2, C_DAY0 + 7);              // school name value
+  M(R_INFO2, C_DAY0+10, R_INFO2, C_ABS - 4);            // grade level value
+  M(R_INFO2, C_ABS,  R_INFO2, TOTAL_COLS - 1);          // section value
+  // Header rows
+  M(R_HDR1, C_A, R_HDR3, C_A);                          // # col spans 4 hdr rows
+  M(R_HDR1, C_NAME, R_HDR3, C_NAME);                    // Name col spans
+  M(R_HDR1, C_LRN,  R_HDR3, C_LRN);                    // LRN col spans
+  M(R_HDR1, C_ABS, R_HDR1, C_TAR);                      // "Total for Month" spans ABS+TAR
+  M(R_HDR1, C_REM, R_HDR3, TOTAL_COLS - 1);             // Remarks spans
+  M(R_HDR2, C_ABS, R_HDR2, C_TAR);                      // blank under Total header
+  // Male section label
+  M(R_MSTART-1, C_A, R_MSTART-1, TOTAL_COLS - 1);
+  // Female section label
+  M(R_FSTART-1, C_A, R_FSTART-1, TOTAL_COLS - 1);
+  // Male total row - name cell
+  M(R_MTOT, C_A, R_MTOT, C_NAME);
+  // Female total row - name cell
+  M(R_FTOT, C_A, R_FTOT, C_NAME);
+  // Combined total row - name cell
+  M(R_COMB, C_A, R_COMB, C_NAME);
+  // Remarks col for each student row (spans 3 cols)
+  for (let i = 0; i < MALE_ROWS; i++) {
+    M(R_MSTART+i, C_REM, R_MSTART+i, TOTAL_COLS-1);
+  }
+  for (let i = 0; i < FEMALE_ROWS; i++) {
+    M(R_FSTART+i, C_REM, R_FSTART+i, TOTAL_COLS-1);
   }
 
-  const maleSheet   = buildSheet(maleData,   'MALE',   totalDayPresentM, true);
-  const femaleSheet = buildSheet(femaleData,  'FEMALE', totalDayPresentF, false);
+  ws['!merges'] = merges;
 
-  XLSX.utils.book_append_sheet(wb, maleSheet,   'MALE');
-  XLSX.utils.book_append_sheet(wb, femaleSheet, 'FEMALE');
+  // ─── COLUMN WIDTHS ────────────────────────────────────────────────────────
+  const wscols = [
+    { wch: 4 },    // A: narrow (row num)
+    { wch: 32 },   // B: Learner name
+    { wch: 14 },   // C: LRN
+    ...schoolDays.map(() => ({ wch: 3.5 })),  // D-?: day cols
+    { wch: 8 },    // ABSENT
+    { wch: 7.5 },  // TARDY
+    { wch: 9 },    // REMARKS cols
+    { wch: 7 },
+    { wch: 6.5 },
+  ];
+  ws['!cols'] = wscols;
+
+  // ─── ROW HEIGHTS ─────────────────────────────────────────────────────────
+  const wsrows = {};
+  wsrows[R_TITLE]  = { hpt: 20 };
+  wsrows[R_SUB]    = { hpt: 20 };
+  wsrows[R_INFO1]  = { hpt: 40 };
+  wsrows[R_INFO2]  = { hpt: 41 };
+  wsrows[R_HDR1]   = { hpt: 20 };
+  wsrows[R_HDR2]   = { hpt: 20 };
+  wsrows[R_HDR3]   = { hpt: 25 };
+  for (let i = R_MSTART; i <= R_COMB; i++) wsrows[i] = { hpt: 22 };
+  ws['!rows'] = Object.entries(wsrows).map(([r,v]) => ({ ...v, idx: parseInt(r) }));
+  // SheetJS uses array indexed by row
+  const rowsArr = [];
+  Object.entries(wsrows).forEach(([r,v]) => { rowsArr[parseInt(r)] = v; });
+  ws['!rows'] = rowsArr;
+
+  // ─── FREEZE PANES: freeze rows 1-12 (headers) and cols A-C ──────────────
+  ws['!freeze'] = { xSplit: 3, ySplit: R_MSTART, topLeftCell: 'D' + (R_MSTART + 1), activeCell: 'D' + (R_MSTART + 1), sqref: 'D' + (R_MSTART + 1) };
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'SF2');
 
   const filename = `SF2_${sectionName.replace(/[^a-zA-Z0-9]/g,'_')}_${monthFrom.slice(0,7)}.xlsx`;
   XLSX.writeFile(wb, filename);
-  showToast('SF2 exported as XLSX ✓', 'ok');
+  showToast('SF2 exported ✓  (Official DepEd format — single sheet)', 'ok');
 }
 
 function renderActionableList(range, logsInRange) {
