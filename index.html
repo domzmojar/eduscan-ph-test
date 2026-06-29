@@ -1332,8 +1332,16 @@
         <select id="student-class-select"></select>
       </div>
       <div class="form-group">
-        <label for="student-name-input">Full name</label>
-        <input type="text" id="student-name-input" placeholder="e.g. Juan Dela Cruz">
+        <label for="student-lastname-input">Last Name <span style="font-weight:400;text-transform:none;">(Apellido)</span></label>
+        <input type="text" id="student-lastname-input" placeholder="e.g. Dela Cruz">
+      </div>
+      <div class="form-group">
+        <label for="student-firstname-input">First Name <span style="font-weight:400;text-transform:none;">(Pangalan)</span></label>
+        <input type="text" id="student-firstname-input" placeholder="e.g. Juan">
+      </div>
+      <div class="form-group">
+        <label for="student-middlename-input">Middle Name <span style="font-weight:400;text-transform:none;">(Gitnang Pangalan — optional)</span></label>
+        <input type="text" id="student-middlename-input" placeholder="e.g. Santos">
       </div>
       <div class="form-group">
         <label for="student-gender-select">Sex <span style="font-weight:400; text-transform:none;">(required for SF2 report)</span></label>
@@ -1771,8 +1779,16 @@
         <select id="edit-student-class-select"></select>
       </div>
       <div class="form-group">
-        <label for="edit-student-name-input">Full name</label>
-        <input type="text" id="edit-student-name-input">
+        <label for="edit-student-lastname-input">Last Name <span style="font-weight:400;text-transform:none;">(Apellido)</span></label>
+        <input type="text" id="edit-student-lastname-input">
+      </div>
+      <div class="form-group">
+        <label for="edit-student-firstname-input">First Name <span style="font-weight:400;text-transform:none;">(Pangalan)</span></label>
+        <input type="text" id="edit-student-firstname-input">
+      </div>
+      <div class="form-group">
+        <label for="edit-student-middlename-input">Middle Name <span style="font-weight:400;text-transform:none;">(optional)</span></label>
+        <input type="text" id="edit-student-middlename-input">
       </div>
       <div class="form-group">
         <label for="edit-student-gender-select">Sex</label>
@@ -2518,15 +2534,20 @@ function openClassRosterModal(classId) {
 
 // ── STUDENTS ──────────────────────────────────────────────────────────────
 async function addStudent() {
-  const classId  = document.getElementById('student-class-select').value;
-  const name     = document.getElementById('student-name-input').value.trim();
-  const gender   = document.getElementById('student-gender-select').value;
-  const lrn      = document.getElementById('student-lrn-input').value.trim();
-  const guardian = document.getElementById('student-guardian-input').value.trim();
+  const classId    = document.getElementById('student-class-select').value;
+  const lastName   = document.getElementById('student-lastname-input').value.trim();
+  const firstName  = document.getElementById('student-firstname-input').value.trim();
+  const middleName = document.getElementById('student-middlename-input').value.trim();
+  const gender     = document.getElementById('student-gender-select').value;
+  const lrn        = document.getElementById('student-lrn-input').value.trim();
+  const guardian   = document.getElementById('student-guardian-input').value.trim();
   const enrolledInput = document.getElementById('student-enrolled-input');
   const enrolledDate = enrolledInput.value || todayStr();
 
-  if (!classId || !name) return showToast('Class and full name are required.', 'warn');
+  if (!classId || !lastName || !firstName) return showToast('Class, Last Name, and First Name are required.', 'warn');
+
+  // SF2 format: LASTNAME, Firstname Middlename
+  const name = buildStudentName(lastName, firstName, middleName);
 
   // Duplicate-LRN guard: catches a typo'd/re-scanned LRN colliding with
   // an existing student before it silently creates ambiguous records.
@@ -2550,12 +2571,12 @@ async function addStudent() {
     }
   }
 
-  students.push({ id, classId, name, gender, lrn, guardian, enrolledDate, qrDataUrl, updatedAt: nowIso() });
-  students.sort((a, b) => a.name.localeCompare(b.name));
+  students.push({ id, classId, name, lastName, firstName, middleName, gender, lrn, guardian, enrolledDate, qrDataUrl, updatedAt: nowIso() });
+  students.sort((a, b) => { const la=(a.lastName||a.name||"").toLowerCase(),lb=(b.lastName||b.name||"").toLowerCase(); return la!==lb?la.localeCompare(lb):(a.firstName||"").toLowerCase().localeCompare((b.firstName||"").toLowerCase()); });
   await saveStudents();
   scheduleRosterSync();
 
-  ['student-name-input','student-lrn-input','student-guardian-input'].forEach(inp => {
+  ['student-lastname-input','student-firstname-input','student-middlename-input','student-lrn-input','student-guardian-input'].forEach(inp => {
     document.getElementById(inp).value = '';
   });
   document.getElementById('student-gender-select').value = '';
@@ -3108,7 +3129,10 @@ function printSummaryReport() {
         totalsArr[i]++;
         return '';
       });
-      return { name: s.name, gender: s.gender || '?', dayCodes, absCount, tardyCount };
+      const sf2Name = s.lastName
+        ? buildStudentName(s.lastName, s.firstName, s.middleName)
+        : s.name;
+      return { name: sf2Name, lrn: s.lrn || '', gender: s.gender || '?', dayCodes, absCount, tardyCount };
     });
   }
 
@@ -3177,25 +3201,25 @@ function printSummaryReport() {
     aoa.push([sectionLabel]);
 
     // Column headers
-    const hRow1 = ["LEARNER'S NAME (Last Name, First Name, Middle Name)", ...dayNums, 'ABSENT', 'TARDY', 'REMARKS'];
-    const hRow2 = ['', ...dayDows, '', '', ''];
+    const hRow1 = ["LEARNER'S NAME\n(Last Name, First Name, Middle Name)", 'LRN', ...dayNums, 'ABSENT', 'TARDY', 'REMARKS'];
+    const hRow2 = ['', '', ...dayDows, '', '', ''];
     aoa.push(hRow1);
     aoa.push(hRow2);
 
     // Student rows
     studentRows.forEach(r => {
-      const row = [r.name, ...r.dayCodes, r.absCount || '', r.tardyCount || '', ''];
+      const row = [r.name, r.lrn || '', ...r.dayCodes, r.absCount || '', r.tardyCount || '', ''];
       aoa.push(row);
     });
 
     // Totals row
-    const totRow = [`◀ ${sectionLabel} | TOTAL Per Day ▶`, ...totalsArr, '', '', ''];
+    const totRow = [`◀ ${sectionLabel} | TOTAL Per Day ▶`, '', ...totalsArr, '', '', ''];
     aoa.push(totRow);
 
     if (!isFirstPage) {
       // Combined totals
       const combinedTotals = totalDayPresentM.map((v, i) => v + totalDayPresentF[i]);
-      aoa.push(['◀ Combined TOTAL PER DAY ▶', ...combinedTotals, '', '', '']);
+      aoa.push(['◀ Combined TOTAL PER DAY ▶', '', ...combinedTotals, '', '', '']);
       aoa.push([]);
 
       // Summary table
@@ -3217,7 +3241,7 @@ function printSummaryReport() {
     const ws = XLSX.utils.aoa_to_sheet(aoa);
 
     // Column widths
-    const wscols = [{ wch: 40 }, ...schoolDays.map(() => ({ wch: 4 })), { wch: 8 }, { wch: 8 }, { wch: 20 }];
+    const wscols = [{ wch: 38 }, { wch: 14 }, ...schoolDays.map(() => ({ wch: 4 })), { wch: 8 }, { wch: 8 }, { wch: 24 }];
     ws['!cols'] = wscols;
 
     return ws;
@@ -3843,6 +3867,18 @@ function getRosterPayload() {
       updatedAt: s.updatedAt || ''
     }))
   };
+}
+
+// ── SF2 NAME HELPER ───────────────────────────────────────────────────────
+// Official SF2 format: LASTNAME, Firstname Middlename
+function buildStudentName(lastName, firstName, middleName) {
+  const ln = (lastName || '').trim().toUpperCase();
+  const fn = (firstName || '').trim();
+  const mn = (middleName || '').trim();
+  let n = ln;
+  if (fn) n += (ln ? ', ' : '') + fn;
+  if (mn) n += ' ' + mn;
+  return n;
 }
 
 function isSystemName(name) {
@@ -4580,7 +4616,7 @@ async function importData(event) {
       const existingIds = new Set(students.map(s => s.id));
       const newStudents = payload.students.filter(s => !existingIds.has(s.id)).map(s => ({ ...s, updatedAt: s.updatedAt || nowIso() }));
       students.push(...newStudents);
-      students.sort((a, b) => a.name.localeCompare(b.name));
+      students.sort((a, b) => { const la=(a.lastName||a.name||"").toLowerCase(),lb=(b.lastName||b.name||"").toLowerCase(); return la!==lb?la.localeCompare(lb):(a.firstName||"").toLowerCase().localeCompare((b.firstName||"").toLowerCase()); });
       await dbPutAll('students', students);
       importedStudents = newStudents.length;
     }
@@ -5036,7 +5072,9 @@ function openEditStudentModal(id) {
   if (!student) return;
   
   document.getElementById('edit-student-id').value = id;
-  document.getElementById('edit-student-name-input').value = student.name;
+  document.getElementById('edit-student-lastname-input').value = student.lastName || (student.name ? student.name.split(',')[0].trim() : '');
+  document.getElementById('edit-student-firstname-input').value = student.firstName || (student.name ? (student.name.split(',')[1] || '').trim().split(' ')[0] : '');
+  document.getElementById('edit-student-middlename-input').value = student.middleName || '';
   document.getElementById('edit-student-gender-select').value = student.gender || '';
   document.getElementById('edit-student-lrn-input').value = student.lrn || '';
   document.getElementById('edit-student-guardian-input').value = student.guardian || '';
@@ -5053,15 +5091,18 @@ function openEditStudentModal(id) {
 }
 
 async function saveEditStudent() {
-  const id = document.getElementById('edit-student-id').value;
-  const classId = document.getElementById('edit-student-class-select').value;
-  const name = document.getElementById('edit-student-name-input').value.trim();
-  const gender = document.getElementById('edit-student-gender-select').value;
-  const lrn = document.getElementById('edit-student-lrn-input').value.trim();
-  const guardian = document.getElementById('edit-student-guardian-input').value.trim();
+  const id         = document.getElementById('edit-student-id').value;
+  const classId    = document.getElementById('edit-student-class-select').value;
+  const lastName   = document.getElementById('edit-student-lastname-input').value.trim();
+  const firstName  = document.getElementById('edit-student-firstname-input').value.trim();
+  const middleName = document.getElementById('edit-student-middlename-input').value.trim();
+  const gender     = document.getElementById('edit-student-gender-select').value;
+  const lrn        = document.getElementById('edit-student-lrn-input').value.trim();
+  const guardian   = document.getElementById('edit-student-guardian-input').value.trim();
   const enrolledDate = document.getElementById('edit-student-enrolled-input').value || '';
-  
-  if (!classId || !name) return showToast('Class and full name are required.', 'warn');
+  const name       = buildStudentName(lastName, firstName, middleName);
+
+  if (!classId || !lastName || !firstName) return showToast('Class, Last Name, and First Name are required.', 'warn');
 
   // Duplicate-LRN guard, same as addStudent() — checked against every
   // OTHER student so editing a student's own unchanged LRN doesn't
@@ -5079,15 +5120,18 @@ async function saveEditStudent() {
   const previousClassId = student.classId;
   
   // Update student data (Logs are intentionally left untouched to preserve history)
-  student.classId = classId;
-  student.name = name;
-  student.gender = gender;
-  student.lrn = lrn;
-  student.guardian = guardian;
+  student.classId    = classId;
+  student.name       = name;
+  student.lastName   = lastName;
+  student.firstName  = firstName;
+  student.middleName = middleName;
+  student.gender     = gender;
+  student.lrn        = lrn;
+  student.guardian   = guardian;
   student.enrolledDate = enrolledDate || student.enrolledDate || '';
   student.updatedAt = nowIso();
   
-  students.sort((a, b) => a.name.localeCompare(b.name));
+  students.sort((a, b) => { const la=(a.lastName||a.name||"").toLowerCase(),lb=(b.lastName||b.name||"").toLowerCase(); return la!==lb?la.localeCompare(lb):(a.firstName||"").toLowerCase().localeCompare((b.firstName||"").toLowerCase()); });
   await saveStudents();
   scheduleRosterSync();
   
@@ -5848,8 +5892,38 @@ window.addEventListener('DOMContentLoaded', async () => {
   });
   if (needsStudentFix) await dbPutAll('students', students);
 
+  // Migrate old students missing lastName/firstName (split from name field)
+  // SF2 stored names as "LASTNAME, Firstname Middlename" — parse backwards
+  let needsNameFix = false;
+  students = students.map(s => {
+    if (!s.lastName && s.name) {
+      needsNameFix = true;
+      let lastName = '', firstName = '', middleName = '';
+      if (s.name.includes(',')) {
+        const parts = s.name.split(',');
+        lastName = parts[0].trim();
+        const rest = (parts[1] || '').trim().split(' ');
+        firstName = rest[0] || '';
+        middleName = rest.slice(1).join(' ');
+      } else {
+        // Fallback: split by space, first word = firstName, last = lastName
+        const words = s.name.trim().split(/\s+/);
+        if (words.length >= 2) {
+          firstName = words[0];
+          lastName = words[words.length - 1];
+          middleName = words.slice(1, -1).join(' ');
+        } else {
+          firstName = s.name;
+        }
+      }
+      return { ...s, lastName, firstName, middleName };
+    }
+    return s;
+  });
+  if (needsNameFix) await dbPutAll('students', students);
+
   logs.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
-  students.sort((a, b) => a.name.localeCompare(b.name));
+  students.sort((a, b) => { const la=(a.lastName||a.name||"").toLowerCase(),lb=(b.lastName||b.name||"").toLowerCase(); return la!==lb?la.localeCompare(lb):(a.firstName||"").toLowerCase().localeCompare((b.firstName||"").toLowerCase()); });
 
   autoSyncEnabled = !!(await dbGetSetting('auto_sync'));
   schoolYearStart = await dbGetSetting('school_year_start') || '';
