@@ -1229,22 +1229,22 @@
       <label style="margin-bottom:0.4rem; display:block;">Scan mode</label>
       <div class="mode-toggle" id="mode-toggle">
         <button class="mode-btn arrival-active" id="mode-btn-arrival" onclick="setMode('arrival')">
-          <span class="mode-icon">☀️</span>
-          <span class="mode-label">Arrival</span>
-          <span class="mode-desc">Student came in</span>
+          <span class="mode-icon">🌅</span>
+          <span class="mode-label">AM</span>
+          <span class="mode-desc">Morning session</span>
         </button>
         <div class="mode-toggle-divider"></div>
         <button class="mode-btn" id="mode-btn-departure" onclick="setMode('departure')">
-          <span class="mode-icon">🌙</span>
-          <span class="mode-label">Departure</span>
-          <span class="mode-desc">Student going home</span>
+          <span class="mode-icon">🌇</span>
+          <span class="mode-label">PM</span>
+          <span class="mode-desc">Afternoon session</span>
         </button>
       </div>
 
       <div class="scan-area mode-arrival" id="scan-area" onclick="handleScanAreaClick()">
         <video id="scan-video" autoplay playsinline></video>
         <canvas id="qr-canvas"></canvas>
-        <div class="scan-mode-overlay" id="scan-mode-overlay">↑ Arrival</div>
+        <div class="scan-mode-overlay" id="scan-mode-overlay">↑ AM</div>
         <div class="scan-line" id="scan-line"></div>
         <div class="scan-corners" id="scan-corners"><div class="sc-br"></div></div>
         <div id="cam-idle">
@@ -1265,12 +1265,12 @@
       <div id="scan-progress-container" style="display:none; margin-top:1rem; border-radius:10px; border:1px solid var(--border); overflow:hidden;">
         <div style="display:flex;">
           <div style="flex:1; background:var(--arrival-bg); border-right:1px solid var(--arrival-border); padding:0.75rem; text-align:center;">
-            <div style="font-size:0.65rem; color:var(--arrival); font-weight:700; text-transform:uppercase; letter-spacing:0.05em;">☀️ Arrivals</div>
+            <div style="font-size:0.65rem; color:var(--arrival); font-weight:700; text-transform:uppercase; letter-spacing:0.05em;">🌅 AM</div>
             <div id="scan-arrival-count" style="font-size:1.6rem; font-weight:800; color:var(--arrival); margin-top:0.2rem; line-height:1;">0</div>
             <div id="scan-arrival-sub" style="font-size:0.68rem; color:var(--arrival); margin-top:0.15rem; opacity:0.8;">of <span id="scan-arrival-total">0</span></div>
           </div>
           <div style="flex:1; background:var(--departure-bg); padding:0.75rem; text-align:center;">
-            <div style="font-size:0.65rem; color:var(--departure); font-weight:700; text-transform:uppercase; letter-spacing:0.05em;">🌙 Dismissed</div>
+            <div style="font-size:0.65rem; color:var(--departure); font-weight:700; text-transform:uppercase; letter-spacing:0.05em;">🌇 PM</div>
             <div id="scan-departure-count" style="font-size:1.6rem; font-weight:800; color:var(--departure); margin-top:0.2rem; line-height:1;">0</div>
             <div id="scan-departure-sub" style="font-size:0.68rem; color:var(--departure); margin-top:0.15rem; opacity:0.8;">of <span id="scan-departure-total">0</span></div>
           </div>
@@ -1333,6 +1333,14 @@
       <div class="form-group">
         <label for="student-name-input">Full name</label>
         <input type="text" id="student-name-input" placeholder="e.g. Juan Dela Cruz">
+      </div>
+      <div class="form-group">
+        <label for="student-gender-select">Sex <span style="font-weight:400; text-transform:none;">(required for SF2 report)</span></label>
+        <select id="student-gender-select">
+          <option value="">— Select —</option>
+          <option value="M">Male</option>
+          <option value="F">Female</option>
+        </select>
       </div>
       <div class="form-group">
         <label for="student-lrn-input">LRN (Learner Reference Number)</label>
@@ -1730,6 +1738,14 @@
         <input type="text" id="edit-student-name-input">
       </div>
       <div class="form-group">
+        <label for="edit-student-gender-select">Sex</label>
+        <select id="edit-student-gender-select">
+          <option value="">— Select —</option>
+          <option value="M">Male</option>
+          <option value="F">Female</option>
+        </select>
+      </div>
+      <div class="form-group">
         <label for="edit-student-lrn-input">LRN (Learner Reference Number)</label>
         <input type="text" id="edit-student-lrn-input" maxlength="12">
       </div>
@@ -1764,8 +1780,8 @@
       <div class="form-group">
         <label for="edit-log-type">Record type</label>
         <select id="edit-log-type" onchange="onEditLogTypeChange()">
-          <option value="arrival">☀️ Arrival</option>
-          <option value="departure">🌙 Departure</option>
+          <option value="arrival">🌅 AM</option>
+          <option value="departure">🌇 PM</option>
         </select>
       </div>
       <div class="form-group">
@@ -2028,7 +2044,7 @@ function setMode(mode, persist = true) {
   const btnDep  = document.getElementById('mode-btn-departure');
 
   area.className = 'scan-area mode-' + mode;
-  overlay.textContent = mode === 'arrival' ? '☀️ Arrival' : '🌙 Departure';
+  overlay.textContent = mode === 'arrival' ? '🌅 AM' : '🌇 PM';
 
   if (scanning) {
     document.getElementById('scan-line').classList.add('active');
@@ -2067,7 +2083,7 @@ async function startCamera() {
     document.getElementById('scan-line').classList.add('active');
     document.getElementById('scan-corners').classList.add('active');
     overlay.classList.add('active');
-    overlay.textContent = scanMode === 'arrival' ? '☀️ Arrival' : '🌙 Departure';
+    overlay.textContent = scanMode === 'arrival' ? '🌅 AM' : '🌇 PM';
     stopBtn.classList.add('visible');
     scanning = true;
     requestAnimationFrame(scanFrameLoop);
@@ -2221,11 +2237,11 @@ async function handleQRScan(rawData) {
 
     const alreadyLogged = todayLog.find(l => l.type === scanMode);
     if (alreadyLogged) {
-      const typeLabel = scanMode === 'arrival' ? 'Arrival' : 'Departure';
+      const typeLabel = scanMode === 'arrival' ? 'AM' : 'PM';
       const time = new Date(alreadyLogged.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       showFeedback('warn',
         `⏱ ${typeLabel} already recorded`,
-        `${escapeHTML(student.name)} was logged at ${time}. Switch mode if you meant to log a ${scanMode === 'arrival' ? 'departure' : 'arrival'}.`
+        `${escapeHTML(student.name)} was logged at ${time}. Switch mode if you meant to log a ${scanMode === 'arrival' ? 'PM' : 'AM'}.`
       );
       if (navigator.vibrate) navigator.vibrate([30]);
       return;
@@ -2270,7 +2286,7 @@ async function handleQRScan(rawData) {
       ? ` <span class="badge badge-late" style="font-size:0.75rem;">⏰ Late</span>` : '';
     showFeedback(
       isArrival ? 'ok' : 'ok-dep',
-      isArrival ? '☀️ Arrival recorded' : '🌙 Departure recorded',
+      isArrival ? '🌅 AM recorded' : '🌇 PM recorded',
       `<strong>${escapeHTML(student.name)}</strong>${student.lrn ? ' · LRN ' + escapeHTML(student.lrn) : ''}${lateTag}<br>` +
       `<span style="font-size:0.82rem;">${new Date(logEntry.timestamp).toLocaleTimeString()}</span>` +
       `<br><button class="btn outline sm" style="margin-top:6px;" onclick="openEditLogModal(${logEntry.id})">✏️ Edit this record</button>`
@@ -2429,6 +2445,7 @@ function openClassRosterModal(classId) {
 async function addStudent() {
   const classId  = document.getElementById('student-class-select').value;
   const name     = document.getElementById('student-name-input').value.trim();
+  const gender   = document.getElementById('student-gender-select').value;
   const lrn      = document.getElementById('student-lrn-input').value.trim();
   const guardian = document.getElementById('student-guardian-input').value.trim();
   const enrolledInput = document.getElementById('student-enrolled-input');
@@ -2458,7 +2475,7 @@ async function addStudent() {
     }
   }
 
-  students.push({ id, classId, name, lrn, guardian, enrolledDate, qrDataUrl, updatedAt: nowIso() });
+  students.push({ id, classId, name, gender, lrn, guardian, enrolledDate, qrDataUrl, updatedAt: nowIso() });
   students.sort((a, b) => a.name.localeCompare(b.name));
   await saveStudents();
   scheduleRosterSync();
@@ -2466,6 +2483,7 @@ async function addStudent() {
   ['student-name-input','student-lrn-input','student-guardian-input'].forEach(inp => {
     document.getElementById(inp).value = '';
   });
+  document.getElementById('student-gender-select').value = '';
   // Bulk roster entry: keep the enrollment date pre-filled if the teacher
   // checked "keep this enrollment date for the next student I add" —
   // otherwise reset to blank (defaults to today) as before.
@@ -2661,8 +2679,8 @@ function buildLogRowHTML(l) {
 
   const accentClass = l.type === 'departure' ? 'departure' : 'arrival';
   const statusChip  = l.type === 'departure'
-    ? `<span class="log-chip log-chip-departure">🌙 Dismissed</span>`
-    : `<span class="log-chip log-chip-arrival">☀️ Arrived</span>`;
+    ? `<span class="log-chip log-chip-departure">🌇 PM</span>`
+    : `<span class="log-chip log-chip-arrival">🌅 AM</span>`;
   const lateChip = (l.type === 'arrival' && l.isLate)
     ? `<span class="log-chip log-chip-late">⏰ Late</span>` : '';
 
@@ -3222,8 +3240,8 @@ function openModalRange(type, classId, fromDate, toDate, encodedClassName) {
 
   let title = '', studentList = [];
   if (type === 'enrolled')  { title = `Enrolled — ${className}`;                   studentList = classStudents; }
-  else if (type === 'arrived')  { title = `☀️ Arrived (at least once) — ${className}`; studentList = classStudents.filter(s => arrivedIds.has(s.id)); }
-  else if (type === 'departed') { title = `🌙 Departed (at least once) — ${className}`; studentList = classStudents.filter(s => departedIds.has(s.id)); }
+  else if (type === 'arrived')  { title = `🌅 AM (at least once) — ${className}`; studentList = classStudents.filter(s => arrivedIds.has(s.id)); }
+  else if (type === 'departed') { title = `🌇 PM (at least once) — ${className}`; studentList = classStudents.filter(s => departedIds.has(s.id)); }
   else if (type === 'absent')   { title = `Never arrived — ${className}`;              studentList = classStudents.filter(s => !arrivedIds.has(s.id)); }
 
   const rangeLabel = `${fmtShort(fromDate)} – ${fmtShort(toDate)}`;
@@ -3262,8 +3280,8 @@ function openModal(type, classId, dateStr, encodedClassName) {
 
   let title = '', studentList = [], showTime = false;
   if (type === 'enrolled')  { title = `Enrolled — ${className}`;    studentList = classStudents; }
-  else if (type === 'arrived')  { title = `☀️ Arrived — ${className}`;  studentList = classStudents.filter(s => arrivedIds.has(s.id));  showTime = true; }
-  else if (type === 'departed') { title = `🌙 Departed — ${className}`; studentList = classStudents.filter(s => departedIds.has(s.id)); showTime = true; }
+  else if (type === 'arrived')  { title = `🌅 AM — ${className}`;  studentList = classStudents.filter(s => arrivedIds.has(s.id));  showTime = true; }
+  else if (type === 'departed') { title = `🌇 PM — ${className}`; studentList = classStudents.filter(s => departedIds.has(s.id)); showTime = true; }
   else if (type === 'absent')   { title = `Absent — ${className}`;      studentList = classStudents.filter(s => !arrivedIds.has(s.id)); }
 
   document.getElementById('modal-title').textContent = title + ` (${formatDate(dateStr)})`;
@@ -4613,9 +4631,9 @@ function renderTermsModalBody() {
                 <div class="term-day-badges">
                     ${arr.map(l => {
                         const lateTag = l.isLate ? `<span class="badge badge-late" style="font-size:0.65rem;">⏰ Late</span>` : '';
-                        return `<span class="badge badge-arrival">☀️ ${new Date(l.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>${lateTag}`;
+                        return `<span class="badge badge-arrival">🌅 ${new Date(l.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>${lateTag}`;
                     }).join('')}
-                    ${dep.map(l => `<span class="badge badge-departure">🌙 ${new Date(l.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>`).join('')}
+                    ${dep.map(l => `<span class="badge badge-departure">🌇 ${new Date(l.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>`).join('')}
                 </div>
             </div>`;
         });
@@ -4744,13 +4762,13 @@ function showStudentRecord(studentId) {
       let badgesHTML = '';
       if (arr.length > 0) {
         const lateTag = arr[0].isLate ? `<span class="badge badge-late" style="font-size:0.65rem;">⏰ Late</span>` : '';
-        badgesHTML += `<span class="badge badge-arrival">☀️ ${new Date(arr[0].timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>${lateTag}`;
+        badgesHTML += `<span class="badge badge-arrival">🌅 ${new Date(arr[0].timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>${lateTag}`;
       } else {
         badgesHTML += `<span class="badge" style="background:var(--danger-bg); color:var(--danger); border:1px solid var(--danger-border); font-size:0.65rem;">❌ Absent</span>`;
       }
       
       if (dep.length > 0) {
-        badgesHTML += `<span class="badge badge-departure">🌙 ${new Date(dep[0].timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>`;
+        badgesHTML += `<span class="badge badge-departure">🌇 ${new Date(dep[0].timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>`;
       }
 
       bodyHTML += `
@@ -4776,6 +4794,7 @@ function openEditStudentModal(id) {
   
   document.getElementById('edit-student-id').value = id;
   document.getElementById('edit-student-name-input').value = student.name;
+  document.getElementById('edit-student-gender-select').value = student.gender || '';
   document.getElementById('edit-student-lrn-input').value = student.lrn || '';
   document.getElementById('edit-student-guardian-input').value = student.guardian || '';
   document.getElementById('edit-student-enrolled-input').value = student.enrolledDate || '';
@@ -4794,6 +4813,7 @@ async function saveEditStudent() {
   const id = document.getElementById('edit-student-id').value;
   const classId = document.getElementById('edit-student-class-select').value;
   const name = document.getElementById('edit-student-name-input').value.trim();
+  const gender = document.getElementById('edit-student-gender-select').value;
   const lrn = document.getElementById('edit-student-lrn-input').value.trim();
   const guardian = document.getElementById('edit-student-guardian-input').value.trim();
   const enrolledDate = document.getElementById('edit-student-enrolled-input').value || '';
@@ -4818,6 +4838,7 @@ async function saveEditStudent() {
   // Update student data (Logs are intentionally left untouched to preserve history)
   student.classId = classId;
   student.name = name;
+  student.gender = gender;
   student.lrn = lrn;
   student.guardian = guardian;
   student.enrolledDate = enrolledDate || student.enrolledDate || '';
