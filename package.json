@@ -1,0 +1,14 @@
+{
+  "name": "eduscan-ph",
+  "version": "1.0.0",
+  "private": true,
+  "description": "EduScan PH — QR attendance PWA",
+  "scripts": {
+    "build": "node build.js",
+    "bench": "vitest bench --run"
+  },
+  "devDependencies": {
+    "@codspeed/vitest-plugin": "^4.0.0",
+    "vitest": "^3.0.0"
+  }
+}
