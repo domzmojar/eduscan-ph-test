@@ -3136,17 +3136,6 @@ async function printSummaryReport() {
   //   'cutPM'    — arrival present but no departure log
   //   'both'     — late arrival AND no departure
   function buildStudentData(studentList, totalsArr) {
-    // Build set of class-days that had PM scanning (any departure log for any enrolled student)
-    const enrolledIds = new Set(studentList.map(s => s.id));
-    // Also include all enrolled students across both groups for PM session detection
-    const allEnrolledIds = new Set(enrolled.map(s => s.id));
-    // Days where PM scanning occurred for this class (any student in class had departure log)
-    const pmScannedDays = new Set(
-      logsInMonth
-        .filter(l => l.type === 'departure' && allEnrolledIds.has(l.studentId))
-        .map(l => getLogDate(l))
-    );
-
     return studentList.map(s => {
       const cls = selectedClass;
       const dismissMins = cls && cls.dismissTime
@@ -3160,7 +3149,6 @@ async function printSummaryReport() {
         const d = getLogDate(l);
         if (!arrByDay[d] || l.timestamp < arrByDay[d].timestamp) arrByDay[d] = l;
       });
-      // For each dep log, store the scan time in minutes for early-dismissal check
       const depByDay = {};
       sDepLogs.forEach(l => {
         const d = getLogDate(l);
@@ -3176,20 +3164,16 @@ async function printSummaryReport() {
         const late = !!arr.isLate;
         totalsArr[i]++;
 
-        // PM check: only flag cutPM if PM scanning happened this day for the class
+        // cutPM: no departure log, OR left before dismiss time
+        const dep = depByDay[d];
         let cutPM = false;
-        if (pmScannedDays.has(d)) {
-          const dep = depByDay[d];
-          if (!dep) {
-            // No departure scan but PM scanning happened → cut PM
-            cutPM = true;
-          } else if (dismissMins !== null) {
-            // Departure scan exists — check if left early (before dismiss time)
-            const depTime = new Date(dep.timestamp);
-            const phDep = new Date(depTime.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
-            const depMin = phDep.getHours() * 60 + phDep.getMinutes();
-            if (depMin < dismissMins) cutPM = true;
-          }
+        if (!dep) {
+          cutPM = true;
+        } else if (dismissMins !== null) {
+          const depTime = new Date(dep.timestamp);
+          const phDep = new Date(depTime.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+          const depMin = phDep.getHours() * 60 + phDep.getMinutes();
+          if (depMin < dismissMins) cutPM = true;
         }
 
         if (late && cutPM) { tardyCount++; return 'both'; }
