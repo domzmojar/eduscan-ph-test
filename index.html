@@ -3178,7 +3178,7 @@ async function printSummaryReport() {
 
         if (late && cutPM) { tardyCount++; return 'both'; }
         if (late)          { tardyCount++; return 'lateAM'; }
-        if (cutPM)                         return 'cutPM';
+        if (cutPM)         { tardyCount++; return 'cutPM'; }
         return 'present';
       });
       const sf2Name = s.lastName
@@ -3239,15 +3239,12 @@ async function printSummaryReport() {
   });
 
   // ─────────────────────────────────────────────────────────────────────────
-  // OFFICIAL SF2 LAYOUT — 1:1 reproduction of the DepEd "School Form 2" .xlsx
-  // template (single worksheet, range A1:AJ, 36 columns). Page 1 (grid) and
-  // Page 2 (guidelines / legend / monthly summary / signatures) are stacked on
-  // the SAME sheet, exactly as in the official workbook — NO separate tab,
-  // NO LRN column. Column geometry is fixed so the output drops onto the
-  // official template: A=No. | B-C=Name | D-AB=25 date cols | AC=Absent |
-  // AD=Tardy | AE-AJ=Remarks.
-  // Uses xlsx-js-style (drop-in SheetJS fork) so borders/fills/fonts/bold are
-  // actually written into the .xlsx (the stock community build drops styling).
+  // OFFICIAL SF2 LAYOUT — styled to visually match the printed DepEd template
+  // Uses xlsx-js-style (drop-in SheetJS fork) so borders/fills/fonts/bold
+  // actually get written into the .xlsx — the stock SheetJS community build
+  // silently drops all cell styling on write.
+  // Two sheets: "SF2" (grid) + "SF2 (Guidelines)" (legend/summary/signatures),
+  // matching the two physical pages of the printed form.
   // ─────────────────────────────────────────────────────────────────────────
 
   const FONT_NAME = 'Arial';
@@ -3271,25 +3268,19 @@ async function printSummaryReport() {
   }
   function blankCell(opts) { return styleCell('', opts); }
 
-  // ── SINGLE SHEET: official SF2 column geometry (A:AJ = 36 columns) ──────
-  //  A(0)=No.  B-C(1-2)=Learner's Name  D-AB(3-27)=25 fixed date columns
-  //  AC(28)=Total Absent  AD(29)=Total Tardy  AE-AJ(30-35)=Remarks
-  const NO_COL       = 0;            // A: sequence number
-  const NAME_START   = 1;            // B
-  const NAME_END     = 2;            // C
-  const DAY_START    = 3;            // D: first date column
-  const DAY_SLOTS    = 25;           // fixed number of date columns in the form
-  const DAY_END      = DAY_START + DAY_SLOTS - 1;   // 27 = AB
-  const ABS_COL      = 28;           // AC
-  const TAR_COL      = 29;           // AD
-  const REM_COL      = 30;           // AE
-  const REM_SPAN_END = 35;           // AJ
-  const TOTAL_COLS   = 36;           // A..AJ
-  if (numDays > DAY_SLOTS) console.log('[v0] SF2: month has', numDays, 'school days but form holds', DAY_SLOTS);
+  // ── SHEET 1: Main attendance grid ─────────────────────────────────────
+  const NAME_SPAN = 3;       // cols A-C: learner name
+  const LRN_COL = 3;         // D: LRN
+  const DAY_START = 4;       // E: first day column
+  const DAY_END = DAY_START + numDays - 1;
+  const ABS_COL = DAY_END + 1;
+  const TAR_COL = ABS_COL + 1;
+  const REM_COL = TAR_COL + 1;
+  const REM_SPAN_END = REM_COL + 2;
+  const TOTAL_COLS = REM_SPAN_END + 1;
 
-  // Mirror the official template's pre-printed blank-row counts; grow if needed.
-  const MALE_ROWS = Math.max(maleData.length, 21);
-  const FEMALE_ROWS = Math.max(femaleData.length, 25);
+  const MALE_ROWS = Math.max(maleData.length, 18);
+  const FEMALE_ROWS = Math.max(femaleData.length, 18);
 
   const aoa1 = [];
   const merges1 = [];
@@ -3297,67 +3288,73 @@ async function printSummaryReport() {
   function ensureRow1(r) { if (!aoa1[r]) aoa1[r] = []; return aoa1[r]; }
   function put1(r, c, cell) { ensureRow1(r); aoa1[r][c] = cell; }
 
-  // Title block (official: row1 blank, row2 title, row3 subtitle)
-  put1(1, 0, styleCell('School Form 2 (SF2) Daily Attendance Report of Learners', { bold:true, size:14, border:false }));
-  M1(1,0,1,TOTAL_COLS-1);
-  put1(2, 0, styleCell('(This replaced Form 1, Form 2 & STS Form 4 - Absenteeism and Dropout Profile)', { italic:true, size:9, border:false }));
-  M1(2,0,2,TOTAL_COLS-1);
+  let r1 = 0;
+  put1(r1, 0, styleCell('School Form 2 (SF2) Daily Attendance Report of Learners', { bold:true, size:14, border:false }));
+  M1(r1,0,r1,TOTAL_COLS-1); r1++;
+  put1(r1, 0, styleCell('(This replaced Form 1, Form 2 & STS Form 4 - Absenteeism and Dropout Profile)', { italic:true, size:9, border:false }));
+  M1(r1,0,r1,TOTAL_COLS-1); r1++;
+  r1++; // spacer
 
-  // Info row 1 (official row 6): School ID | School Year | Report for the Month of
-  put1(5,1, styleCell('School ID', { align:'left', border:false, wrap:false }));
-  put1(5,2, styleCell(profile.schoolId || '', { border:true, align:'center' })); M1(5,2,5,4);
-  put1(5,7, styleCell('School Year', { align:'left', border:false, wrap:false }));
-  put1(5,10, styleCell(profile.schoolYear || '', { border:true, align:'center' })); M1(5,10,5,14);
-  put1(5,16, styleCell('Report for the Month of', { align:'left', border:false, wrap:false })); M1(5,16,5,22);
-  put1(5,23, styleCell(monthLabel, { border:true, align:'center' })); M1(5,23,5,28);
+  // Info row 1: School ID | School Year | Report for the Month
+  put1(r1,0, styleCell('School ID', { align:'left', border:false, wrap:false }));
+  M1(r1,0,r1,1);
+  put1(r1,2, styleCell(profile.schoolId || '', { border:true, align:'left' }));
+  M1(r1,2,r1,4);
+  put1(r1,6, styleCell('School Year', { align:'left', border:false, wrap:false }));
+  M1(r1,6,r1,7);
+  put1(r1,8, styleCell(profile.schoolYear || '', { border:true, align:'left' }));
+  M1(r1,8,r1,10);
+  put1(r1,12, styleCell('Report for the Month of', { align:'left', border:false, wrap:false }));
+  M1(r1,12,r1,15);
+  put1(r1,16, styleCell(monthLabel, { border:true, align:'left' }));
+  M1(r1,16,r1,TOTAL_COLS-1);
+  r1++; r1++;
 
-  // Info row 2 (official row 8): Name of School | Grade Level | Section
-  put1(7,1, styleCell('Name of School', { align:'left', border:false, wrap:false }));
-  put1(7,2, styleCell(profile.schoolName || '', { border:true, align:'left' })); M1(7,2,7,18);
-  put1(7,19, styleCell('Grade Level', { align:'left', border:false, wrap:false })); M1(7,19,7,22);
-  put1(7,23, styleCell(sf2GradeLevel || '', { border:true, align:'center' })); M1(7,23,7,24);
-  put1(7,25, styleCell('Section', { align:'left', border:false, wrap:false })); M1(7,25,7,27);
-  put1(7,28, styleCell(sectionName || '', { border:true, align:'center' })); M1(7,28,7,33);
+  // Info row 2: Name of School | Grade Level | Section
+  put1(r1,0, styleCell('Name of School', { align:'left', border:false, wrap:false }));
+  M1(r1,0,r1,1);
+  put1(r1,2, styleCell(profile.schoolName || '', { border:true, align:'left' }));
+  M1(r1,2,r1,10);
+  put1(r1,12, styleCell('Grade Level', { align:'left', border:false, wrap:false }));
+  M1(r1,12,r1,13);
+  put1(r1,14, styleCell(sf2GradeLevel || '', { border:true, align:'left' }));
+  M1(r1,14,r1,15);
+  put1(r1,17, styleCell('Section', { align:'left', border:false, wrap:false }));
+  put1(r1,18, styleCell(sectionName || '', { border:true, align:'left' }));
+  M1(r1,18,r1,TOTAL_COLS-1);
+  r1++; r1++;
 
-  // Grid header: official 4-row block (rows 10-13 → idx 9-12)
-  const R_HDR_TOP = 9;           // banner / Total / Remarks / Name top
-  const R_HDR_GAP = 10;          // spare header row in the date band
-  const R_HDR_NUM = 11;          // date numbers + ABSENT/TARDY labels
-  const R_HDR_DOW = 12;          // day letters (M T W TH F)
-  // Learner name header spans the No.+Name block (A:C) across all 4 rows
-  put1(R_HDR_TOP, 0, styleCell("LEARNER'S NAME\n(Last Name, First Name, Middle Name)", { bold:true, size:8 }));
-  M1(R_HDR_TOP,0,R_HDR_DOW,NAME_END);
-  // Date banner across D:AB (single row)
-  put1(R_HDR_TOP, DAY_START, styleCell('(1st row for date, 2nd row for Day: M,T,W,TH,F)', { bold:true, size:8 }));
-  M1(R_HDR_TOP, DAY_START, R_HDR_TOP, DAY_END);
-  // Fixed date columns: fill the real school days, leave the rest blank/bordered
-  for (let i = 0; i < DAY_SLOTS; i++) {
-    put1(R_HDR_GAP, DAY_START+i, blankCell());
-    put1(R_HDR_NUM, DAY_START+i, styleCell(i < numDays ? dayNums[i] : '', { size:7 }));
-    put1(R_HDR_DOW, DAY_START+i, styleCell(i < numDays ? dayDows[i] : '', { bold:true, size:7 }));
+  // Grid header: 3 rows (banner / date numbers / day letters + Absent/Tardy)
+  const R_HDR1 = r1, R_HDR2 = r1+1, R_HDR3 = r1+2;
+  put1(R_HDR1, 0, styleCell("LEARNER'S NAME\n(Last Name, First Name, Middle Name)", { bold:true, size:8 }));
+  M1(R_HDR1,0,R_HDR3,NAME_SPAN-1);
+  put1(R_HDR1, LRN_COL, styleCell('LRN', { bold:true, size:8 }));
+  M1(R_HDR1,LRN_COL,R_HDR3,LRN_COL);
+  put1(R_HDR1, DAY_START, styleCell('(1st row for date, 2nd row for Day: M,T,W,TH,F)', { bold:true, size:8 }));
+  M1(R_HDR1, DAY_START, R_HDR1, DAY_END);
+  for (let i = 0; i < numDays; i++) {
+    put1(R_HDR2, DAY_START+i, styleCell(dayNums[i], { size:7 }));
+    put1(R_HDR3, DAY_START+i, styleCell(dayDows[i], { bold:true, size:7 }));
   }
-  // Total for the Month (AC:AD) over ABSENT / TARDY
-  put1(R_HDR_TOP, ABS_COL, styleCell('Total for the\nMonth', { bold:true, size:8 }));
-  M1(R_HDR_TOP, ABS_COL, R_HDR_GAP, TAR_COL);
-  put1(R_HDR_NUM, ABS_COL, styleCell('ABSENT', { bold:true, size:7 }));
-  M1(R_HDR_NUM, ABS_COL, R_HDR_DOW, ABS_COL);
-  put1(R_HDR_NUM, TAR_COL, styleCell('TARDY', { bold:true, size:7 }));
-  M1(R_HDR_NUM, TAR_COL, R_HDR_DOW, TAR_COL);
-  // Remarks (AE:AJ) over all 4 header rows
-  put1(R_HDR_TOP, REM_COL, styleCell('REMARK/S (If DROPPED OUT, state reason, please refer to legend number 2.\nIf TRANSFERRED IN/OUT, write the name of School.)', { bold:true, size:7 }));
-  M1(R_HDR_TOP, REM_COL, R_HDR_DOW, REM_SPAN_END);
-  let r1 = R_HDR_DOW + 1;
+  put1(R_HDR1, ABS_COL, styleCell('Total for the\nMonth', { bold:true, size:8 }));
+  M1(R_HDR1, ABS_COL, R_HDR1, TAR_COL);
+  put1(R_HDR2, ABS_COL, blankCell());
+  M1(R_HDR2, ABS_COL, R_HDR2, TAR_COL);
+  put1(R_HDR3, ABS_COL, styleCell('ABSENT', { bold:true, size:7 }));
+  put1(R_HDR3, TAR_COL, styleCell('TARDY', { bold:true, size:7 }));
+  put1(R_HDR1, REM_COL, styleCell('REMARK/S (If DROPPED OUT, state reason, please refer to legend number 2.\nIf TRANSFERRED IN/OUT, write the name of School.)', { bold:true, size:7 }));
+  M1(R_HDR1, REM_COL, R_HDR3, REM_SPAN_END);
+  r1 = R_HDR3 + 1;
 
   // Track cells needing triangle shapes: { row, col, state }
   const triangleCells = [];
 
-  function writeStudentRow1(rowIdx, student, seq) {
-    // Col A = sequence number; cols B-C = learner name (merged)
-    put1(rowIdx, NO_COL, styleCell(student ? seq : '', { size:8 }));
-    put1(rowIdx, NAME_START, styleCell(student ? student.name : '', { align:'left', size:8 }));
-    M1(rowIdx, NAME_START, rowIdx, NAME_END);
-    for (let i = 0; i < DAY_SLOTS; i++) {
-      const code = (student && i < numDays) ? (student.dayCodes[i] || '') : '';
+  function writeStudentRow1(rowIdx, student) {
+    put1(rowIdx, 0, styleCell(student ? student.name : '', { align:'left', size:8 }));
+    M1(rowIdx,0,rowIdx,NAME_SPAN-1);
+    put1(rowIdx, LRN_COL, styleCell(student ? student.lrn : '', { size:7.5 }));
+    for (let i = 0; i < numDays; i++) {
+      const code = student ? (student.dayCodes[i] || '') : '';
       let cellVal = '';
       let cellFill = null;
       if (code === 'absent') { cellVal = 'x'; }
@@ -3365,8 +3362,8 @@ async function printSummaryReport() {
         // Leave text blank — triangle shape will be drawn on top
         triangleCells.push({ aoa1row: rowIdx, col: DAY_START + i, state: code });
       }
-      // Shade non-class slots and filler rows; blank = present
-      if (!student || i >= numDays) cellFill = grayFill;
+      // present or '' = blank with gray fill if enrolled
+      if (!student || (!cellVal && code === '')) cellFill = grayFill;
       put1(rowIdx, DAY_START+i, styleCell(cellVal, { size:7, fill: cellFill }));
     }
     put1(rowIdx, ABS_COL, styleCell(student ? (student.absCount || '') : '', { size:8 }));
@@ -3375,87 +3372,106 @@ async function printSummaryReport() {
     M1(rowIdx, REM_COL, rowIdx, REM_SPAN_END);
   }
 
-  // Per-day total row builder (label merged across A:C = No.+Name block)
-  function writeTotalRow1(rowIdx, label, values) {
-    put1(rowIdx, NO_COL, styleCell(label, { bold:true, size:8, align:'left' }));
-    M1(rowIdx, NO_COL, rowIdx, NAME_END);
-    for (let i = 0; i < DAY_SLOTS; i++) {
-      put1(rowIdx, DAY_START+i, styleCell(i < numDays ? (values[i] || '') : '', { bold:true, size:7, fill: i < numDays ? null : grayFill }));
-    }
-    put1(rowIdx, ABS_COL, blankCell());
-    put1(rowIdx, TAR_COL, blankCell());
-    put1(rowIdx, REM_COL, blankCell());
-    M1(rowIdx, REM_COL, rowIdx, REM_SPAN_END);
-  }
-
   const R_MSTART = r1;
-  for (let i = 0; i < MALE_ROWS; i++) writeStudentRow1(R_MSTART + i, maleData[i], i + 1);
+  for (let i = 0; i < MALE_ROWS; i++) writeStudentRow1(R_MSTART + i, maleData[i]);
   r1 = R_MSTART + MALE_ROWS;
-  writeTotalRow1(r1, 'MALE  |  TOTAL Per Day', totalDayPresentM);
+  const R_MTOT = r1;
+  put1(R_MTOT, 0, styleCell('\u25c4   MALE  |  TOTAL Per Day   \u25ba', { bold:true, size:8, align:'left' }));
+  M1(R_MTOT,0,R_MTOT,LRN_COL);
+  for (let i = 0; i < numDays; i++) put1(R_MTOT, DAY_START+i, styleCell(totalDayPresentM[i] || '', { bold:true, size:7 }));
+  put1(R_MTOT, ABS_COL, blankCell()); put1(R_MTOT, TAR_COL, blankCell());
+  put1(R_MTOT, REM_COL, blankCell()); M1(R_MTOT, REM_COL, R_MTOT, REM_SPAN_END);
   r1++;
 
   const R_FSTART = r1;
-  for (let i = 0; i < FEMALE_ROWS; i++) writeStudentRow1(R_FSTART + i, femaleData[i], i + 1);
+  for (let i = 0; i < FEMALE_ROWS; i++) writeStudentRow1(R_FSTART + i, femaleData[i]);
   r1 = R_FSTART + FEMALE_ROWS;
-  writeTotalRow1(r1, 'FEMALE  |  TOTAL Per Day', totalDayPresentF);
+  const R_FTOT = r1;
+  put1(R_FTOT, 0, styleCell('\u25c4   FEMALE  |  TOTAL Per Day   \u25ba', { bold:true, size:8, align:'left' }));
+  M1(R_FTOT,0,R_FTOT,LRN_COL);
+  for (let i = 0; i < numDays; i++) put1(R_FTOT, DAY_START+i, styleCell(totalDayPresentF[i] || '', { bold:true, size:7 }));
+  put1(R_FTOT, ABS_COL, blankCell()); put1(R_FTOT, TAR_COL, blankCell());
+  put1(R_FTOT, REM_COL, blankCell()); M1(R_FTOT, REM_COL, R_FTOT, REM_SPAN_END);
   r1++;
 
-  const combinedTotals = totalDayPresentM.map((m, i) => m + totalDayPresentF[i]);
-  writeTotalRow1(r1, 'Combined TOTAL PER DAY', combinedTotals);
+  const R_COMB = r1;
+  put1(R_COMB, 0, styleCell('\u25c4   Combined TOTAL PER DAY   \u25ba', { bold:true, size:8, align:'left' }));
+  M1(R_COMB,0,R_COMB,LRN_COL);
+  for (let i = 0; i < numDays; i++) put1(R_COMB, DAY_START+i, styleCell((totalDayPresentM[i] + totalDayPresentF[i]) || '', { bold:true, size:7 }));
+  put1(R_COMB, ABS_COL, blankCell()); put1(R_COMB, TAR_COL, blankCell());
+  put1(R_COMB, REM_COL, blankCell()); M1(R_COMB, REM_COL, R_COMB, REM_SPAN_END);
   r1++; r1++;
   put1(r1, 0, styleCell(`School Form 2: Page ${profile.pageOf || '1'} of ________`, { border:false, size:9, align:'left' }));
   M1(r1,0,r1,TOTAL_COLS-1);
-  r1++; r1++;  // spacer before Page 2 block (stacked on same sheet)
 
-  // ── PAGE 2 (same sheet, stacked below the grid) ───────────────────────
-  //  Three official column bands:  Guidelines A:N(0-13) | Legend Q:Y(16-24)
-  //  | Monthly Summary AB:AJ(27-35) with M/F/TOTAL at AH/AI/AJ(33/34/35).
-  const P2 = r1;                       // base row for the page-2 block
-  const GL_END = 13;                   // guidelines text right edge (N)
-  const LEG_C = 16, LEG_END = 24;      // legend band (Q:Y)
-  const SUM_LBL = 27, SUM_END = 32;    // summary label band (AB:AG)
-  const SUM_M = 33, SUM_F = 34, SUM_T = 35; // M / F / TOTAL value columns
+  const totalRows1 = r1 + 1;
+  for (let rr = 0; rr < totalRows1; rr++) {
+    ensureRow1(rr);
+    for (let cc = 0; cc < TOTAL_COLS; cc++) {
+      if (aoa1[rr][cc] === undefined) aoa1[rr][cc] = blankCell({ border:false });
+    }
+  }
 
-  // — Guidelines column (A:N) —
-  let g = P2;
-  put1(g,0, styleCell('GUIDELINES:', { bold:true, size:9, align:'left', border:false })); M1(g,0,g,GL_END); g++;
-  [
+  const ws1 = XLSX.utils.aoa_to_sheet(aoa1);
+  ws1['!merges'] = merges1;
+  ws1['!cols'] = [
+    { wch:3 }, { wch:3 }, { wch:16 }, { wch:11 },
+    ...schoolDays.map(() => ({ wch:3.1 })),
+    { wch:7 }, { wch:6.5 }, { wch:11 }, { wch:11 }, { wch:10 }
+  ];
+  const rh1 = {};
+  rh1[0] = 22; rh1[1] = 16; rh1[R_HDR1] = 24; rh1[R_HDR2] = 14; rh1[R_HDR3] = 16;
+  ws1['!rows'] = Array.from({ length: totalRows1 }, (_, i) => ({ hpt: rh1[i] || 14 }));
+  ws1['!sheetView'] = [{ showGridLines:false }];
+
+  // ── SHEET 2: Guidelines / Legend / Summary / Signatures ───────────────
+  const aoa2 = [];
+  const merges2 = [];
+  function M2(r1_,c1,r2_,c2){ merges2.push({ s:{r:r1_,c:c1}, e:{r:r2_,c:c2} }); }
+  function put2(rr, cc, cell) { if (!aoa2[rr]) aoa2[rr] = []; aoa2[rr][cc] = cell; }
+
+  let g = 0;
+  put2(g,0, styleCell('GUIDELINES:', { bold:true, size:9, align:'left', border:false })); M2(g,0,g,5); g++;
+  const guideLines = [
     "1. The attendance shall be accomplished daily. Refer to the codes for checking learners' attendance.",
     "2. Dates shall be written in the preceding columns beside Learner's Name.",
     "3. To compute the following:",
-  ].forEach(line => { put1(g,0, styleCell(line, { size:8, align:'left', border:false })); M1(g,0,g,GL_END); g++; });
+  ];
+  guideLines.forEach(line => { put2(g,0, styleCell(line, { size:8, align:'left', border:false })); M2(g,0,g,5); g++; });
 
-  [
+  const formulas = [
     ['a.', 'Percentage of Enrolment =', 'Registered Learner as of End of the Month', 'Enrolment as of 1st Friday of June', 'x 100'],
     ['b.', 'Average Daily Attendance =', 'Total Daily Attendance', 'Number of School Days in reporting month', ''],
     ['c.', 'Percentage of Attendance for the month =', 'Average daily attendance', 'Registered Learner as of End of the month', 'x 100'],
-  ].forEach(f => {
-    put1(g,0, styleCell(f[0], { size:8, align:'left', border:false }));
-    put1(g,1, styleCell(f[1], { size:8, italic:true, align:'left', border:false })); M1(g,1,g,GL_END); g++;
-    put1(g,2, styleCell(f[2], { size:7.5, border:false })); M1(g,2,g,11);
-    if (f[4]) put1(g,12, styleCell(f[4], { size:7.5, align:'left', border:false }));
+  ];
+  formulas.forEach(f => {
+    put2(g,0, styleCell(f[0], { size:8, align:'left', border:false }));
+    put2(g,1, styleCell(f[1], { size:8, italic:true, align:'left', border:false })); M2(g,1,g,3);
     g++;
-    put1(g,2, styleCell('_'.repeat(40), { size:7.5, border:false })); M1(g,2,g,11); g++;
-    put1(g,2, styleCell(f[3], { size:7.5, border:false })); M1(g,2,g,11); g++;
+    put2(g,1, styleCell(f[2], { size:7.5, border:false })); M2(g,1,g,3);
+    if (f[4]) put2(g,4, styleCell(f[4], { size:7.5, align:'left', border:false }));
+    g++;
+    put2(g,1, styleCell('_'.repeat(40), { size:7.5, border:false })); M2(g,1,g,3); g++;
+    put2(g,1, styleCell(f[3], { size:7.5, border:false })); M2(g,1,g,3); g++;
     g++;
   });
 
-  [
+  const moreLines = [
     "4. Every End of the month, the class adviser will submit this form to the office of the principal for recording of",
     "    summary table into the School Form 4. Once signed by the principal, this form should be returned to the adviser.",
     "5. The adviser will extend neccessary intervention including but not limited to home visitation to learner/s that",
     "    committed 5 consecutive days of absences or those with potentials of dropping out",
     "6. Attendance performance of learner is expected to reflect in Form 137 and Form 138 every grading period",
     "    * Beginning of School Year cut-off report is every 1st Friday of School Calendar Days",
-  ].forEach(line => { put1(g,0, styleCell(line, { size:8, align:'left', border:false })); M1(g,0,g,GL_END); g++; });
+  ];
+  moreLines.forEach(line => { put2(g,0, styleCell(line, { size:8, align:'left', border:false })); M2(g,0,g,5); g++; });
   const guidelinesEnd = g;
 
-  // — Legend column (Q:Y) —
-  let lg = P2;
-  put1(lg,LEG_C, styleCell('1. CODES FOR CHECKING ATTENDANCE', { bold:true, size:8.5, align:'left', border:false })); M1(lg,LEG_C,lg,LEG_END); lg++;
-  put1(lg,LEG_C, styleCell('blank- Present;  (x)- Absent;  Tardy (half shaded= Upper for Late Commer, Lower for Cutting Classes)', { size:7.5, align:'left', border:false })); M1(lg,LEG_C,lg+1,LEG_END); lg += 2;
-  put1(lg,LEG_C, styleCell('2. REASONS/CAUSES OF DROP-OUTS', { bold:true, size:8.5, align:'left', border:false })); M1(lg,LEG_C,lg,LEG_END); lg++;
-  [
+  let lg = 1;
+  put2(lg,6, styleCell('1. CODES FOR CHECKING ATTENDANCE', { bold:true, size:8.5, align:'left', border:false })); M2(lg,6,lg,12); lg++;
+  put2(lg,6, styleCell('blank- Present;  (x)- Absent;  Tardy (half shaded= Upper for Late Commer, Lower for Cutting Classes)', { size:7.5, align:'left', border:false })); M2(lg,6,lg+1,7); lg += 2;
+  put2(lg,6, styleCell('2. REASONS/CAUSES OF DROP-OUTS', { bold:true, size:8.5, align:'left', border:false })); lg++;
+  const legendItems = [
     ['a. Domestic-Related Factors', true], ['a.1. Had to take care of siblings', false],
     ['a.2. Early marriage/pregnancy', false], ["a.3. Parents' attitude toward schooling", false],
     ['a.4. Family problems', false], ['b. Individual-Related Factors', true],
@@ -3468,73 +3484,65 @@ async function printSummaryReport() {
     ['d.2. Armed conflict (incl. Tribal wars & clanfeuds)', false],
     ['d.3. Calamities/Disasters', false], ['e. Financial-Related', true],
     ['e.1. Child labor, work', false], ['f. Others', true],
-  ].forEach(it => { put1(lg,LEG_C, styleCell(it[0], { bold: it[1], size:7.5, align:'left', border:false })); M1(lg,LEG_C,lg,LEG_END); lg++; });
+  ];
+  legendItems.forEach(it => { put2(lg,6, styleCell(it[0], { bold: it[1], size:7.5, align:'left', border:false })); lg++; });
   const legendEnd = lg;
 
-  // — Monthly Summary column (AB:AJ) —
-  let sg = P2;
-  put1(sg,SUM_LBL, styleCell('Month:', { bold:true, size:8, align:'left', border:false })); M1(sg,SUM_LBL,sg,SUM_LBL+1);
-  put1(sg,SUM_LBL+2, styleCell(monthLabel, { border:true, size:7.5 })); M1(sg,SUM_LBL+2,sg,SUM_END);
-  put1(sg,SUM_M, styleCell('No. of Days\nof Classes:', { bold:true, size:6.5, border:false })); M1(sg,SUM_M,sg,SUM_F);
-  put1(sg,SUM_T, styleCell(numDays, { border:true, size:8 })); sg++;
-  put1(sg,SUM_LBL, styleCell('Summary for the Month', { bold:true, size:8, align:'center', border:false })); M1(sg,SUM_LBL,sg,SUM_END);
-  put1(sg,SUM_M, styleCell('M', { bold:true, border:true, size:8 }));
-  put1(sg,SUM_F, styleCell('F', { bold:true, border:true, size:8 }));
-  put1(sg,SUM_T, styleCell('TOTAL', { bold:true, border:true, size:7 })); sg++;
-  [
+  let sg = 1;
+  put2(sg,8, styleCell('Month:', { bold:true, size:8, align:'left', border:false })); M2(sg,8,sg,9);
+  put2(sg,10, styleCell('No. of Days of\nClasses:', { bold:true, size:7.5, border:false })); sg++;
+  put2(sg,8, styleCell(monthLabel, { border:true })); M2(sg,8,sg,9);
+  put2(sg,10, styleCell(numDays, { border:true })); sg++;
+  put2(sg,8, styleCell('Summary for the Month', { bold:true, size:8, border:false })); M2(sg,8,sg,9); sg++;
+  put2(sg,10, styleCell('M', { bold:true, border:true, size:8 }));
+  put2(sg,11, styleCell('F', { bold:true, border:true, size:8 }));
+  put2(sg,12, styleCell('TOTAL', { bold:true, border:true, size:8 })); sg++;
+  const summaryRows = [
     ['* Enrolment as of (1st Friday of June)', '', '', enrolledAsOfFirstFriday],
-    ['Late Enrollment during the month (beyond cut-off)', '', '', ''],
+    ['Late Enrollment during the month\n(beyond cut-off)', '', '', ''],
     ['Registered Learner as of end of the month', maleCount, femaleCount, registeredEndOfMonth],
     ['Percentage of Enrolment as of end of the month', '', '', pctEnrolment],
     ['Average Daily Attendance', '', '', ada],
     ['Percentage of Attendance for the month', '', '', pctAttendance],
-    ['Number of students with 5 consecutive days of absences:', '', '', fiveConsecutiveCount],
+    ['Number of students with 5 consecutive days of\nabsences:', '', '', fiveConsecutiveCount],
     ['Drop out', '', '', droppedOut],
     ['Transferred out', '', '', transferredOut],
     ['Transferred in', '', '', transferredIn],
-  ].forEach(row => {
-    put1(sg,SUM_LBL, styleCell(row[0], { size:7, align:'left', italic:true, border:true })); M1(sg,SUM_LBL,sg,SUM_END);
-    put1(sg,SUM_M, styleCell(row[1], { border:true, size:8 }));
-    put1(sg,SUM_F, styleCell(row[2], { border:true, size:8 }));
-    put1(sg,SUM_T, styleCell(row[3], { border:true, size:8 }));
+  ];
+  summaryRows.forEach(row => {
+    put2(sg,8, styleCell(row[0], { size:7.5, align:'left', italic:true, border:false })); M2(sg,8,sg,9);
+    put2(sg,10, styleCell(row[1], { border:true, size:8 }));
+    put2(sg,11, styleCell(row[2], { border:true, size:8 }));
+    put2(sg,12, styleCell(row[3], { border:true, size:8 }));
     sg++;
   });
   sg++;
-  put1(sg,SUM_LBL, styleCell('I certify that this is a true and correct report.', { size:8, align:'left', border:false })); M1(sg,SUM_LBL,sg,SUM_T); sg += 2;
-  put1(sg,SUM_LBL, styleCell('_______________________________', { border:false })); M1(sg,SUM_LBL,sg,SUM_T); sg++;
-  put1(sg,SUM_LBL, styleCell('(Signature of Teacher over Printed Name)', { size:7.5, italic:true, align:'center', border:false })); M1(sg,SUM_LBL,sg,SUM_T); sg += 2;
-  put1(sg,SUM_LBL, styleCell('Attested by:', { size:8, align:'left', border:false })); M1(sg,SUM_LBL,sg,SUM_T); sg += 2;
-  put1(sg,SUM_LBL, styleCell('_______________________________', { border:false })); M1(sg,SUM_LBL,sg,SUM_T); sg++;
-  put1(sg,SUM_LBL, styleCell('(Signature of School Head over Printed Name)', { size:7.5, italic:true, align:'center', border:false })); M1(sg,SUM_LBL,sg,SUM_T); sg += 2;
+  put2(sg,8, styleCell('I certify that this is a true and correct report.', { size:8, align:'left', border:false })); M2(sg,8,sg,12); sg += 2;
+  put2(sg,8, styleCell('_______________________________', { border:false })); M2(sg,8,sg,12); sg++;
+  put2(sg,8, styleCell('(Signature of Teacher over Printed Name)', { size:7.5, italic:true, border:false })); M2(sg,8,sg,12); sg += 2;
+  put2(sg,8, styleCell('Attested by:', { size:8, align:'left', border:false })); M2(sg,8,sg,12); sg += 2;
+  put2(sg,8, styleCell('_______________________________', { border:false })); M2(sg,8,sg,12); sg++;
+  put2(sg,8, styleCell('(Signature of School Head over Printed Name)', { size:7.5, italic:true, border:false })); M2(sg,8,sg,12); sg += 2;
 
-  const finalRow = Math.max(guidelinesEnd, legendEnd, sg) + 1;
-  put1(finalRow,0, styleCell(`School Form 2: Page ${parseInt(profile.pageOf || '1', 10) + 1} of ________`, { size:9, align:'left', border:false })); M1(finalRow,0,finalRow,GL_END);
+  const finalRow = Math.max(guidelinesEnd, legendEnd, sg) + 2;
+  put2(finalRow,0, styleCell(`School Form 2: Page ${parseInt(profile.pageOf || '1', 10) + 1} of ________`, { size:9, align:'left', border:false })); M2(finalRow,0,finalRow,12);
 
-  // ── Build the single worksheet ────────────────────────────────────────
-  const totalRows1 = finalRow + 1;
-  for (let rr = 0; rr < totalRows1; rr++) {
-    ensureRow1(rr);
-    for (let cc = 0; cc < TOTAL_COLS; cc++) {
-      if (aoa1[rr][cc] === undefined) aoa1[rr][cc] = blankCell({ border:false });
+  const totalRows2 = finalRow + 1;
+  for (let rr = 0; rr < totalRows2; rr++) {
+    if (!aoa2[rr]) aoa2[rr] = [];
+    for (let cc = 0; cc < 13; cc++) {
+      if (aoa2[rr][cc] === undefined) aoa2[rr][cc] = blankCell({ border:false });
     }
   }
 
-  const ws1 = XLSX.utils.aoa_to_sheet(aoa1);
-  ws1['!merges'] = merges1;
-  ws1['!cols'] = [
-    { wch:3.5 }, { wch:9 }, { wch:9 },
-    ...Array.from({ length: DAY_SLOTS }, () => ({ wch:3 })),
-    { wch:5.5 }, { wch:5.5 },
-    ...Array.from({ length: 6 }, () => ({ wch:5 })),
-  ];
-  const rh1 = {};
-  rh1[1] = 22; rh1[2] = 16;
-  rh1[R_HDR_TOP] = 26; rh1[R_HDR_GAP] = 12; rh1[R_HDR_NUM] = 14; rh1[R_HDR_DOW] = 14;
-  ws1['!rows'] = Array.from({ length: totalRows1 }, (_, i) => ({ hpt: rh1[i] || 13 }));
-  ws1['!sheetView'] = [{ showGridLines:false }];
+  const ws2 = XLSX.utils.aoa_to_sheet(aoa2);
+  ws2['!merges'] = merges2;
+  ws2['!cols'] = [{ wch:3 }, { wch:24 }, { wch:9 }, { wch:9 }, { wch:9 }, { wch:2 }, { wch:30 }, { wch:2 }, { wch:16 }, { wch:16 }, { wch:6 }, { wch:6 }, { wch:8 }];
+  ws2['!sheetView'] = [{ showGridLines:false }];
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws1, 'SF2');
+  XLSX.utils.book_append_sheet(wb, ws2, 'SF2 (Guidelines)');
 
   const filename = `SF2_${sectionName.replace(/[^a-zA-Z0-9]/g,'_')}_${monthFrom.slice(0,7)}.xlsx`;
 
@@ -6117,7 +6125,7 @@ function handleLogout() {
     }
 }
 
-// ── HEADER THREE-DOT MENU ──────────��──────────────────────────────────────
+// ── HEADER THREE-DOT MENU ─────────────────────────────────────────────────
 function toggleHeaderMenu(e) {
     e.stopPropagation();
     const dropdown = document.getElementById('header-menu-dropdown');
