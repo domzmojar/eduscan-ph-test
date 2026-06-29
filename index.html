@@ -1303,6 +1303,13 @@
               <input type="time" id="class-start-time" value="07:30" style="border:none; outline:none; background:transparent; font-size:0.95rem; font-weight:600; color:var(--text); width:100%; padding:0;">
             </div>
           </div>
+          <div style="display:flex; align-items:center; gap:8px; padding:0.6rem 0.75rem; flex:1; border-right:1px solid var(--border);">
+            <span style="font-size:1rem; line-height:1;">🕔</span>
+            <div style="flex:1; min-width:0;">
+              <div style="font-size:0.7rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:2px;">Dismiss time</div>
+              <input type="time" id="class-dismiss-time" value="17:00" style="border:none; outline:none; background:transparent; font-size:0.95rem; font-weight:600; color:var(--text); width:100%; padding:0;">
+            </div>
+          </div>
           <div style="display:flex; align-items:center; gap:8px; padding:0.6rem 0.75rem; width:130px; flex-shrink:0;">
             <span style="font-size:1rem; line-height:1;">⏳</span>
             <div style="flex:1; min-width:0;">
@@ -1314,7 +1321,7 @@
             </div>
           </div>
         </div>
-        <p style="font-size:0.73rem; color:var(--text-muted); margin-top:0.4rem;">Late flag triggers after start + grace window.</p>
+        <p style="font-size:0.73rem; color:var(--text-muted); margin-top:0.4rem;">Late flag triggers after start + grace. Cut-PM triggers if scanned out before dismiss time.</p>
       </div>
       <button class="btn full" onclick="addClass()">Save class</button>
     </div>
@@ -1756,6 +1763,13 @@
               <input type="time" id="edit-class-start-time" style="border:none; outline:none; background:transparent; font-size:0.95rem; font-weight:600; color:var(--text); width:100%; padding:0;">
             </div>
           </div>
+          <div style="display:flex; align-items:center; gap:8px; padding:0.6rem 0.75rem; flex:1; border-right:1px solid var(--border);">
+            <span style="font-size:1rem; line-height:1;">🕔</span>
+            <div style="flex:1; min-width:0;">
+              <div style="font-size:0.7rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:2px;">Dismiss time</div>
+              <input type="time" id="edit-class-dismiss-time" style="border:none; outline:none; background:transparent; font-size:0.95rem; font-weight:600; color:var(--text); width:100%; padding:0;">
+            </div>
+          </div>
           <div style="display:flex; align-items:center; gap:8px; padding:0.6rem 0.75rem; width:130px; flex-shrink:0;">
             <span style="font-size:1rem; line-height:1;">⏳</span>
             <div style="flex:1; min-width:0;">
@@ -1767,7 +1781,7 @@
             </div>
           </div>
         </div>
-        <p style="font-size:0.73rem; color:var(--text-muted); margin-top:0.4rem; margin-bottom:0.75rem;">Late flag triggers after start + grace window.</p>
+        <p style="font-size:0.73rem; color:var(--text-muted); margin-top:0.4rem; margin-bottom:0.75rem;">Late flag triggers after start + grace. Cut-PM triggers if scanned out before dismiss time.</p>
       </div>
       <button class="btn full" onclick="saveEditClass()">Save changes</button>
     </div>
@@ -2451,9 +2465,10 @@ async function addClass() {
   const section    = secInput.value.trim();
   if (!gradeLevel || !section) return showToast('Enter both Grade Level and Section.', 'warn');
   const name      = gradeLevel + ' - ' + section;
-  const startTime = document.getElementById('class-start-time').value || '07:30';
-  const graceMins = parseInt(document.getElementById('class-grace-mins').value) || 5;
-  classes.push({ id: makeId('class'), name, gradeLevel, section, startTime, graceMins, updatedAt: nowIso() });
+  const startTime  = document.getElementById('class-start-time').value || '07:30';
+  const dismissTime = document.getElementById('class-dismiss-time').value || '17:00';
+  const graceMins  = parseInt(document.getElementById('class-grace-mins').value) || 5;
+  classes.push({ id: makeId('class'), name, gradeLevel, section, startTime, dismissTime, graceMins, updatedAt: nowIso() });
   await saveClasses();
   scheduleRosterSync();
   glInput.value = ''; secInput.value = '';
@@ -3121,7 +3136,23 @@ async function printSummaryReport() {
   //   'cutPM'    — arrival present but no departure log
   //   'both'     — late arrival AND no departure
   function buildStudentData(studentList, totalsArr) {
+    // Build set of class-days that had PM scanning (any departure log for any enrolled student)
+    const enrolledIds = new Set(studentList.map(s => s.id));
+    // Also include all enrolled students across both groups for PM session detection
+    const allEnrolledIds = new Set(enrolled.map(s => s.id));
+    // Days where PM scanning occurred for this class (any student in class had departure log)
+    const pmScannedDays = new Set(
+      logsInMonth
+        .filter(l => l.type === 'departure' && allEnrolledIds.has(l.studentId))
+        .map(l => getLogDate(l))
+    );
+
     return studentList.map(s => {
+      const cls = selectedClass;
+      const dismissMins = cls && cls.dismissTime
+        ? (() => { const [h,m] = cls.dismissTime.split(':').map(Number); return h*60+m; })()
+        : null;
+
       const sArrLogs = logsInMonth.filter(l => l.studentId === s.id && l.type === 'arrival');
       const sDepLogs = logsInMonth.filter(l => l.studentId === s.id && l.type === 'departure');
       const arrByDay = {};
@@ -3129,7 +3160,13 @@ async function printSummaryReport() {
         const d = getLogDate(l);
         if (!arrByDay[d] || l.timestamp < arrByDay[d].timestamp) arrByDay[d] = l;
       });
-      const depDays = new Set(sDepLogs.map(l => getLogDate(l)));
+      // For each dep log, store the scan time in minutes for early-dismissal check
+      const depByDay = {};
+      sDepLogs.forEach(l => {
+        const d = getLogDate(l);
+        if (!depByDay[d] || l.timestamp > depByDay[d].timestamp) depByDay[d] = l;
+      });
+
       let absCount = 0, tardyCount = 0;
       const dayCodes = schoolDays.map((d, i) => {
         const enrolledOnDay = !s.enrolledDate || d >= s.enrolledDate;
@@ -3137,11 +3174,27 @@ async function printSummaryReport() {
         const arr = arrByDay[d];
         if (!arr) { absCount++; return 'absent'; }
         const late = !!arr.isLate;
-        const hasDep = depDays.has(d);
         totalsArr[i]++;
-        if (late && !hasDep) { tardyCount++; return 'both'; }
-        if (late)            { tardyCount++; return 'lateAM'; }
-        if (!hasDep)                         return 'cutPM';
+
+        // PM check: only flag cutPM if PM scanning happened this day for the class
+        let cutPM = false;
+        if (pmScannedDays.has(d)) {
+          const dep = depByDay[d];
+          if (!dep) {
+            // No departure scan but PM scanning happened → cut PM
+            cutPM = true;
+          } else if (dismissMins !== null) {
+            // Departure scan exists — check if left early (before dismiss time)
+            const depTime = new Date(dep.timestamp);
+            const phDep = new Date(depTime.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+            const depMin = phDep.getHours() * 60 + phDep.getMinutes();
+            if (depMin < dismissMins) cutPM = true;
+          }
+        }
+
+        if (late && cutPM) { tardyCount++; return 'both'; }
+        if (late)          { tardyCount++; return 'lateAM'; }
+        if (cutPM)                         return 'cutPM';
         return 'present';
       });
       const sf2Name = s.lastName
@@ -3949,6 +4002,7 @@ function openEditClassModal(classId) {
   document.getElementById('edit-class-grade-level').value   = gl;
   document.getElementById('edit-class-section').value       = sec;
   document.getElementById('edit-class-start-time').value    = cls.startTime || '07:30';
+  document.getElementById('edit-class-dismiss-time').value  = cls.dismissTime || '17:00';
   document.getElementById('edit-class-grace-mins').value    = cls.graceMins != null ? cls.graceMins : 5;
   document.getElementById('edit-class-modal').classList.add('open');
   document.body.style.overflow = 'hidden';
@@ -3958,14 +4012,15 @@ async function saveEditClass() {
   const id         = document.getElementById('edit-class-id').value;
   const gradeLevel = document.getElementById('edit-class-grade-level').value.trim();
   const section    = document.getElementById('edit-class-section').value.trim();
-  const startTime  = document.getElementById('edit-class-start-time').value || '07:30';
-  const graceMins  = parseInt(document.getElementById('edit-class-grace-mins').value) || 0;
+  const startTime   = document.getElementById('edit-class-start-time').value || '07:30';
+  const dismissTime = document.getElementById('edit-class-dismiss-time').value || '17:00';
+  const graceMins   = parseInt(document.getElementById('edit-class-grace-mins').value) || 0;
   if (!gradeLevel || !section) return showToast('Grade Level and Section cannot be empty.', 'warn');
   const name = gradeLevel + ' - ' + section;
   const cls = classes.find(c => c.id === id);
   if (!cls) return;
   cls.name = name; cls.gradeLevel = gradeLevel; cls.section = section;
-  cls.startTime = startTime; cls.graceMins = graceMins; cls.updatedAt = nowIso();
+  cls.startTime = startTime; cls.dismissTime = dismissTime; cls.graceMins = graceMins; cls.updatedAt = nowIso();
   await saveClasses();
   scheduleRosterSync();
   closeEditClassModalDirect();
@@ -4221,6 +4276,7 @@ function getRosterPayload() {
       gradeLevel: c.gradeLevel || '',
       section: c.section || '',
       startTime: c.startTime || '',
+      dismissTime: c.dismissTime || '',
       graceMins: c.graceMins != null ? c.graceMins : '',
       updatedAt: c.updatedAt || ''
     })),
