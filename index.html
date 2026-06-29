@@ -1481,10 +1481,39 @@
       <!-- Content injected by JS -->
     </div>
 
+              <!-- 4. SF2 SCHOOL PROFILE (saved once, reused on every SF2 export) -->
+    <details id="sf2-profile-details" style="margin-top:1.25rem; border:1.5px solid var(--border); border-radius:10px; padding:0.75rem 1rem; background:var(--bg);">
+      <summary style="cursor:pointer; font-size:0.87rem; font-weight:700; color:var(--primary);">🏫 School details for SF2 report</summary>
+      <p style="font-size:0.78rem; color:var(--text-muted); margin:0.5rem 0 0.75rem;">Filled in once — printed on every SF2 you generate. Grade Level applies app-wide; Section is taken from the class name.</p>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.6rem;">
+        <div>
+          <label for="sf2-school-id" style="font-size:0.78rem; margin-bottom:0.25rem;">School ID</label>
+          <input type="text" id="sf2-school-id" placeholder="e.g. 123456" oninput="saveSF2Profile()">
+        </div>
+        <div>
+          <label for="sf2-school-year" style="font-size:0.78rem; margin-bottom:0.25rem;">School Year</label>
+          <input type="text" id="sf2-school-year" placeholder="e.g. 2026-2027" oninput="saveSF2Profile()">
+        </div>
+        <div style="grid-column:1 / -1;">
+          <label for="sf2-school-name" style="font-size:0.78rem; margin-bottom:0.25rem;">Name of School</label>
+          <input type="text" id="sf2-school-name" placeholder="e.g. Cebu City Central Elementary School" oninput="saveSF2Profile()">
+        </div>
+        <div>
+          <label for="sf2-grade-level" style="font-size:0.78rem; margin-bottom:0.25rem;">Grade Level</label>
+          <input type="text" id="sf2-grade-level" placeholder="e.g. Grade 6" oninput="saveSF2Profile()">
+        </div>
+        <div>
+          <label for="sf2-page-of" style="font-size:0.78rem; margin-bottom:0.25rem;">Page ___ of ___</label>
+          <input type="text" id="sf2-page-of" placeholder="e.g. 1" oninput="saveSF2Profile()">
+        </div>
+      </div>
+    </details>
+
               <!-- 4. PRINT / SHARE BUTTON -->
     <button class="btn full" onclick="printSummaryReport()" style="margin-top:1rem; background:linear-gradient(135deg,#1d4ed8,#3b82f6); font-size:0.9rem; padding:0.85rem; border-radius:10px;">
       📋 Generate SF2 Report
     </button>
+    <p style="font-size:0.72rem; color:var(--text-muted); text-align:center; margin-top:0.5rem;">SF2 always covers the full calendar month containing the period you're viewing.</p>
 
   </div>
 </div>
@@ -1908,6 +1937,44 @@ function dbSetSetting(key, value) {
     tx.oncomplete = resolve;
     tx.onerror    = () => reject(tx.error);
   });
+}
+
+// ── SF2 SCHOOL PROFILE ──────────────────────────────────────────────────────
+// One-time-fill fields (School ID, Name, Year, Grade Level, Page-of) that get
+// stamped onto every official SF2 export. Stored as a single JSON blob under
+// one settings key so loading/saving is a single round-trip.
+const SF2_PROFILE_FIELDS = [
+  ['sf2-school-id',    'schoolId'],
+  ['sf2-school-year',  'schoolYear'],
+  ['sf2-school-name',  'schoolName'],
+  ['sf2-grade-level',  'gradeLevel'],
+  ['sf2-page-of',      'pageOf'],
+];
+
+async function loadSF2Profile() {
+  const saved = await dbGetSetting('sf2_profile') || {};
+  SF2_PROFILE_FIELDS.forEach(([elId, key]) => {
+    const el = document.getElementById(elId);
+    if (el) el.value = saved[key] || '';
+  });
+}
+
+function saveSF2Profile() {
+  const data = {};
+  SF2_PROFILE_FIELDS.forEach(([elId, key]) => {
+    const el = document.getElementById(elId);
+    data[key] = el ? el.value.trim() : '';
+  });
+  dbSetSetting('sf2_profile', data);
+}
+
+function getSF2Profile() {
+  const data = {};
+  SF2_PROFILE_FIELDS.forEach(([elId, key]) => {
+    const el = document.getElementById(elId);
+    data[key] = el ? el.value.trim() : '';
+  });
+  return data;
 }
 
 // ── IN-MEMORY STATE ────────────────────────────────────────────────────────
@@ -2962,145 +3029,195 @@ function printSummaryReport() {
   const range = getActiveDateRange();
   if (!range) return showToast('Select a date range first.', 'warn');
 
-  // ── Build sorted school-day list for the range ──────────────────────────
-  const logsInRange = logs.filter(l => {
+  // SF2 is strictly a monthly form — always generate for the full calendar
+  // month containing whichever date is active, regardless of which period
+  // tab (daily/weekly/custom) the teacher happens to be viewing.
+  const [ry, rm] = range.from.split('-').map(Number);
+  const monthStart = new Date(ry, rm - 1, 1);
+  const monthEnd   = new Date(ry, rm, 0);
+  const monthFrom  = dateToStr(monthStart);
+  const monthTo    = dateToStr(monthEnd);
+  const monthLabel = monthStart.toLocaleDateString('en-PH', { month: 'long', year: 'numeric' });
+
+  // ── Official school-day grid: every Mon–Fri in the month, not just days ──
+  // with logged data, since the official form has a column for every class
+  // day whether or not every student happened to have a scan that day.
+  const DOW_LETTER = ['','M','T','W','TH','F','']; // index = JS getDay() (0=Sun..6=Sat)
+  const schoolDays = [];
+  for (let d = new Date(monthStart); d <= monthEnd; d.setDate(d.getDate() + 1)) {
+    const dow = d.getDay();
+    if (dow === 0 || dow === 6) continue; // weekends are not class days
+    schoolDays.push(dateToStr(d));
+  }
+  const numDays = schoolDays.length;
+  if (numDays === 0) return showToast('No school days found in this month.', 'warn');
+
+  const logsInMonth = logs.filter(l => {
     const d = getLogDate(l);
-    return d >= range.from && d <= range.to;
+    return d >= monthFrom && d <= monthTo;
   });
 
-  const schoolDaySet = new Set(logsInRange.map(l => getLogDate(l)));
-  const schoolDays   = [...schoolDaySet].sort();
-  const numDays      = schoolDays.length;
-
-  if (numDays === 0) return showToast('No attendance data in this period.', 'warn');
-
-  // ── Enrolled students, split by gender ──────────────────────────────────
-  const enrolled = studentsEnrolledInRange(null, range);
-  const males    = enrolled.filter(s => s.gender === 'M');
-  const females  = enrolled.filter(s => s.gender === 'F');
-  const ungrouped = enrolled.filter(s => s.gender !== 'M' && s.gender !== 'F');
-  // Put ungrouped at end of females section with a visual note
+  // ── Enrolled students, split by sex (per official SF2: MALE / FEMALE) ────
+  const monthRange = { from: monthFrom, to: monthTo };
+  const enrolled   = studentsEnrolledInRange(null, monthRange);
+  const males      = enrolled.filter(s => s.gender === 'M');
+  const females    = enrolled.filter(s => s.gender === 'F');
+  const ungrouped  = enrolled.filter(s => s.gender !== 'M' && s.gender !== 'F');
+  // Sex isn't optional on the official form — students missing it get
+  // flagged rather than silently grouped in, so the teacher catches it
+  // before submitting.
   const femalesPlusMissing = [...females, ...ungrouped];
 
-  // ── Month label for header ───────────────────────────────────────────────
-  const [ry, rm] = range.from.split('-').map(Number);
-  const monthLabel = new Date(ry, rm - 1, 1).toLocaleDateString('en-PH', { month: 'long', year: 'numeric' });
+  // ── School profile fields (School ID / Name / Year / Grade Level) ────────
+  const profile = getSF2Profile();
 
-  // Day-of-week map
-  const DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  // ── Section name, pulled from the class(es) covered by these learners ───
+  const classNames = [...new Set(enrolled.map(s => {
+    const c = classes.find(cl => cl.id === s.classId);
+    return c ? c.name : '';
+  }).filter(Boolean))];
+  const sectionName = classNames.join(', ') || '';
 
-  // ── Per-student attendance builder ──────────────────────────────────────
-  function buildStudentRows(studentList, sectionLabel) {
-    if (studentList.length === 0) return '';
+  // ── Per-student attendance + running per-day totals ──────────────────────
+  let totalDayPresentM = new Array(numDays).fill(0);
+  let totalDayPresentF = new Array(numDays).fill(0);
 
-    let headerDates = '';
-    let headerDays  = '';
-    schoolDays.forEach(d => {
-      const [dy, dm, dd] = d.split('-').map(Number);
-      const dow = DOW[new Date(dy, dm - 1, dd).getDay()];
-      headerDates += `<th class="day-cell">${dd}</th>`;
-      headerDays  += `<th class="day-cell dow">${dow}</th>`;
-    });
-
+  function buildStudentRows(studentList, totalsArr) {
     let rows = '';
-    let totalDayPresent   = new Array(numDays).fill(0);
-    let totalDayAbsent    = new Array(numDays).fill(0);
-    let totalDayTardy     = new Array(numDays).fill(0);
-
-    studentList.forEach((s, idx) => {
-      const sLogs = logsInRange.filter(l => l.studentId === s.id && l.type === 'arrival');
+    studentList.forEach(s => {
+      const sLogs = logsInMonth.filter(l => l.studentId === s.id && l.type === 'arrival');
       const logByDay = {};
       sLogs.forEach(l => {
         const d = getLogDate(l);
         if (!logByDay[d] || l.timestamp < logByDay[d].timestamp) logByDay[d] = l;
       });
 
-      let absCount   = 0;
-      let tardyCount = 0;
-      let cells = '';
-
+      let absCount = 0, tardyCount = 0, cells = '';
       schoolDays.forEach((d, i) => {
         const log = logByDay[d];
-        // Only count absence if student was enrolled on this day
         const enrolledOnDay = !s.enrolledDate || d >= s.enrolledDate;
         if (!enrolledOnDay) {
-          cells += `<td class="att-cell att-na">–</td>`;
+          cells += `<td class="att-cell att-na"></td>`;
         } else if (!log) {
           cells += `<td class="att-cell att-absent">X</td>`;
           absCount++;
-          totalDayAbsent[i]++;
         } else if (log.isLate) {
-          cells += `<td class="att-cell att-tardy">T</td>`;
+          cells += `<td class="att-cell att-tardy"></td>`;
           tardyCount++;
-          totalDayTardy[i]++;
-          totalDayPresent[i]++;
+          totalsArr[i]++;
         } else {
           cells += `<td class="att-cell att-present"></td>`;
-          totalDayPresent[i]++;
+          totalsArr[i]++;
         }
       });
 
-      const genderTag = s.gender ? '' : '<span style="color:#94a3b8;font-size:0.6rem;"> ?</span>';
+      const genderTag = s.gender ? '' : '<span style="color:#b91c1c;font-size:6pt;font-weight:700;"> (sex?)</span>';
       rows += `<tr>
         <td class="name-cell">${escapeHTML(s.name)}${genderTag}</td>
         ${cells}
-        <td class="total-cell absent-total">${absCount}</td>
-        <td class="total-cell tardy-total">${tardyCount}</td>
+        <td class="total-cell absent-total">${absCount || ''}</td>
+        <td class="total-cell tardy-total">${tardyCount || ''}</td>
         <td class="remarks-cell"></td>
       </tr>`;
     });
-
-    // Total per day row
-    let totalCells = '';
-    schoolDays.forEach((d, i) => {
-      totalCells += `<td class="total-day-cell">${totalDayPresent[i]}</td>`;
-    });
-
-    return `
-      <tr class="section-header-row">
-        <td colspan="${numDays + 4}" class="section-label">${sectionLabel}</td>
-      </tr>
-      <tr class="col-header-row">
-        <th class="name-header" rowspan="2">LEARNER'S NAME<br><span style="font-weight:400;">(Last Name, First Name, Middle Name)</span></th>
-        ${headerDates}
-        <th class="total-header" colspan="2">Total for<br>the Month</th>
-        <th class="remarks-header" rowspan="2">REMARKS</th>
-      </tr>
-      <tr class="col-header-row">
-        ${headerDays}
-        <th class="total-sub">ABS</th>
-        <th class="total-sub">TARDY</th>
-      </tr>
-      ${rows}
-      <tr class="total-row">
-        <td class="name-cell total-label">TOTAL PER DAY</td>
-        ${totalCells}
-        <td class="total-cell" colspan="3"></td>
-      </tr>`;
+    return rows;
   }
 
-  // ── Summary stats ─────────────────────────────────────────────────────
-  const allArrivalLogs  = logsInRange.filter(l => l.type === 'arrival');
-  const totalEnrolled   = enrolled.length;
-  const totalAbsences   = Math.max(0, (totalEnrolled * numDays) - allArrivalLogs.length);
-  const lateCount       = allArrivalLogs.filter(l => l.isLate).length;
-  const ada             = totalEnrolled > 0 ? (allArrivalLogs.length / numDays).toFixed(1) : '—';
-  const pctAttendance   = totalEnrolled > 0 && numDays > 0
-    ? ((allArrivalLogs.length / (totalEnrolled * numDays)) * 100).toFixed(1)
-    : '—';
+  const maleRowsHTML   = buildStudentRows(males, totalDayPresentM);
+  const femaleRowsHTML = buildStudentRows(femalesPlusMissing, totalDayPresentF);
+
+  // ── Shared header: date row (top) + M/T/W/TH/F day-letter row (bottom) ──
+  let headerDates = '', headerDays = '';
+  schoolDays.forEach(d => {
+    const [dy, dm, dd] = d.split('-').map(Number);
+    const dow = new Date(dy, dm - 1, dd).getDay();
+    headerDates += `<th class="day-cell">${dd}</th>`;
+    headerDays  += `<th class="day-cell dow">${DOW_LETTER[dow]}</th>`;
+  });
+
+  const colHeaderHTML = `
+    <tr class="col-header-row">
+      <th class="name-header" rowspan="2">LEARNER'S NAME<br><span style="font-weight:400;">(Last Name, First Name, Middle Name)</span></th>
+      ${headerDates}
+      <th class="total-header" colspan="2">Total for the Month</th>
+      <th class="remarks-header" rowspan="2">REMARKS<br><span style="font-weight:400;">(Dropout reason / Transfer school)</span></th>
+    </tr>
+    <tr class="col-header-row">
+      ${headerDays}
+      <th class="total-sub">ABSENT</th>
+      <th class="total-sub">TARDY</th>
+    </tr>`;
+
+  // table-layout:fixed sizes columns from <col> widths when a <colgroup> is
+  // present, rather than measuring first-row cells — the spec-correct way
+  // to drive column widths reliably across browsers/print engines when a
+  // table has many columns and rowspan/colspan headers.
+  const colgroupHTML = `<colgroup>
+    <col style="width:170px;">
+    ${schoolDays.map(() => '<col style="width:12px;">').join('')}
+    <col style="width:28px;"><col style="width:28px;">
+    <col style="width:65px;">
+  </colgroup>`;
+
+  // Combined per-day totals row (MALE total-per-day + FEMALE total-per-day)
+  let combinedTotalCells = '';
+  schoolDays.forEach((d, i) => {
+    combinedTotalCells += `<td class="total-day-cell">${totalDayPresentM[i] + totalDayPresentF[i]}</td>`;
+  });
+  let maleTotalCells = '', femaleTotalCells = '';
+  schoolDays.forEach((d, i) => {
+    maleTotalCells   += `<td class="total-day-cell">${totalDayPresentM[i]}</td>`;
+    femaleTotalCells += `<td class="total-day-cell">${totalDayPresentF[i]}</td>`;
+  });
+
+  // ── Summary-for-the-month box (matches official right-hand box exactly) ──
+  const enrolledAsOfFirstFriday = (() => {
+    // 1st Friday of June of the school year, falls back to month start if
+    // no school-year-start data exists to anchor "June" against.
+    let juneYear = ry;
+    if (rm < 6) juneYear = ry - 1; // Jan–May reports belong to the SY that started the previous June
+    const june1 = new Date(juneYear, 5, 1);
+    while (june1.getDay() !== 5) june1.setDate(june1.getDate() + 1);
+    const firstFriday = dateToStr(june1);
+    return studentsEnrolledAsOf(null, firstFriday).length;
+  })();
+
+  const registeredEndOfMonth = enrolled.length;
   const maleCount   = males.length;
   const femaleCount = femalesPlusMissing.length;
 
-  // ── Class name for header (use first class or combined) ──────────────
-  const classNames = [...new Set(enrolled.map(s => {
-    const c = classes.find(cl => cl.id === s.classId);
-    return c ? c.name : '';
-  }).filter(Boolean))];
-  const sectionName = classNames.join(', ') || '—';
+  const allArrivalLogs = logsInMonth.filter(l => l.type === 'arrival');
+  // Count only attendance-eligible student-days (i.e. days on/after each
+  // student's enrolledDate) so a mid-month transfer-in doesn't inflate the
+  // absence denominator for days before they joined.
+  let totalStudentDays = 0;
+  enrolled.forEach(s => {
+    schoolDays.forEach(d => {
+      if (!s.enrolledDate || d >= s.enrolledDate) totalStudentDays++;
+    });
+  });
+  const presentStudentDays = allArrivalLogs.length;
+  const ada = numDays > 0 ? (presentStudentDays / numDays).toFixed(1) : '—';
+  const pctEnrolment = enrolledAsOfFirstFriday > 0
+    ? ((registeredEndOfMonth / enrolledAsOfFirstFriday) * 100).toFixed(1) : '—';
+  const pctAttendance = totalStudentDays > 0
+    ? ((presentStudentDays / totalStudentDays) * 100).toFixed(1) : '—';
 
-  // ── Build HTML ────────────────────────────────────────────────────────
-  const maleRows   = buildStudentRows(males, '▶ MALE');
-  const femaleRows = buildStudentRows(femalesPlusMissing, '▶ FEMALE');
+  // Consecutive-absence detection (5+ school days in a row, per student)
+  let fiveConsecutiveCount = 0;
+  enrolled.forEach(s => {
+    const sLogs = logsInMonth.filter(l => l.studentId === s.id && l.type === 'arrival');
+    const presentDays = new Set(sLogs.map(l => getLogDate(l)));
+    let streak = 0, maxStreak = 0;
+    schoolDays.forEach(d => {
+      const enrolledOnDay = !s.enrolledDate || d >= s.enrolledDate;
+      if (enrolledOnDay && !presentDays.has(d)) { streak++; maxStreak = Math.max(maxStreak, streak); }
+      else streak = 0;
+    });
+    if (maxStreak >= 5) fiveConsecutiveCount++;
+  });
+
+  const pageOf = profile.pageOf ? `${escapeHTML(profile.pageOf)}` : '________';
 
   const printHTML = `<!DOCTYPE html>
 <html>
@@ -3108,139 +3225,207 @@ function printSummaryReport() {
 <meta charset="UTF-8">
 <title>SF2 – ${monthLabel}</title>
 <style>
-  @page { size: landscape; margin: 8mm 6mm; }
+  @page { size: landscape; margin: 7mm 6mm; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: Arial, sans-serif; font-size: 7.5pt; color: #000; background: #fff; }
+  body { font-family: Arial, sans-serif; font-size: 7pt; color: #000; background: #fff; }
 
-  /* ── Header ── */
-  .sf2-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 4px; }
-  .sf2-title  { text-align: center; flex: 1; }
-  .sf2-title h1 { font-size: 11pt; font-weight: 800; margin-bottom: 1px; }
-  .sf2-title p  { font-size: 7pt; color: #444; }
-  .deped-logo { font-size: 9pt; font-weight: 700; color: #d00; letter-spacing: 1px; padding-top: 2px; }
+  .sf2-title  { text-align: center; margin-bottom: 3px; }
+  .sf2-title h1 { font-size: 11pt; font-weight: 800; }
+  .sf2-title p  { font-size: 6.5pt; color: #333; margin-top: 1px; }
 
-  .meta-row { display: flex; gap: 8px; margin-bottom: 3px; flex-wrap: wrap; font-size: 7.5pt; }
+  .meta-row { display: flex; gap: 10px; margin-bottom: 2px; flex-wrap: wrap; font-size: 7.5pt; }
   .meta-field { display: flex; align-items: center; gap: 4px; }
   .meta-label { font-weight: 700; white-space: nowrap; }
-  .meta-val   { border-bottom: 1px solid #000; min-width: 80px; padding: 0 4px; }
-  .meta-val.wide { min-width: 160px; }
+  .meta-val   { border-bottom: 1px solid #000; min-width: 90px; padding: 0 4px; }
+  .meta-val.wide { min-width: 170px; }
 
-  /* ── Attendance table ── */
-  table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-bottom: 6px; }
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; margin: 5px 0; }
 
-  .name-header   { width: 110px; font-size: 6.5pt; text-align: center; border: 1px solid #000; padding: 2px; background: #dbeafe; vertical-align: middle; }
-  .day-cell      { width: 14px; font-size: 6pt; text-align: center; border: 1px solid #000; padding: 1px 0; }
-  .dow           { font-size: 5.5pt; color: #555; }
+  .name-header   { width: 170px; font-size: 6.5pt; text-align: center; border: 1px solid #000; padding: 2px; background: #dbeafe; vertical-align: middle; }
+  .day-cell      { width: 12px; font-size: 6pt; text-align: center; border: 1px solid #000; padding: 1px 0; }
+  .dow           { font-size: 6pt; font-weight: 700; color: #1e3a5f; }
   .total-header  { width: 28px; font-size: 6pt; text-align: center; border: 1px solid #000; padding: 2px 1px; background: #dbeafe; vertical-align: middle; }
-  .total-sub     { font-size: 6pt; text-align: center; border: 1px solid #000; padding: 1px; background: #dbeafe; }
-  .remarks-header { width: 60px; font-size: 6pt; text-align: center; border: 1px solid #000; padding: 2px; background: #dbeafe; vertical-align: middle; }
+  .total-sub     { font-size: 5.8pt; text-align: center; border: 1px solid #000; padding: 1px; background: #dbeafe; }
+  .remarks-header { width: 65px; font-size: 5.6pt; text-align: center; border: 1px solid #000; padding: 2px; background: #dbeafe; vertical-align: middle; line-height: 1.25; }
   .col-header-row th { background: #dbeafe; font-weight: 700; }
 
-  .name-cell   { font-size: 6.5pt; border: 1px solid #000; padding: 1px 3px; vertical-align: middle; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .name-cell   { font-size: 6pt; border: 1px solid #000; padding: 1px 3px; vertical-align: middle; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   .att-cell    { font-size: 6pt; text-align: center; border: 1px solid #888; padding: 1px 0; vertical-align: middle; }
   .att-present { background: #fff; }
-  .att-absent  { background: #fee2e2; color: #b91c1c; font-weight: 700; }
-  .att-tardy   { background: #fef3c7; color: #92400e; font-weight: 700; }
-  .att-na      { background: #f1f5f9; color: #94a3b8; }
+  .att-absent  { background: #fff; color: #000; font-weight: 700; }
+  .att-tardy   { background: repeating-linear-gradient(135deg, #fff, #fff 3px, #999 3px, #999 4px); }
+  .att-na      { background: #f1f5f9; }
   .total-cell  { font-size: 6.5pt; text-align: center; border: 1px solid #000; padding: 1px; vertical-align: middle; }
-  .absent-total { color: #b91c1c; font-weight: 700; }
-  .tardy-total  { color: #92400e; font-weight: 700; }
+  .absent-total { font-weight: 700; }
+  .tardy-total  { font-weight: 700; }
   .remarks-cell { font-size: 6pt; border: 1px solid #000; padding: 1px 2px; }
 
-  .section-header-row td { background: #1e3a5f; color: #fff; font-weight: 700; font-size: 7pt; padding: 3px 4px; border: 1px solid #1e3a5f; }
-  .section-label { letter-spacing: 0.05em; }
+  .section-header-row td { background: #1e3a5f; color: #fff; font-weight: 700; font-size: 7pt; padding: 2px 4px; border: 1px solid #1e3a5f; }
 
   .total-row td        { background: #f0f9ff; font-weight: 700; font-size: 6.5pt; }
-  .total-day-cell      { font-size: 6.5pt; text-align: center; border: 1px solid #000; padding: 1px 0; font-weight: 700; color: #1d4ed8; }
-  .total-label         { font-size: 6.5pt; font-style: italic; color: #334155; }
+  .total-day-cell      { font-size: 6.5pt; text-align: center; border: 1px solid #000; padding: 1px 0; font-weight: 700; }
+  .total-label         { font-size: 6.3pt; font-style: italic; color: #334155; }
 
-  /* ── Summary block ── */
-  .summary-block { margin-top: 6px; border: 1.5px solid #000; padding: 6px 8px; display: flex; gap: 12px; }
-  .summary-col   { flex: 1; }
-  .summary-col h3 { font-size: 7.5pt; font-weight: 700; border-bottom: 1px solid #000; padding-bottom: 2px; margin-bottom: 4px; }
-  .summary-row   { display: flex; justify-content: space-between; font-size: 7pt; margin-bottom: 2px; border-bottom: 1px dotted #ccc; padding-bottom: 1px; }
-  .summary-row .label { color: #334155; }
-  .summary-row .value { font-weight: 700; min-width: 28px; text-align: right; }
-  .summary-mf   { display: flex; gap: 4px; font-size: 7pt; font-weight: 700; }
-  .summary-mf span { flex: 1; text-align: center; background: #dbeafe; border: 1px solid #93c5fd; padding: 2px 4px; }
+  .page2-num { font-size: 7pt; margin: 4px 0; }
 
-  .legend { font-size: 6.5pt; margin-top: 4px; color: #555; }
-  .legend b { color: #000; }
+  .bottom-grid { display: flex; gap: 8px; margin-top: 4px; align-items: stretch; }
+  .guidelines-col { flex: 1.5; font-size: 6.3pt; line-height: 1.35; }
+  .guidelines-col p { margin-bottom: 3px; }
+  .legend-col { flex: 1.3; border: 1px solid #000; padding: 4px 6px; font-size: 6.3pt; line-height: 1.3; }
+  .legend-col b.hdr { display:block; font-size: 6.6pt; margin-bottom: 2px; }
+  .legend-col .sub-hdr { font-weight: 700; margin-top: 3px; }
+  .summary-col { flex: 1.1; border: 1px solid #000; font-size: 6.5pt; }
+  .summary-col table { margin: 0; }
+  .summary-col th, .summary-col td { border: 1px solid #000; padding: 1.5px 3px; font-size: 6.3pt; }
+  .summary-col th { background: #dbeafe; font-weight: 700; text-align: center; }
+  .summary-col .row-label { text-align: left; }
+  .summary-col .num-cell { text-align: center; width: 22px; }
 
-  .cert-block { margin-top: 6px; font-size: 7pt; }
-  .cert-block .sig-line { border-top: 1px solid #000; margin-top: 18px; width: 180px; text-align: center; font-size: 6.5pt; }
+  .cert-row { display: flex; justify-content: space-between; margin-top: 14px; font-size: 6.5pt; }
+  .cert-row .sig-block { text-align: center; width: 200px; }
+  .cert-row .sig-line { border-top: 1px solid #000; padding-top: 2px; }
+
+  .formula { font-size: 6.3pt; }
+  .formula .frac { display: inline-block; vertical-align: middle; text-align: center; margin: 0 3px; }
+  .formula .frac .num { border-bottom: 1px solid #000; padding: 0 2px; display:block; }
+  .formula .frac .den { padding: 0 2px; display:block; }
 
   @media print {
     body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .page-break { page-break-before: always; }
   }
 </style>
 </head>
 <body>
 
-<!-- ── SF2 HEADER ── -->
-<div class="sf2-header">
-  <div style="width:60px; font-size:8pt; font-weight:700; color:#1e3a5f;">DepEd<br>PH</div>
-  <div class="sf2-title">
-    <h1>School Form 2 (SF2)</h1>
-    <h1 style="font-size:10pt;">Daily Attendance Report of Learners</h1>
-    <p><em>(This replaced Form 1, Form 2 &amp; STS Form 4 – Absenteeism and Dropout Profile)</em></p>
-  </div>
-  <div class="deped-logo">DepEd</div>
+<div class="sf2-title">
+  <h1>School Form 2 (SF2) Daily Attendance Report of Learners</h1>
+  <p>(This replaced Form 1, Form 2 &amp; STS Form 4 – Absenteeism and Dropout Profile)</p>
 </div>
 
 <div class="meta-row">
-  <div class="meta-field"><span class="meta-label">School ID:</span><span class="meta-val"></span></div>
-  <div class="meta-field"><span class="meta-label">School Year:</span><span class="meta-val"></span></div>
+  <div class="meta-field"><span class="meta-label">School ID:</span><span class="meta-val">${escapeHTML(profile.schoolId)}</span></div>
+  <div class="meta-field"><span class="meta-label">School Year:</span><span class="meta-val">${escapeHTML(profile.schoolYear)}</span></div>
   <div class="meta-field"><span class="meta-label">Report for the Month of:</span><span class="meta-val wide">${monthLabel}</span></div>
 </div>
 <div class="meta-row">
-  <div class="meta-field"><span class="meta-label">Name of School:</span><span class="meta-val wide"></span></div>
-  <div class="meta-field"><span class="meta-label">Grade Level:</span><span class="meta-val"></span></div>
+  <div class="meta-field"><span class="meta-label">Name of School:</span><span class="meta-val wide">${escapeHTML(profile.schoolName)}</span></div>
+  <div class="meta-field"><span class="meta-label">Grade Level:</span><span class="meta-val">${escapeHTML(profile.gradeLevel)}</span></div>
   <div class="meta-field"><span class="meta-label">Section:</span><span class="meta-val wide">${escapeHTML(sectionName)}</span></div>
 </div>
 
-<!-- ── ATTENDANCE GRID ── -->
+<!-- ══ PAGE 1: MALE ══ -->
 <table>
-  ${maleRows}
-  ${femaleRows}
+  ${colgroupHTML}
+  <tr class="section-header-row"><td colspan="${numDays + 4}">MALE</td></tr>
+  ${colHeaderHTML}
+  ${maleRowsHTML}
+  <tr class="total-row">
+    <td class="name-cell total-label">◀ MALE | TOTAL Per Day ▶</td>
+    ${maleTotalCells}
+    <td class="total-cell" colspan="3"></td>
+  </tr>
+</table>
+<div style="font-size:6.5pt;">School Form 2: Page 1 of ${pageOf}</div>
+
+<!-- ══ PAGE 2: FEMALE + Combined + Guidelines/Legend/Summary ══ -->
+<div class="page-break"></div>
+<table>
+  ${colgroupHTML}
+  <tr class="section-header-row"><td colspan="${numDays + 4}">FEMALE</td></tr>
+  ${colHeaderHTML}
+  ${femaleRowsHTML}
+  <tr class="total-row">
+    <td class="name-cell total-label">◀ FEMALE | TOTAL Per Day ▶</td>
+    ${femaleTotalCells}
+    <td class="total-cell" colspan="3"></td>
+  </tr>
+  <tr class="total-row">
+    <td class="name-cell total-label">◀ Combined TOTAL PER DAY ▶</td>
+    ${combinedTotalCells}
+    <td class="total-cell" colspan="3"></td>
+  </tr>
 </table>
 
-<!-- ── LEGEND + SUMMARY ── -->
-<div class="summary-block">
-  <div class="summary-col">
-    <h3>CODES</h3>
-    <div class="legend">
-      <b>Blank</b> = Present &nbsp;|&nbsp; <b>X</b> = Absent &nbsp;|&nbsp; <b>T</b> = Tardy (Late AM / Cutting PM) &nbsp;|&nbsp; <b>–</b> = Not yet enrolled
-    </div>
-    <div class="legend" style="margin-top:4px;">
-      <b>Note:</b> AM = Morning session log &nbsp;|&nbsp; PM = Afternoon session log
-    </div>
+<div class="bottom-grid">
+  <!-- ── GUIDELINES (verbatim, official) ── -->
+  <div class="guidelines-col">
+    <p><b>GUIDELINES:</b></p>
+    <p>1. The attendance shall be accomplished daily. Refer to the codes for checking learners' attendance.</p>
+    <p>2. Dates shall be written in the preceding columns beside Learner's Name.</p>
+    <p>3. To compute the following:</p>
+    <p class="formula">a. Percentage of Enrolment =
+      <span class="frac"><span class="num">Registered Learner as of End of the Month</span><span class="den">Enrolment as of 1st Friday of June</span></span> x 100</p>
+    <p class="formula">b. Average Daily Attendance =
+      <span class="frac"><span class="num">Total Daily Attendance</span><span class="den">Number of School Days in reporting month</span></span></p>
+    <p class="formula">c. Percentage of Attendance for the month =
+      <span class="frac"><span class="num">Average daily attendance</span><span class="den">Registered Learner as of End of the month</span></span> x 100</p>
+    <p>4. Every End of the month, the class adviser will submit this form to the office of the principal for recording of summary table into the School Form 4. Once signed by the principal, this form should be returned to the adviser.</p>
+    <p>5. The adviser will extend necessary intervention including but not limited to home visitation to learner/s that committed 5 consecutive days of absences or those with potentials of dropping out.</p>
+    <p>6. Attendance performance of learner is expected to reflect in Form 137 and Form 138 every grading period.</p>
+    <p>* Beginning of School Year cut-off report is every 1st Friday of School Calendar Days.</p>
   </div>
 
-  <div class="summary-col">
-    <h3>SUMMARY FOR THE MONTH</h3>
-    <div class="summary-row"><span class="label">No. of School Days:</span><span class="value">${numDays}</span></div>
-    <div class="summary-row"><span class="label">Registered Learners (end of month):</span>
-      <div class="summary-mf"><span>M: ${maleCount}</span><span>F: ${femaleCount}</span><span>Total: ${totalEnrolled}</span></div>
-    </div>
-    <div class="summary-row"><span class="label">Average Daily Attendance (ADA):</span><span class="value">${ada}</span></div>
-    <div class="summary-row"><span class="label">% of Attendance for the month:</span><span class="value">${pctAttendance}%</span></div>
-    <div class="summary-row"><span class="label">Total Absences:</span><span class="value" style="color:#b91c1c;">${totalAbsences}</span></div>
-    <div class="summary-row"><span class="label">Total Tardiness:</span><span class="value" style="color:#92400e;">${lateCount}</span></div>
+  <!-- ── LEGEND (verbatim, official) ── -->
+  <div class="legend-col">
+    <b class="hdr">1. CODES FOR CHECKING ATTENDANCE</b>
+    <div><b>blank</b> – Present; &nbsp;<b>(x)</b> – Absent; &nbsp;Tardy (half shaded = Upper for Late Comer, Lower for Cutting Classes)</div>
+    <div class="sub-hdr">2. REASONS/CAUSES OF DROP-OUTS</div>
+    <div><b>a. Domestic-Related Factors</b><br>
+      a.1. Had to take care of siblings<br>
+      a.2. Early marriage/pregnancy<br>
+      a.3. Parents' attitude toward schooling<br>
+      a.4. Family problems</div>
+    <div><b>b. Individual-Related Factors</b><br>
+      b.1. Illness · b.2. Overage · b.3. Death · b.4. Drug Abuse<br>
+      b.5. Poor academic performance · b.6. Lack of interest/Distractions · b.7. Hunger/Malnutrition</div>
+    <div><b>c. School-Related Factors</b><br>
+      c.1. Teacher Factor · c.2. Physical condition of classroom · c.3. Peer influence</div>
+    <div><b>d. Geographic/Environmental</b><br>
+      d.1. Distance between home and school · d.2. Armed conflict (incl. Tribal wars &amp; clanfeuds) · d.3. Calamities/Disasters</div>
+    <div><b>e. Financial-Related</b><br>
+      e.1. Child labor, work</div>
+    <div><b>f. Others</b></div>
   </div>
 
+  <!-- ── SUMMARY FOR THE MONTH (official fields, M/F/TOTAL columns) ── -->
   <div class="summary-col">
-    <h3>CERTIFICATION</h3>
-    <div style="font-size:7pt; margin-bottom:6px; font-style:italic;">I certify that this is a true and correct report.</div>
-    <div class="cert-block">
-      <div class="sig-line">Signature of Teacher over Printed Name</div>
-      <div class="sig-line" style="margin-top:14px;">Attested by: Signature of School Head over Printed Name</div>
-    </div>
+    <table>
+      <tr><th>Month:</th><td colspan="3">${monthLabel}</td></tr>
+      <tr><th rowspan="2">No. of Days of Classes:</th><td colspan="3" rowspan="2" style="text-align:center; font-weight:700;">${numDays}</td></tr>
+      <tr></tr>
+      <tr><th colspan="4">Summary for the Month</th></tr>
+      <tr><td></td><th class="num-cell">M</th><th class="num-cell">F</th><th class="num-cell">TOTAL</th></tr>
+      <tr><td class="row-label">* Enrolment as of (1st Friday of June)</td><td colspan="3" style="text-align:center;">${enrolledAsOfFirstFriday}</td></tr>
+      <tr><td class="row-label">Late Enrollment during the month (beyond cut-off)</td><td colspan="3"></td></tr>
+      <tr><td class="row-label">Registered Learner as of end of the month</td>
+        <td class="num-cell">${maleCount}</td><td class="num-cell">${femaleCount}</td><td class="num-cell" style="font-weight:700;">${registeredEndOfMonth}</td></tr>
+      <tr><td class="row-label">Percentage of Enrolment as of end of the month</td><td colspan="3" style="text-align:center;">${pctEnrolment}%</td></tr>
+      <tr><td class="row-label">Average Daily Attendance</td><td colspan="3" style="text-align:center;">${ada}</td></tr>
+      <tr><td class="row-label">Percentage of Attendance for the month</td><td colspan="3" style="text-align:center;">${pctAttendance}%</td></tr>
+      <tr><td class="row-label">Number of students with 5 consecutive days of absences:</td><td colspan="3" style="text-align:center;">${fiveConsecutiveCount}</td></tr>
+      <tr><td class="row-label" style="font-weight:700;">Drop out</td><td colspan="3"></td></tr>
+      <tr><td class="row-label" style="font-weight:700;">Transferred out</td><td colspan="3"></td></tr>
+      <tr><td class="row-label" style="font-weight:700;">Transferred in</td><td colspan="3"></td></tr>
+    </table>
+    <div style="padding:5px 6px; font-size:6.5pt; font-style:italic;">I certify that this is a true and correct report.</div>
   </div>
 </div>
 
-<div style="margin-top:4px; font-size:6pt; color:#94a3b8; text-align:right;">
-  Generated by EduScan PH · ${new Date().toLocaleString('en-PH')} · School Form 2 format per DepEd Order
+<div class="cert-row">
+  <div class="sig-block">
+    <div class="sig-line">(Signature of Teacher over Printed Name)</div>
+  </div>
+  <div class="sig-block">
+    <div style="margin-bottom:14px; text-align:left;">Attested by:</div>
+    <div class="sig-line">(Signature of School Head over Printed Name)</div>
+  </div>
+</div>
+
+<div style="font-size:6.5pt; margin-top:6px;">School Form 2: Page 2 of ${pageOf}</div>
+
+<div style="margin-top:4px; font-size:5.8pt; color:#94a3b8; text-align:right;">
+  Generated by EduScan PH · ${new Date().toLocaleString('en-PH')}
 </div>
 
 </body>
@@ -5869,6 +6054,7 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   populateDropdowns();
   initSummaryPeriod();
+  loadSF2Profile();
   checkAutoExport('boot');
   updatePWAInstallUI();
 
