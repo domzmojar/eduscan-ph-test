@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -3156,7 +3157,10 @@ async function printSummaryReport() {
         if (!arrByDay[d] || l.timestamp < arrByDay[d].timestamp) arrByDay[d] = l;
       });
 
-      let absCount = 0, tardyCount = 0;
+      let absCount = 0;
+      let lateComerCount = 0;
+      let cuttingClassCount = 0;
+      let tardyCount = 0;
       const dayCodes = schoolDays.map((d, i) => {
         const enrolledOnDay = !s.enrolledDate || d >= s.enrolledDate;
         if (!enrolledOnDay) return '';
@@ -3176,15 +3180,35 @@ async function printSummaryReport() {
           if (arrMin > pmCutoffMins) cutPM = true;
         }
 
-        if (late && cutPM) { tardyCount++; return 'both'; }
-        if (late)          { tardyCount++; return 'lateAM'; }
-        if (cutPM)         { tardyCount++; return 'cutPM'; }
+        if (late && cutPM) {
+          lateComerCount++;
+          cuttingClassCount++;
+          tardyCount++;
+          return 'both';
+        }
+        if (late) {
+          lateComerCount++;
+          tardyCount++;
+          return 'lateAM';
+        }
+        if (cutPM) {
+          cuttingClassCount++;
+          tardyCount++;
+          return 'cutPM';
+        }
         return 'present';
       });
       const sf2Name = s.lastName
         ? buildStudentName(s.lastName, s.firstName, s.middleName)
         : s.name;
-      return { name: sf2Name, dayCodes, absCount, tardyCount };
+      return {
+        name: sf2Name,
+        dayCodes,
+        absCount,
+        tardyCount,
+        lateComerCount,
+        cuttingClassCount
+      };
     });
   }
 
@@ -3382,6 +3406,8 @@ async function printSummaryReport() {
       put1(rowIdx, DAY_START+i, styleCell(cellVal, { size:7, fill: cellFill }));
     }
     put1(rowIdx, ABS_COL, styleCell(student ? (student.absCount || '') : '', { size:8 }));
+    // SF2 TARDY total = Late Comer + Cutting Classes
+    // Internal split preserved for future reporting
     put1(rowIdx, TAR_COL, styleCell(student ? (student.tardyCount || '') : '', { size:8 }));
     put1(rowIdx, REM_COL, styleCell('', { align:'left', size:7.5 }));
     M1(rowIdx, REM_COL, rowIdx, REM_SPAN_END);
