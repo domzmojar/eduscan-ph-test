@@ -3132,50 +3132,48 @@ async function printSummaryReport() {
   let totalDayPresentF = new Array(numDays).fill(0);
 
   // AM/PM state per student per day:
-  //   'present'  — arrival on-time + departure logged
-  //   'absent'   — no arrival
-  //   'lateAM'   — arrival isLate=true
-  //   'cutPM'    — arrival present but no departure log
-  //   'both'     — late arrival AND no departure
+  //   'present'  — scanned and on/before PM cutoff (pmTime + grace)
+  //   'absent'   — no arrival scan at all
+  //   'lateAM'   — scanned after amTime + grace
+  //   'cutPM'    — not scanned on or before pmTime + grace (cutting class)
+  //   'both'     — late AM scan AND cutting class
   function buildStudentData(studentList, totalsArr) {
-    return studentList.map(s => {
-      const cls = selectedClass;
-      const dismissMins = cls && cls.dismissTime
-        ? (() => { const [h,m] = cls.dismissTime.split(':').map(Number); return h*60+m; })()
-        : null;
+    const cls = selectedClass;
+    const amTime = cls && (cls.amTime || cls.startTime);
+    const pmTime = cls && (cls.pmTime || cls.dismissTime);
+    const graceMins = cls && cls.graceMins != null ? cls.graceMins : 5;
 
+    // pmCutoffMins: latest scan time (PH local) that still counts as attended PM
+    const pmCutoffMins = pmTime
+      ? (() => { const [h,m] = pmTime.split(':').map(Number); return h*60+m+graceMins; })()
+      : null;
+
+    return studentList.map(s => {
       const sArrLogs = logsInMonth.filter(l => l.studentId === s.id && l.type === 'arrival');
-      const sDepLogs = logsInMonth.filter(l => l.studentId === s.id && l.type === 'departure');
       const arrByDay = {};
       sArrLogs.forEach(l => {
         const d = getLogDate(l);
         if (!arrByDay[d] || l.timestamp < arrByDay[d].timestamp) arrByDay[d] = l;
-      });
-      const depByDay = {};
-      sDepLogs.forEach(l => {
-        const d = getLogDate(l);
-        if (!depByDay[d] || l.timestamp > depByDay[d].timestamp) depByDay[d] = l;
       });
 
       let absCount = 0, tardyCount = 0;
       const dayCodes = schoolDays.map((d, i) => {
         const enrolledOnDay = !s.enrolledDate || d >= s.enrolledDate;
         if (!enrolledOnDay) return '';
+
         const arr = arrByDay[d];
         if (!arr) { absCount++; return 'absent'; }
+
         const late = !!arr.isLate;
         totalsArr[i]++;
 
-        // cutPM: no departure log, OR left before dismiss time
-        const dep = depByDay[d];
+        // cutPM: not scanned on or before pmTime + grace
         let cutPM = false;
-        if (!dep) {
-          cutPM = true;
-        } else if (dismissMins !== null) {
-          const depTime = new Date(dep.timestamp);
-          const phDep = new Date(depTime.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
-          const depMin = phDep.getHours() * 60 + phDep.getMinutes();
-          if (depMin < dismissMins) cutPM = true;
+        if (pmCutoffMins !== null) {
+          const arrTime = new Date(arr.timestamp);
+          const phArr = new Date(arrTime.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+          const arrMin = phArr.getHours() * 60 + phArr.getMinutes();
+          if (arrMin > pmCutoffMins) cutPM = true;
         }
 
         if (late && cutPM) { tardyCount++; return 'both'; }
@@ -3186,7 +3184,7 @@ async function printSummaryReport() {
       const sf2Name = s.lastName
         ? buildStudentName(s.lastName, s.firstName, s.middleName)
         : s.name;
-      return { name: sf2Name, lrn: s.lrn || '', dayCodes, absCount, tardyCount };
+      return { name: sf2Name, dayCodes, absCount, tardyCount };
     });
   }
 
@@ -3271,18 +3269,26 @@ async function printSummaryReport() {
   function blankCell(opts) { return styleCell('', opts); }
 
   // ── SHEET 1: Main attendance grid ─────────────────────────────────────
-  const NAME_SPAN = 3;       // cols A-C: learner name
-  const LRN_COL = 3;         // D: LRN
-  const DAY_START = 4;       // E: first day column
+  // Official SF2 fixed layout, no LRN column:
+  //   col A      = row index / spacer
+  //   cols B-C   = Learner's Name (merged, wide)
+  //   cols D..AB = up to 25 daily attendance columns
+  //   col AC     = ABSENT total
+  //   col AD     = TARDY total
+  //   cols AE-AJ = REMARKS (merged)
+  const NAME_START = 1;      // B
+  const NAME_END = 2;        // C
+  const DAY_START = 3;       // D: first day column
   const DAY_END = DAY_START + numDays - 1;
   const ABS_COL = DAY_END + 1;
   const TAR_COL = ABS_COL + 1;
   const REM_COL = TAR_COL + 1;
-  const REM_SPAN_END = REM_COL + 2;
+  const REM_SPAN_END = REM_COL + 5;
   const TOTAL_COLS = REM_SPAN_END + 1;
 
-  const MALE_ROWS = Math.max(maleData.length, 18);
-  const FEMALE_ROWS = Math.max(femaleData.length, 18);
+  // Official template fixes 21 male rows + 25 female rows regardless of roster size.
+  const MALE_ROWS = 21;
+  const FEMALE_ROWS = 25;
 
   const aoa1 = [];
   const merges1 = [];
@@ -3329,9 +3335,7 @@ async function printSummaryReport() {
   // Grid header: 3 rows (banner / date numbers / day letters + Absent/Tardy)
   const R_HDR1 = r1, R_HDR2 = r1+1, R_HDR3 = r1+2;
   put1(R_HDR1, 0, styleCell("LEARNER'S NAME\n(Last Name, First Name, Middle Name)", { bold:true, size:8 }));
-  M1(R_HDR1,0,R_HDR3,NAME_SPAN-1);
-  put1(R_HDR1, LRN_COL, styleCell('LRN', { bold:true, size:8 }));
-  M1(R_HDR1,LRN_COL,R_HDR3,LRN_COL);
+  M1(R_HDR1,0,R_HDR3,NAME_END);
   put1(R_HDR1, DAY_START, styleCell('(1st row for date, 2nd row for Day: M,T,W,TH,F)', { bold:true, size:8 }));
   M1(R_HDR1, DAY_START, R_HDR1, DAY_END);
   for (let i = 0; i < numDays; i++) {
@@ -3350,22 +3354,31 @@ async function printSummaryReport() {
 
   // Track cells needing triangle shapes: { row, col, state }
   const triangleCells = [];
+  // Dark fill for full-row shading of CUTTING CLASS days (per user request:
+  // cutting class records get the whole day-cell shaded, not just a triangle).
+  const cuttingFill = { patternType: 'solid', fgColor: { rgb: 'BFBFBF' } };
 
   function writeStudentRow1(rowIdx, student) {
-    put1(rowIdx, 0, styleCell(student ? student.name : '', { align:'left', size:8 }));
-    M1(rowIdx,0,rowIdx,NAME_SPAN-1);
-    put1(rowIdx, LRN_COL, styleCell(student ? student.lrn : '', { size:7.5 }));
+    put1(rowIdx, NAME_START, styleCell(student ? student.name : '', { align:'left', size:8 }));
+    M1(rowIdx,NAME_START,rowIdx,NAME_END);
     for (let i = 0; i < numDays; i++) {
       const code = student ? (student.dayCodes[i] || '') : '';
       let cellVal = '';
       let cellFill = null;
-      if (code === 'absent') { cellVal = 'x'; }
-      else if (code === 'lateAM' || code === 'cutPM' || code === 'both') {
-        // Leave text blank — triangle shape will be drawn on top
+      if (code === 'absent') {
+        cellVal = 'x';
+      } else if (code === 'cutPM' || code === 'both') {
+        // Cutting class: shade the WHOLE cell (lower-half triangle convention
+        // still drawn for visual parity with the printed legend, but the
+        // user asked for the record itself to read as shaded).
+        cellFill = cuttingFill;
+        triangleCells.push({ aoa1row: rowIdx, col: DAY_START + i, state: code });
+      } else if (code === 'lateAM') {
+        // Late only — upper-half triangle, no full shading.
         triangleCells.push({ aoa1row: rowIdx, col: DAY_START + i, state: code });
       }
       // present or '' = blank with gray fill if enrolled
-      if (!student || (!cellVal && code === '')) cellFill = grayFill;
+      if (!student || (!cellVal && !cellFill && code === '')) cellFill = grayFill;
       put1(rowIdx, DAY_START+i, styleCell(cellVal, { size:7, fill: cellFill }));
     }
     put1(rowIdx, ABS_COL, styleCell(student ? (student.absCount || '') : '', { size:8 }));
@@ -3379,7 +3392,7 @@ async function printSummaryReport() {
   r1 = R_MSTART + MALE_ROWS;
   const R_MTOT = r1;
   put1(R_MTOT, 0, styleCell('\u25c4   MALE  |  TOTAL Per Day   \u25ba', { bold:true, size:8, align:'left' }));
-  M1(R_MTOT,0,R_MTOT,LRN_COL);
+  M1(R_MTOT,0,R_MTOT,NAME_END);
   for (let i = 0; i < numDays; i++) put1(R_MTOT, DAY_START+i, styleCell(totalDayPresentM[i] || '', { bold:true, size:7 }));
   put1(R_MTOT, ABS_COL, blankCell()); put1(R_MTOT, TAR_COL, blankCell());
   put1(R_MTOT, REM_COL, blankCell()); M1(R_MTOT, REM_COL, R_MTOT, REM_SPAN_END);
@@ -3390,7 +3403,7 @@ async function printSummaryReport() {
   r1 = R_FSTART + FEMALE_ROWS;
   const R_FTOT = r1;
   put1(R_FTOT, 0, styleCell('\u25c4   FEMALE  |  TOTAL Per Day   \u25ba', { bold:true, size:8, align:'left' }));
-  M1(R_FTOT,0,R_FTOT,LRN_COL);
+  M1(R_FTOT,0,R_FTOT,NAME_END);
   for (let i = 0; i < numDays; i++) put1(R_FTOT, DAY_START+i, styleCell(totalDayPresentF[i] || '', { bold:true, size:7 }));
   put1(R_FTOT, ABS_COL, blankCell()); put1(R_FTOT, TAR_COL, blankCell());
   put1(R_FTOT, REM_COL, blankCell()); M1(R_FTOT, REM_COL, R_FTOT, REM_SPAN_END);
@@ -3398,7 +3411,7 @@ async function printSummaryReport() {
 
   const R_COMB = r1;
   put1(R_COMB, 0, styleCell('\u25c4   Combined TOTAL PER DAY   \u25ba', { bold:true, size:8, align:'left' }));
-  M1(R_COMB,0,R_COMB,LRN_COL);
+  M1(R_COMB,0,R_COMB,NAME_END);
   for (let i = 0; i < numDays; i++) put1(R_COMB, DAY_START+i, styleCell((totalDayPresentM[i] + totalDayPresentF[i]) || '', { bold:true, size:7 }));
   put1(R_COMB, ABS_COL, blankCell()); put1(R_COMB, TAR_COL, blankCell());
   put1(R_COMB, REM_COL, blankCell()); M1(R_COMB, REM_COL, R_COMB, REM_SPAN_END);
@@ -3417,9 +3430,9 @@ async function printSummaryReport() {
   const ws1 = XLSX.utils.aoa_to_sheet(aoa1);
   ws1['!merges'] = merges1;
   ws1['!cols'] = [
-    { wch:3 }, { wch:3 }, { wch:16 }, { wch:11 },
+    { wch:3 }, { wch:16 }, { wch:11 },
     ...schoolDays.map(() => ({ wch:3.1 })),
-    { wch:7 }, { wch:6.5 }, { wch:11 }, { wch:11 }, { wch:10 }
+    { wch:7 }, { wch:6.5 }, { wch:11 }, { wch:11 }, { wch:10 }, { wch:10 }, { wch:10 }, { wch:10 }
   ];
   const rh1 = {};
   rh1[0] = 22; rh1[1] = 16; rh1[R_HDR1] = 24; rh1[R_HDR2] = 14; rh1[R_HDR3] = 16;
