@@ -1323,6 +1323,23 @@
         </div>
         <p style="font-size:0.73rem; color:var(--text-muted); margin-top:0.4rem;">Late (upper half) triggers after AM time + grace. Cutting class (lower half, shaded) triggers if not scanned by PM time + grace.</p>
       </div>
+      <div class="form-group">
+        <label>End of Class (Dismissal)</label>
+        <div style="display:flex; align-items:center; gap:0; border:1px solid var(--border); border-radius:8px; overflow:hidden; background:var(--surface);">
+          <div style="display:flex; align-items:center; gap:8px; padding:0.6rem 0.75rem; flex:1;">
+            <span style="font-size:1rem; line-height:1;">🔔</span>
+            <div style="flex:1; min-width:0;">
+              <div style="font-size:0.7rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:2px;">End of class</div>
+              <input type="time" id="class-end-of-class-time" style="border:none; outline:none; background:transparent; font-size:0.95rem; font-weight:600; color:var(--text); width:100%; padding:0;">
+            </div>
+          </div>
+        </div>
+        <label style="display:flex; align-items:center; gap:8px; margin-top:0.5rem; text-transform:none; font-size:0.83rem; font-weight:500; color:var(--text); cursor:pointer;">
+          <input type="checkbox" id="class-keep-endtime-toggle" style="width:16px;height:16px;cursor:pointer;" onchange="onKeepEndTimeToggleChange()">
+          Keep this dismiss time for the next class I create
+        </label>
+        <p style="font-size:0.73rem; color:var(--text-muted); margin-top:0.4rem;">Actual end-of-day dismissal, separate from the PM scan-out time above — for reference/reporting only.</p>
+      </div>
       <button class="btn full" onclick="addClass()">Save class</button>
     </div>
     <div class="card">
@@ -1783,6 +1800,19 @@
         </div>
         <p style="font-size:0.73rem; color:var(--text-muted); margin-top:0.4rem; margin-bottom:0.75rem;">Late (upper half) triggers after AM time + grace. Cutting class (lower half, shaded) triggers if not scanned by PM time + grace.</p>
       </div>
+      <div class="form-group">
+        <label>End of Class (Dismissal)</label>
+        <div style="display:flex; align-items:center; gap:0; border:1px solid var(--border); border-radius:8px; overflow:hidden; background:var(--surface);">
+          <div style="display:flex; align-items:center; gap:8px; padding:0.6rem 0.75rem; flex:1;">
+            <span style="font-size:1rem; line-height:1;">🔔</span>
+            <div style="flex:1; min-width:0;">
+              <div style="font-size:0.7rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:2px;">End of class</div>
+              <input type="time" id="edit-class-end-of-class-time" style="border:none; outline:none; background:transparent; font-size:0.95rem; font-weight:600; color:var(--text); width:100%; padding:0;">
+            </div>
+          </div>
+        </div>
+        <p style="font-size:0.73rem; color:var(--text-muted); margin-top:0.4rem;">Actual end-of-day dismissal, separate from the PM scan-out time above — for reference/reporting only.</p>
+      </div>
       <button class="btn full" onclick="saveEditClass()">Save changes</button>
     </div>
   </div>
@@ -1849,6 +1879,7 @@
     <div class="modal-body">
       <input type="hidden" id="edit-log-id">
       <input type="hidden" id="edit-log-original-timestamp">
+      <input type="hidden" id="edit-log-class-id">
       <div class="form-group">
         <label>Student</label>
         <div id="edit-log-student-name" style="font-weight:700; font-size:0.95rem; padding:0.4rem 0;"></div>
@@ -1862,15 +1893,18 @@
       </div>
       <div class="form-group">
         <label for="edit-log-time">Time</label>
-        <input type="time" id="edit-log-time">
+        <input type="time" id="edit-log-time" onchange="recomputeEditLogLateStatus()">
       </div>
       <div class="form-group">
         <label for="edit-log-date">Date</label>
-        <input type="date" id="edit-log-date">
+        <input type="date" id="edit-log-date" onchange="recomputeEditLogLateStatus()">
       </div>
-      <div class="form-group" id="edit-log-late-row" style="display:flex; align-items:center; gap:10px; margin-bottom:1rem;">
-        <input type="checkbox" id="edit-log-is-late" style="width:18px;height:18px;cursor:pointer;">
-        <label for="edit-log-is-late" style="text-transform:none; font-size:0.9rem; font-weight:600; color:var(--text); cursor:pointer; margin:0;">⏰ Mark as Late</label>
+      <div class="form-group" id="edit-log-late-row" style="margin-bottom:1rem;">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <input type="checkbox" id="edit-log-is-late" style="width:18px;height:18px;cursor:pointer;">
+          <label for="edit-log-is-late" style="text-transform:none; font-size:0.9rem; font-weight:600; color:var(--text); cursor:pointer; margin:0;">⏰ Mark as Late</label>
+        </div>
+        <p id="edit-log-late-auto-note" style="font-size:0.73rem; color:var(--text-muted); margin-top:0.3rem; margin-left:28px;"></p>
       </div>
       <button class="btn full" onclick="saveEditLog()">Save changes</button>
       <button class="btn full danger" style="margin-top:0.5rem;" onclick="deleteLogEntry()">Delete this record</button>
@@ -2329,6 +2363,34 @@ function getLogMonth(l) {
   return parseInt(dateStr.split('-')[1], 10);
 }
 
+// ── SHARED LATE-DETECTION LOGIC ──────────────────────────────────────────
+// Single source of truth for "is this arrival late". Used by both the live
+// QR scan (handleQRScan) and manual log editing (saveEditLog) so the two
+// paths can never disagree.
+//
+// Common-sense rule: an arrival is late once it's past AM time + grace,
+// full stop — there's no upper bound. A log timestamped 4:30 PM tagged as
+// an AM ("arrival") record is not "outside the AM window and therefore
+// unjudgeable" — it's simply very late. The previous bug wasn't in this
+// comparison (handleQRScan already had no upper bound); it was that the
+// manual edit-log modal stored isLate from a checkbox that didn't get
+// recomputed when the time/date/type changed, so an edited record could
+// keep a stale (often unchecked) flag no matter what time was entered.
+// Every caller now derives isLate straight from the class schedule + the
+// record's actual PH wall-clock time instead of trusting a separate flag.
+function computeArrivalLateFlag(cls, isoTimestamp) {
+  if (!cls) return false;
+  const amTime = cls.amTime || cls.startTime;
+  if (!amTime) return false;
+  const [h, m] = amTime.split(':').map(Number);
+  const grace  = cls.graceMins != null ? cls.graceMins : 5;
+  const cutoffMin = h * 60 + m + grace;
+
+  const ph = new Date(new Date(isoTimestamp).toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+  const nowMin = ph.getHours() * 60 + ph.getMinutes();
+  return nowMin > cutoffMin;
+}
+
 // ── QR SCAN HANDLER ───────────────────────────────────────────────────────
 async function handleQRScan(rawData) {
   try {
@@ -2376,16 +2438,7 @@ async function handleQRScan(rawData) {
 
     if (scanMode === 'arrival') {
       const cls = classes.find(c => c.id === currentClassId);
-      const amTime = cls && (cls.amTime || cls.startTime);
-      if (amTime) {
-        // Use Philippine time consistently — see nowPHTime() comment above.
-        const { h: nowH, m: nowM } = nowPHTime();
-        const [h, m]    = amTime.split(':').map(Number);
-        const grace     = cls.graceMins != null ? cls.graceMins : 5;
-        const cutoffMin = h * 60 + m + grace;
-        const nowMin    = nowH * 60 + nowM;
-        if (nowMin > cutoffMin) logEntry.isLate = true;
-      }
+      logEntry.isLate = computeArrivalLateFlag(cls, logEntry.timestamp);
     }
 
     const newId = await dbAdd('logs', logEntry);
@@ -2459,6 +2512,30 @@ function renderTodayList() {
 }
 
 // ── CLASSES ───────────────────────────────────────────────────────────────
+// "End of class" (endOfClassTime) is the real dismissal time for the whole
+// school day — separate from pmTime/dismissTime, which is just the PM
+// scan-out cutoff used for the "cutting class" check. It's reference/
+// reporting data only and never feeds the late/cutting-class math.
+// If "Keep this dismiss time for the next class" is on, the value and the
+// toggle state persist across class creations via dbSetSetting so a
+// teacher entering several sections with the same bell schedule doesn't
+// have to retype it each time.
+async function onKeepEndTimeToggleChange() {
+  const on  = document.getElementById('class-keep-endtime-toggle').checked;
+  const val = document.getElementById('class-end-of-class-time').value;
+  await dbSetSetting('keep_end_of_class_toggle', on);
+  if (on && val) await dbSetSetting('last_end_of_class_time', val);
+}
+
+async function prefillEndOfClassTime() {
+  const keepOn = !!(await dbGetSetting('keep_end_of_class_toggle'));
+  document.getElementById('class-keep-endtime-toggle').checked = keepOn;
+  if (keepOn) {
+    const lastVal = await dbGetSetting('last_end_of_class_time');
+    if (lastVal) document.getElementById('class-end-of-class-time').value = lastVal;
+  }
+}
+
 async function addClass() {
   const glInput  = document.getElementById('class-grade-level-input');
   const secInput = document.getElementById('class-section-input');
@@ -2469,10 +2546,17 @@ async function addClass() {
   const startTime  = document.getElementById('class-start-time').value || '07:30';
   const dismissTime = document.getElementById('class-dismiss-time').value || '17:00';
   const graceMins  = parseInt(document.getElementById('class-grace-mins').value) || 5;
-  classes.push({ id: makeId('class'), name, gradeLevel, section, amTime: startTime, pmTime: dismissTime, startTime, dismissTime, graceMins, updatedAt: nowIso() });
+  const endOfClassTime = document.getElementById('class-end-of-class-time').value || '';
+  const keepEndTime    = document.getElementById('class-keep-endtime-toggle').checked;
+  classes.push({ id: makeId('class'), name, gradeLevel, section, amTime: startTime, pmTime: dismissTime, startTime, dismissTime, graceMins, endOfClassTime, updatedAt: nowIso() });
   await saveClasses();
   scheduleRosterSync();
   glInput.value = ''; secInput.value = '';
+  if (keepEndTime) {
+    if (endOfClassTime) await dbSetSetting('last_end_of_class_time', endOfClassTime);
+  } else {
+    document.getElementById('class-end-of-class-time').value = '';
+  }
   renderClasses(); populateDropdowns();
   showToast('Class saved.', 'ok');
 }
@@ -2515,12 +2599,13 @@ function renderClasses() {
     const amTime    = c.amTime || c.startTime || '—';
     const pmTime    = c.pmTime || c.dismissTime || '—';
     const grace     = c.graceMins != null ? `${c.graceMins}m grace` : '';
+    const endTime   = c.endOfClassTime ? ` · Ends ${c.endOfClassTime}` : '';
     return `
     <tr class="class-row-clickable" onclick="openClassRosterModal('${escapeAttr(c.id)}')">
       <td>
         <strong style="color:var(--primary);">${escapeHTML(c.name)}</strong><br>
         <span style="font-size:0.75rem;color:var(--text-muted);">
-          ${count} student${count !== 1 ? 's' : ''} · AM ${amTime} · PM ${pmTime}${grace ? ' · ' + grace : ''} · tap to view roster
+          ${count} student${count !== 1 ? 's' : ''} · AM ${amTime} · PM ${pmTime}${grace ? ' · ' + grace : ''}${endTime} · tap to view roster
         </span>
       </td>
       <td style="text-align:right; white-space:nowrap;" onclick="event.stopPropagation()">
@@ -4021,6 +4106,7 @@ function openEditClassModal(classId) {
   document.getElementById('edit-class-start-time').value    = cls.amTime || cls.startTime || '07:30';
   document.getElementById('edit-class-dismiss-time').value  = cls.pmTime || cls.dismissTime || '17:00';
   document.getElementById('edit-class-grace-mins').value    = cls.graceMins != null ? cls.graceMins : 5;
+  document.getElementById('edit-class-end-of-class-time').value = cls.endOfClassTime || '';
   document.getElementById('edit-class-modal').classList.add('open');
   document.body.style.overflow = 'hidden';
 }
@@ -4032,12 +4118,13 @@ async function saveEditClass() {
   const startTime   = document.getElementById('edit-class-start-time').value || '07:30';
   const dismissTime = document.getElementById('edit-class-dismiss-time').value || '17:00';
   const graceMins   = parseInt(document.getElementById('edit-class-grace-mins').value) || 0;
+  const endOfClassTime = document.getElementById('edit-class-end-of-class-time').value || '';
   if (!gradeLevel || !section) return showToast('Grade Level and Section cannot be empty.', 'warn');
   const name = gradeLevel + ' - ' + section;
   const cls = classes.find(c => c.id === id);
   if (!cls) return;
   cls.name = name; cls.gradeLevel = gradeLevel; cls.section = section;
-  cls.amTime = startTime; cls.pmTime = dismissTime; cls.startTime = startTime; cls.dismissTime = dismissTime; cls.graceMins = graceMins; cls.updatedAt = nowIso();
+  cls.amTime = startTime; cls.pmTime = dismissTime; cls.startTime = startTime; cls.dismissTime = dismissTime; cls.graceMins = graceMins; cls.endOfClassTime = endOfClassTime; cls.updatedAt = nowIso();
   await saveClasses();
   scheduleRosterSync();
   closeEditClassModalDirect();
@@ -4054,8 +4141,52 @@ function onEditLogTypeChange() {
   // of leaving a checkbox visible that has no effect for that record type.
   const type = document.getElementById('edit-log-type').value;
   const row  = document.getElementById('edit-log-late-row');
-  row.style.display = type === 'departure' ? 'none' : 'flex';
-  if (type === 'departure') document.getElementById('edit-log-is-late').checked = false;
+  row.style.display = type === 'departure' ? 'none' : 'block';
+  if (type === 'departure') {
+    document.getElementById('edit-log-is-late').checked = false;
+    document.getElementById('edit-log-late-auto-note').textContent = '';
+  } else {
+    recomputeEditLogLateStatus();
+  }
+}
+
+// Recomputes "Mark as Late" from the entered date/time against the
+// record's class schedule, instead of leaving whatever flag the record
+// already had lying around. This is what fixes the "AM scan at 4:30 PM
+// with no late tag" bug: previously the checkbox only reflected
+// log.isLate as it was when the modal opened, and editing the time/date
+// didn't touch it. Every time-affecting field change now re-derives the
+// checkbox from computeArrivalLateFlag(), the same function the live QR
+// scan uses, so a manually-entered time is judged exactly like a real
+// scan at that time would be. The checkbox stays editable afterward in
+// case a teacher needs to manually override for a specific record.
+function recomputeEditLogLateStatus() {
+  const type = document.getElementById('edit-log-type').value;
+  const note = document.getElementById('edit-log-late-auto-note');
+  if (type === 'departure') { note.textContent = ''; return; }
+
+  const dateVal = document.getElementById('edit-log-date').value;
+  const timeVal = document.getElementById('edit-log-time').value;
+  if (!dateVal || !timeVal) { note.textContent = ''; return; }
+
+  const classId = document.getElementById('edit-log-class-id').value;
+  const cls     = classes.find(c => c.id === classId);
+  const [y, mo, d] = dateVal.split('-').map(Number);
+  const [h, mi]    = timeVal.split(':').map(Number);
+  const isoTs      = phLocalToISOString(y, mo, d, h, mi);
+
+  const computedLate = computeArrivalLateFlag(cls, isoTs);
+  document.getElementById('edit-log-is-late').checked = computedLate;
+
+  const amTime = cls && (cls.amTime || cls.startTime);
+  if (amTime) {
+    const grace = cls.graceMins != null ? cls.graceMins : 5;
+    note.textContent = computedLate
+      ? `Auto-detected: Late (cutoff is ${amTime} + ${grace}m grace). Untick above to override.`
+      : `Auto-detected: On time (cutoff is ${amTime} + ${grace}m grace).`;
+  } else {
+    note.textContent = 'No AM time set for this class — defaulting to On time.';
+  }
 }
 
 function openEditLogModal(logId) {
@@ -4076,14 +4207,14 @@ function openEditLogModal(logId) {
 
     document.getElementById('edit-log-id').value                = logId;
     document.getElementById('edit-log-original-timestamp').value = log.timestamp;
-    document.getElementById('edit-log-student-name').textContent = log.studentName + (log.studentLrn ? ` · LRN ${log.studentLrn}` : '');
+    document.getElementById('edit-log-class-id').value           = log.classId || '';
+    document.getElementById('edit-log-student-name').textContent = log.studentName + (log.studentLrn ? ' · LRN ' + log.studentLrn : '');
     document.getElementById('edit-log-type').value    = log.type || 'arrival';
     
     document.getElementById('edit-log-time').value    = localTime;
     document.getElementById('edit-log-date').value    = localDate;
     
-    document.getElementById('edit-log-is-late').checked = !!log.isLate;
-    onEditLogTypeChange();
+    onEditLogTypeChange(); // also triggers the initial auto-recompute for arrivals
     document.getElementById('edit-log-modal').classList.add('open');
     document.body.style.overflow = 'hidden';
 }
@@ -6371,6 +6502,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   syncPendingWhenOnline('boot');
 
   populateDropdowns();
+  prefillEndOfClassTime();
   initSummaryPeriod();
   loadSF2Profile();
   checkAutoExport('boot');
