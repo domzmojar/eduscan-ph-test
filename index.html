@@ -292,6 +292,24 @@
     .modal-student-lrn { font-size: 0.75rem; color: var(--text-muted); font-family: monospace; }
     .modal-student-time { font-size: 0.75rem; color: var(--text-muted); white-space: nowrap; }
 
+    /* Custom confirm dialog — replaces browser confirm() so it matches app styling */
+    .confirm-modal-backdrop {
+      display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+      z-index: 900; align-items: center; justify-content: center; padding: 1.25rem;
+    }
+    .confirm-modal-backdrop.open { display: flex; }
+    .confirm-modal-sheet {
+      background: var(--surface); border-radius: 16px;
+      width: 100%; max-width: 380px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+      animation: slideUp 0.2s ease;
+      padding: 1.25rem 1.25rem 1rem;
+    }
+    .confirm-modal-title { font-weight: 700; font-size: 1rem; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 6px; }
+    .confirm-modal-body  { font-size: 0.88rem; color: var(--text-muted); line-height: 1.45; margin-bottom: 1.1rem; white-space: pre-line; }
+    .confirm-modal-actions { display: flex; gap: 0.6rem; }
+    .confirm-modal-actions .btn { flex: 1; padding: 0.65rem 1rem; font-size: 0.85rem; }
+
     .terms-student-row {
       display: flex; align-items: center; gap: 10px;
       padding: 0.65rem 0.5rem; border-bottom: 1px solid var(--border);
@@ -1213,12 +1231,19 @@
 
       <div id="scan-result-box"></div>
 
-      <!-- Scanned-today counter (single scan per class period, no AM/PM split) -->
+      <!-- Separate Arrival & Departure counters -->
       <div id="scan-progress-container" style="display:none; margin-top:1rem; border-radius:10px; border:1px solid var(--border); overflow:hidden;">
-        <div style="background:var(--arrival-bg); padding:0.75rem; text-align:center;">
-          <div style="font-size:0.65rem; color:var(--arrival); font-weight:700; text-transform:uppercase; letter-spacing:0.05em;">✅ Scanned</div>
-          <div id="scan-arrival-count" style="font-size:1.6rem; font-weight:800; color:var(--arrival); margin-top:0.2rem; line-height:1;">0</div>
-          <div id="scan-arrival-sub" style="font-size:0.68rem; color:var(--arrival); margin-top:0.15rem; opacity:0.8;">of <span id="scan-arrival-total">0</span></div>
+        <div style="display:flex;">
+          <div style="flex:1; background:var(--arrival-bg); border-right:1px solid var(--arrival-border); padding:0.75rem; text-align:center;">
+            <div style="font-size:0.65rem; color:var(--arrival); font-weight:700; text-transform:uppercase; letter-spacing:0.05em;">🌅 AM</div>
+            <div id="scan-arrival-count" style="font-size:1.6rem; font-weight:800; color:var(--arrival); margin-top:0.2rem; line-height:1;">0</div>
+            <div id="scan-arrival-sub" style="font-size:0.68rem; color:var(--arrival); margin-top:0.15rem; opacity:0.8;">of <span id="scan-arrival-total">0</span></div>
+          </div>
+          <div style="flex:1; background:var(--departure-bg); padding:0.75rem; text-align:center;">
+            <div style="font-size:0.65rem; color:var(--departure); font-weight:700; text-transform:uppercase; letter-spacing:0.05em;">🌇 PM</div>
+            <div id="scan-departure-count" style="font-size:1.6rem; font-weight:800; color:var(--departure); margin-top:0.2rem; line-height:1;">0</div>
+            <div id="scan-departure-sub" style="font-size:0.68rem; color:var(--departure); margin-top:0.15rem; opacity:0.8;">of <span id="scan-departure-total">0</span></div>
+          </div>
         </div>
       </div>
     </div>
@@ -1668,6 +1693,18 @@
 
 <div id="toast"></div>
 
+<!-- CUSTOM CONFIRM DIALOG (styled replacement for browser confirm()) -->
+<div class="confirm-modal-backdrop" id="confirm-modal-backdrop">
+  <div class="confirm-modal-sheet">
+    <div class="confirm-modal-title" id="confirm-modal-title">Confirm</div>
+    <div class="confirm-modal-body" id="confirm-modal-body"></div>
+    <div class="confirm-modal-actions">
+      <button class="btn outline" id="confirm-modal-cancel">Cancel</button>
+      <button class="btn" id="confirm-modal-ok">Confirm</button>
+    </div>
+  </div>
+</div>
+
 <!-- STUDENT LIST MODAL -->
 <div class="modal-backdrop" id="modal-backdrop" onclick="closeModal(event)">
   <div class="modal-sheet">
@@ -1797,7 +1834,13 @@
         <label>Student</label>
         <div id="edit-log-student-name" style="font-weight:700; font-size:0.95rem; padding:0.4rem 0;"></div>
       </div>
-      <input type="hidden" id="edit-log-type" value="arrival">
+      <div class="form-group">
+        <label for="edit-log-type">Record type</label>
+        <select id="edit-log-type" onchange="onEditLogTypeChange()">
+          <option value="arrival">🌅 AM</option>
+          <option value="departure">🌇 PM</option>
+        </select>
+      </div>
       <div class="form-group">
         <label for="edit-log-time">Time</label>
         <input type="time" id="edit-log-time" onchange="recomputeEditLogLateStatus()">
@@ -2369,10 +2412,13 @@ async function handleQRScan(rawData) {
     // stray QR (a photo, a paper copy, someone else's screen) rather than
     // an actual student physically present.
     if (isOutsideClassSchedule(cls, nowIsoTs)) {
-      const proceed = confirm(
-        `${student.name} is being scanned outside ${cls ? cls.name : 'this class'}'s scheduled time.\n\n` +
-        `Record this attendance anyway?`
-      );
+      const proceed = await showConfirmDialog({
+        title: '⚠️ Outside scheduled time',
+        message: `${student.name} is being scanned outside ${cls ? cls.name : 'this class'}'s scheduled time.\n\nRecord this attendance anyway?`,
+        confirmLabel: 'Record anyway',
+        cancelLabel: 'Cancel',
+        danger: true
+      });
       if (!proceed) {
         showToast('Scan not recorded.', 'warn');
         return;
@@ -2432,20 +2478,31 @@ function renderTodayList() {
   const todayLogs = logs.filter(l => l.classId === currentClassId && getLogDate(l) === today);
   const totalStudents = students.filter(s => s.classId === currentClassId).length;
 
-  // Scanned: unique students with a scan logged today for this class
-  const scannedIds = new Set(todayLogs.map(l => l.studentId));
-  const scanCount  = scannedIds.size;
+  // Arrivals: unique students with an arrival log today
+  const arrivedIds  = new Set(todayLogs.filter(l => l.type === 'arrival').map(l => l.studentId));
+  // Departures: unique students with a departure log today
+  const departedIds = new Set(todayLogs.filter(l => l.type === 'departure').map(l => l.studentId));
 
-  if (scanCount > 0 || totalStudents > 0) {
+  const arrCount = arrivedIds.size;
+  const depCount = departedIds.size;
+
+  if (arrCount > 0 || depCount > 0 || totalStudents > 0) {
     container.style.display = 'block';
 
-    document.getElementById('scan-arrival-count').textContent = scanCount;
+    document.getElementById('scan-arrival-count').textContent = arrCount;
     document.getElementById('scan-arrival-total').textContent = totalStudents;
+    document.getElementById('scan-departure-count').textContent = depCount;
+    document.getElementById('scan-departure-total').textContent = totalStudents;
 
-    // Turn count green once the whole class has been scanned
+    // Turn arrival count green when whole class has arrived
     const arrEl = document.getElementById('scan-arrival-count');
-    arrEl.style.color = (scanCount === totalStudents && totalStudents > 0)
+    arrEl.style.color = (arrCount === totalStudents && totalStudents > 0)
       ? 'var(--success)' : 'var(--arrival)';
+
+    // Turn departure count green when whole class has been dismissed
+    const depEl = document.getElementById('scan-departure-count');
+    depEl.style.color = (depCount === totalStudents && totalStudents > 0)
+      ? 'var(--success)' : 'var(--departure)';
   } else {
     container.style.display = 'none';
   }
@@ -2804,9 +2861,11 @@ function buildLogRowHTML(l) {
   const dateStr = dateObj.toLocaleDateString([], { month: 'short', day: 'numeric' });
 
   const accentClass = l.type === 'departure' ? 'departure' : 'arrival';
+  // Type-neutral labels: scans no longer map to a fixed AM/PM period, so the
+  // chip just says whether it was a check-in or a (legacy) departure record.
   const statusChip  = l.type === 'departure'
-    ? `<span class="log-chip log-chip-departure">🌇 PM</span>`
-    : `<span class="log-chip log-chip-arrival">🌅 AM</span>`;
+    ? `<span class="log-chip log-chip-departure">🌇 Departed</span>`
+    : `<span class="log-chip log-chip-arrival">✅ Scanned</span>`;
   const lateChip = (l.type === 'arrival' && l.isLate)
     ? `<span class="log-chip log-chip-late">⏰ Late</span>` : '';
   const cutChip  = (l.type === 'arrival' && l.isCut)
@@ -3948,8 +4007,8 @@ function openModalRange(type, classId, fromDate, toDate, encodedClassName) {
 
   let title = '', studentList = [];
   if (type === 'enrolled')  { title = `Enrolled — ${className}`;                   studentList = classStudents; }
-  else if (type === 'arrived')  { title = `🌅 AM (at least once) — ${className}`; studentList = classStudents.filter(s => arrivedIds.has(s.id)); }
-  else if (type === 'departed') { title = `🌇 PM (at least once) — ${className}`; studentList = classStudents.filter(s => departedIds.has(s.id)); }
+  else if (type === 'arrived')  { title = `✅ Scanned (at least once) — ${className}`; studentList = classStudents.filter(s => arrivedIds.has(s.id)); }
+  else if (type === 'departed') { title = `🌇 Departed (at least once) — ${className}`; studentList = classStudents.filter(s => departedIds.has(s.id)); }
   else if (type === 'absent')   { title = `Never arrived — ${className}`;              studentList = classStudents.filter(s => !arrivedIds.has(s.id)); }
 
   const rangeLabel = `${fmtShort(fromDate)} – ${fmtShort(toDate)}`;
@@ -3994,8 +4053,8 @@ function openModal(type, classId, dateStr, encodedClassName) {
 
   let title = '', studentList = [], showTime = false;
   if (type === 'enrolled')  { title = `Enrolled — ${className}`;    studentList = classStudents; }
-  else if (type === 'arrived')  { title = `🌅 AM — ${className}`;  studentList = classStudents.filter(s => arrivedIds.has(s.id));  showTime = true; }
-  else if (type === 'departed') { title = `🌇 PM — ${className}`; studentList = classStudents.filter(s => departedIds.has(s.id)); showTime = true; }
+  else if (type === 'arrived')  { title = `✅ Scanned — ${className}`;  studentList = classStudents.filter(s => arrivedIds.has(s.id));  showTime = true; }
+  else if (type === 'departed') { title = `🌇 Departed — ${className}`; studentList = classStudents.filter(s => departedIds.has(s.id)); showTime = true; }
   else if (type === 'absent')   { title = `Absent — ${className}`;      studentList = classStudents.filter(s => !arrivedIds.has(s.id)); }
 
   document.getElementById('modal-title').textContent = title + ` (${formatDate(dateStr)})`;
@@ -4041,6 +4100,44 @@ function openModal(type, classId, dateStr, encodedClassName) {
 
 function closeModal(e)       { if (e.target === document.getElementById('modal-backdrop')) closeModalDirect(); }
 function closeModalDirect()  { document.getElementById('modal-backdrop').classList.remove('open'); document.body.style.overflow = ''; }
+
+// ── CUSTOM CONFIRM DIALOG ────────────────────────────────────────────────
+// Promise-based replacement for the browser's blocking confirm(), styled to
+// match the rest of the app. Usage: const ok = await showConfirmDialog({...})
+function showConfirmDialog({ title = 'Confirm', message = '', confirmLabel = 'Confirm', cancelLabel = 'Cancel', danger = false } = {}) {
+  return new Promise((resolve) => {
+    const backdrop = document.getElementById('confirm-modal-backdrop');
+    const titleEl  = document.getElementById('confirm-modal-title');
+    const bodyEl   = document.getElementById('confirm-modal-body');
+    const okBtn    = document.getElementById('confirm-modal-ok');
+    const cancelBtn = document.getElementById('confirm-modal-cancel');
+
+    titleEl.textContent = title;
+    bodyEl.textContent  = message;
+    okBtn.textContent   = confirmLabel;
+    cancelBtn.textContent = cancelLabel;
+    okBtn.className = danger ? 'btn danger' : 'btn';
+
+    const cleanup = (result) => {
+      backdrop.classList.remove('open');
+      document.body.style.overflow = '';
+      okBtn.removeEventListener('click', onOk);
+      cancelBtn.removeEventListener('click', onCancel);
+      backdrop.removeEventListener('click', onBackdrop);
+      resolve(result);
+    };
+    const onOk       = () => cleanup(true);
+    const onCancel    = () => cleanup(false);
+    const onBackdrop = (e) => { if (e.target === backdrop) cleanup(false); };
+
+    okBtn.addEventListener('click', onOk);
+    cancelBtn.addEventListener('click', onCancel);
+    backdrop.addEventListener('click', onBackdrop);
+
+    backdrop.classList.add('open');
+    document.body.style.overflow = 'hidden';
+  });
+}
 
 // ── EDIT CLASS MODAL ──────────────────────────────────────────────────────
 function openEditClassModal(classId) {
@@ -4088,7 +4185,21 @@ function closeEditClassModalDirect() { document.getElementById('edit-class-modal
 
 // ── EDIT LOG MODAL ────────────────────────────────────────────────────────
 function onEditLogTypeChange() {
-  recomputeEditLogLateStatus();
+  // "Mark as Late" and "Mark as Cutting Class" are both meaningless for a
+  // departure record — hide them instead of leaving checkboxes visible
+  // that have no effect for that record type.
+  const type    = document.getElementById('edit-log-type').value;
+  const row     = document.getElementById('edit-log-late-row');
+  const cutRow  = document.getElementById('edit-log-cut-row');
+  row.style.display    = type === 'departure' ? 'none' : 'block';
+  cutRow.style.display = type === 'departure' ? 'none' : 'block';
+  if (type === 'departure') {
+    document.getElementById('edit-log-is-late').checked = false;
+    document.getElementById('edit-log-late-auto-note').textContent = '';
+    document.getElementById('edit-log-is-cut').checked = false;
+  } else {
+    recomputeEditLogLateStatus();
+  }
 }
 
 // Recomputes "Mark as Late" from the entered date/time against the
