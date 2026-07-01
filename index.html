@@ -2393,19 +2393,25 @@ function computeArrivalLateFlag(cls, isoTimestamp) {
   return nowMin > cutoffMin;
 }
 
-// NOTE: "Cutting class" is intentionally NOT auto-detected from scan
-// timing (no isEarlyLeaveFlag-style helper here). In real classrooms a
-// student can scan in on time, scan out on time, and still have skipped
-// the actual class in between — or leave without ever re-scanning at all.
-// Only a teacher present in the room can know that happened, so cutting
-// is a manual flag (`log.isCut`) the teacher sets on the student's
-// ARRIVAL record for that day — via the quick toggle on the Logs page or
-// the "Mark as Cutting Class" checkbox in the Edit Record modal. See
-// toggleCutFlag() and the edit-log-is-cut checkbox.
-//
-// This is separate from the SF2 export's own 'cutPM' code (computeSF2Code
-// below), which is the official DepEd-form definition (no/early PM scan)
-// and is unaffected by this manual flag.
+// "Cutting class" counterpart to computeArrivalLateFlag — a PM (departure)
+// scan is an early leave when it lands before pmTime - grace. This mirrors
+// computeSF2Code()'s cutPM branch for the case where a departure log DOES
+// exist; the other cutPM case (no departure log at all by day's end) has
+// no single log to attach a tag to, so it only shows up in day-level views
+// that already pair arrival/departure (Terms modal, roster range views),
+// not as a per-log badge.
+function isEarlyLeaveFlag(cls, isoTimestamp) {
+  if (!cls) return false;
+  const pmTime = cls.pmTime || cls.dismissTime;
+  if (!pmTime) return false;
+  const [h, m] = pmTime.split(':').map(Number);
+  const grace  = cls.graceMins != null ? cls.graceMins : 5;
+  const pmEarly = h * 60 + m - grace;
+
+  const ph = new Date(new Date(isoTimestamp).toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+  const nowMin = ph.getHours() * 60 + ph.getMinutes();
+  return nowMin < pmEarly;
+}
 
 // ── QR SCAN HANDLER ───────────────────────────────────────────────────────
 async function handleQRScan(rawData) {
