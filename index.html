@@ -1213,19 +1213,12 @@
 
       <div id="scan-result-box"></div>
 
-      <!-- Separate Arrival & Departure counters -->
+      <!-- Scanned-today counter (single scan per class period, no AM/PM split) -->
       <div id="scan-progress-container" style="display:none; margin-top:1rem; border-radius:10px; border:1px solid var(--border); overflow:hidden;">
-        <div style="display:flex;">
-          <div style="flex:1; background:var(--arrival-bg); border-right:1px solid var(--arrival-border); padding:0.75rem; text-align:center;">
-            <div style="font-size:0.65rem; color:var(--arrival); font-weight:700; text-transform:uppercase; letter-spacing:0.05em;">🌅 AM</div>
-            <div id="scan-arrival-count" style="font-size:1.6rem; font-weight:800; color:var(--arrival); margin-top:0.2rem; line-height:1;">0</div>
-            <div id="scan-arrival-sub" style="font-size:0.68rem; color:var(--arrival); margin-top:0.15rem; opacity:0.8;">of <span id="scan-arrival-total">0</span></div>
-          </div>
-          <div style="flex:1; background:var(--departure-bg); padding:0.75rem; text-align:center;">
-            <div style="font-size:0.65rem; color:var(--departure); font-weight:700; text-transform:uppercase; letter-spacing:0.05em;">🌇 PM</div>
-            <div id="scan-departure-count" style="font-size:1.6rem; font-weight:800; color:var(--departure); margin-top:0.2rem; line-height:1;">0</div>
-            <div id="scan-departure-sub" style="font-size:0.68rem; color:var(--departure); margin-top:0.15rem; opacity:0.8;">of <span id="scan-departure-total">0</span></div>
-          </div>
+        <div style="background:var(--arrival-bg); padding:0.75rem; text-align:center;">
+          <div style="font-size:0.65rem; color:var(--arrival); font-weight:700; text-transform:uppercase; letter-spacing:0.05em;">✅ Scanned</div>
+          <div id="scan-arrival-count" style="font-size:1.6rem; font-weight:800; color:var(--arrival); margin-top:0.2rem; line-height:1;">0</div>
+          <div id="scan-arrival-sub" style="font-size:0.68rem; color:var(--arrival); margin-top:0.15rem; opacity:0.8;">of <span id="scan-arrival-total">0</span></div>
         </div>
       </div>
     </div>
@@ -1804,13 +1797,7 @@
         <label>Student</label>
         <div id="edit-log-student-name" style="font-weight:700; font-size:0.95rem; padding:0.4rem 0;"></div>
       </div>
-      <div class="form-group">
-        <label for="edit-log-type">Record type</label>
-        <select id="edit-log-type" onchange="onEditLogTypeChange()">
-          <option value="arrival">🌅 AM</option>
-          <option value="departure">🌇 PM</option>
-        </select>
-      </div>
+      <input type="hidden" id="edit-log-type" value="arrival">
       <div class="form-group">
         <label for="edit-log-time">Time</label>
         <input type="time" id="edit-log-time" onchange="recomputeEditLogLateStatus()">
@@ -2445,31 +2432,20 @@ function renderTodayList() {
   const todayLogs = logs.filter(l => l.classId === currentClassId && getLogDate(l) === today);
   const totalStudents = students.filter(s => s.classId === currentClassId).length;
 
-  // Arrivals: unique students with an arrival log today
-  const arrivedIds  = new Set(todayLogs.filter(l => l.type === 'arrival').map(l => l.studentId));
-  // Departures: unique students with a departure log today
-  const departedIds = new Set(todayLogs.filter(l => l.type === 'departure').map(l => l.studentId));
+  // Scanned: unique students with a scan logged today for this class
+  const scannedIds = new Set(todayLogs.map(l => l.studentId));
+  const scanCount  = scannedIds.size;
 
-  const arrCount = arrivedIds.size;
-  const depCount = departedIds.size;
-
-  if (arrCount > 0 || depCount > 0 || totalStudents > 0) {
+  if (scanCount > 0 || totalStudents > 0) {
     container.style.display = 'block';
 
-    document.getElementById('scan-arrival-count').textContent = arrCount;
+    document.getElementById('scan-arrival-count').textContent = scanCount;
     document.getElementById('scan-arrival-total').textContent = totalStudents;
-    document.getElementById('scan-departure-count').textContent = depCount;
-    document.getElementById('scan-departure-total').textContent = totalStudents;
 
-    // Turn arrival count green when whole class has arrived
+    // Turn count green once the whole class has been scanned
     const arrEl = document.getElementById('scan-arrival-count');
-    arrEl.style.color = (arrCount === totalStudents && totalStudents > 0)
+    arrEl.style.color = (scanCount === totalStudents && totalStudents > 0)
       ? 'var(--success)' : 'var(--arrival)';
-
-    // Turn departure count green when whole class has been dismissed
-    const depEl = document.getElementById('scan-departure-count');
-    depEl.style.color = (depCount === totalStudents && totalStudents > 0)
-      ? 'var(--success)' : 'var(--departure)';
   } else {
     container.style.display = 'none';
   }
@@ -4112,21 +4088,7 @@ function closeEditClassModalDirect() { document.getElementById('edit-class-modal
 
 // ── EDIT LOG MODAL ────────────────────────────────────────────────────────
 function onEditLogTypeChange() {
-  // "Mark as Late" and "Mark as Cutting Class" are both meaningless for a
-  // departure record — hide them instead of leaving checkboxes visible
-  // that have no effect for that record type.
-  const type    = document.getElementById('edit-log-type').value;
-  const row     = document.getElementById('edit-log-late-row');
-  const cutRow  = document.getElementById('edit-log-cut-row');
-  row.style.display    = type === 'departure' ? 'none' : 'block';
-  cutRow.style.display = type === 'departure' ? 'none' : 'block';
-  if (type === 'departure') {
-    document.getElementById('edit-log-is-late').checked = false;
-    document.getElementById('edit-log-late-auto-note').textContent = '';
-    document.getElementById('edit-log-is-cut').checked = false;
-  } else {
-    recomputeEditLogLateStatus();
-  }
+  recomputeEditLogLateStatus();
 }
 
 // Recomputes "Mark as Late" from the entered date/time against the
