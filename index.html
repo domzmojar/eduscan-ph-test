@@ -118,34 +118,6 @@
       align-items: center;
     }
 
-    /* ── SCAN MODE TOGGLE ── */
-    .mode-toggle { display: flex; border-radius: 14px; overflow: hidden; border: 2px solid var(--border); margin-bottom: 1rem; background: var(--bg); gap: 0; }
-    .mode-btn {
-      flex: 1; padding: 1rem 0.5rem; border: none; background: transparent;
-      font-weight: 800; font-size: 1rem; cursor: pointer; transition: all 0.25s;
-      display: flex; flex-direction: column; align-items: center; gap: 4px;
-      position: relative;
-    }
-    .mode-btn .mode-icon { font-size: 1.8rem; line-height: 1; }
-    .mode-btn .mode-label { font-size: 0.8rem; letter-spacing: 0.07em; text-transform: uppercase; font-weight: 700; }
-    .mode-btn .mode-desc { font-size: 0.7rem; font-weight: 500; opacity: 0.75; margin-top: 1px; }
-
-    .mode-btn.arrival-active {
-      background: #0369a1; color: #fff;
-      box-shadow: inset 0 -3px 0 rgba(0,0,0,0.25);
-    }
-    .mode-btn.arrival-active .mode-icon { filter: drop-shadow(0 0 4px rgba(255,255,255,0.6)); }
-
-    .mode-btn.departure-active {
-      background: #7c3aed; color: #fff;
-      box-shadow: inset 0 -3px 0 rgba(0,0,0,0.25);
-    }
-    .mode-btn.departure-active .mode-icon { filter: drop-shadow(0 0 4px rgba(255,255,255,0.6)); }
-
-    .mode-btn:not(.arrival-active):not(.departure-active) { color: #94a3b8; }
-
-    .mode-toggle-divider { width: 1px; background: var(--border); flex-shrink: 0; }
-
     #stop-scan-btn {
       display: none; width: 100%; margin-top: 0.5rem;
       background: #475569; color: white; padding: 0.6rem 1rem;
@@ -157,39 +129,25 @@
 
     /* ── SCAN AREA ── */
     .scan-area { position: relative; width: 100%; max-width: 360px; aspect-ratio: 1/1; margin: 0 auto 0.75rem; background: #000; border-radius: 16px; overflow: hidden; border: 4px solid var(--border); transition: border-color 0.3s, box-shadow 0.3s; }
-    .scan-area.mode-arrival  { border-color: #0369a1; box-shadow: 0 0 0 3px rgba(3,105,161,0.18); }
-    .scan-area.mode-departure { border-color: #7c3aed; box-shadow: 0 0 0 3px rgba(124,58,237,0.18); }
     #cam-idle { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #94a3b8; text-align: center; padding: 2rem; cursor: pointer; gap: 0.5rem; }
 
     .scan-mode-overlay {
       position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
       padding: 3px 14px; border-radius: 20px; font-size: 0.75rem; font-weight: 800;
       letter-spacing: 0.07em; text-transform: uppercase; z-index: 3; display: none;
-      pointer-events: none;
+      pointer-events: none; background: #0369a1; color: #fff;
     }
     .scan-mode-overlay.active { display: block; }
-    .scan-area.mode-arrival  .scan-mode-overlay { background: #0369a1; color: #fff; }
-    .scan-area.mode-departure .scan-mode-overlay { background: #7c3aed; color: #fff; }
 
-    .scan-line { position: absolute; left: 0; right: 0; height: 2px; animation: scanAnim 2s linear infinite; pointer-events: none; z-index: 2; display: none; }
+    .scan-line { position: absolute; left: 0; right: 0; height: 2px; animation: scanAnim 2s linear infinite; pointer-events: none; z-index: 2; display: none; background: linear-gradient(90deg, transparent, #0ea5e9, transparent); }
     .scan-line.active { display: block; }
-    .scan-area.mode-arrival  .scan-line { background: linear-gradient(90deg, transparent, #0ea5e9, transparent); }
-    .scan-area.mode-departure .scan-line { background: linear-gradient(90deg, transparent, #a855f7, transparent); }
     @keyframes scanAnim { 0% { top: 10%; } 100% { top: 90%; } }
 
     .scan-corners { position: absolute; inset: 12px; pointer-events: none; z-index: 2; display: none; }
     .scan-corners.active { display: block; }
     .scan-corners::before, .scan-corners::after, .sc-br::before, .sc-br::after {
-      content: ''; position: absolute; width: 28px; height: 28px; border-style: solid;
+      content: ''; position: absolute; width: 28px; height: 28px; border-style: solid; border-color: #38bdf8;
     }
-    .scan-area.mode-arrival  .scan-corners::before,
-    .scan-area.mode-arrival  .scan-corners::after,
-    .scan-area.mode-arrival  .sc-br::before,
-    .scan-area.mode-arrival  .sc-br::after { border-color: #38bdf8; }
-    .scan-area.mode-departure .scan-corners::before,
-    .scan-area.mode-departure .scan-corners::after,
-    .scan-area.mode-departure .sc-br::before,
-    .scan-area.mode-departure .sc-br::after { border-color: #c084fc; }
     .scan-corners::before { top:0; left:0; border-width:3px 0 0 3px; border-radius:4px 0 0 0; }
     .scan-corners::after  { top:0; right:0; border-width:3px 3px 0 0; border-radius:0 4px 0 0; }
     .sc-br::before { bottom:0; left:0; border-width:0 0 3px 3px; border-radius:0 0 0 4px; }
@@ -1235,25 +1193,10 @@
         </select>
       </div>
 
-      <label style="margin-bottom:0.4rem; display:block;">Scan mode</label>
-      <div class="mode-toggle" id="mode-toggle">
-        <button class="mode-btn arrival-active" id="mode-btn-arrival" onclick="setMode('arrival')">
-          <span class="mode-icon">🌅</span>
-          <span class="mode-label">AM</span>
-          <span class="mode-desc">Morning session</span>
-        </button>
-        <div class="mode-toggle-divider"></div>
-        <button class="mode-btn" id="mode-btn-departure" onclick="setMode('departure')">
-          <span class="mode-icon">🌇</span>
-          <span class="mode-label">PM</span>
-          <span class="mode-desc">Afternoon session</span>
-        </button>
-      </div>
-
-      <div class="scan-area mode-arrival" id="scan-area" onclick="handleScanAreaClick()">
+      <div class="scan-area" id="scan-area" onclick="handleScanAreaClick()">
         <video id="scan-video" autoplay playsinline></video>
         <canvas id="qr-canvas"></canvas>
-        <div class="scan-mode-overlay" id="scan-mode-overlay">↑ AM</div>
+        <div class="scan-mode-overlay" id="scan-mode-overlay">📷 Scanning</div>
         <div class="scan-line" id="scan-line"></div>
         <div class="scan-corners" id="scan-corners"><div class="sc-br"></div></div>
         <div id="cam-idle">
@@ -2053,7 +1996,6 @@ let cameraStream    = null;
 let scanning        = false;
 let lastScanned     = null;
 let lastScannedTime = 0;
-let scanMode        = 'arrival';
 
 function nowIso() {
   return new Date().toISOString();
@@ -2166,38 +2108,10 @@ function resetScanResult() {
 }
 
 // ── SCAN MODE ─────────────────────────────────────────────────────────────
-function setMode(mode, persist = true) {
-  scanMode = mode;
-  lastScanned = null;
-
-  const area    = document.getElementById('scan-area');
-  const overlay = document.getElementById('scan-mode-overlay');
-  const btnArr  = document.getElementById('mode-btn-arrival');
-  const btnDep  = document.getElementById('mode-btn-departure');
-
-  area.className = 'scan-area mode-' + mode;
-  overlay.textContent = mode === 'arrival' ? '🌅 AM' : '🌇 PM';
-
-  if (scanning) {
-    document.getElementById('scan-line').classList.add('active');
-    document.getElementById('scan-corners').classList.add('active');
-    overlay.classList.add('active');
-  }
-
-  if (mode === 'arrival') {
-    btnArr.className = 'mode-btn arrival-active';
-    btnDep.className = 'mode-btn';
-  } else {
-    btnArr.className = 'mode-btn';
-    btnDep.className = 'mode-btn departure-active';
-  }
-
-  resetScanResult();
-
-  // Persist so a teacher running an afternoon dismissal-only session
-  // doesn't have to re-flip this every time the app is reopened.
-  if (persist) dbSetSetting('last_scan_mode', mode);
-}
+// Removed: teachers scan once at class start, never at dismissal, so a
+// manual AM/PM mode toggle serves no purpose. Every scan now creates a
+// single 'arrival' record (see handleQRScan); lateness and cutting-class
+// are derived from the class schedule and the manual isCut flag instead.
 
 // ── CAMERA ────────────────────────────────────────────────────────────────
 async function startCamera() {
@@ -2215,7 +2129,7 @@ async function startCamera() {
     document.getElementById('scan-line').classList.add('active');
     document.getElementById('scan-corners').classList.add('active');
     overlay.classList.add('active');
-    overlay.textContent = scanMode === 'arrival' ? '🌅 AM' : '🌇 PM';
+    overlay.textContent = '📷 Scanning';
     stopBtn.classList.add('visible');
     scanning = true;
     requestAnimationFrame(scanFrameLoop);
@@ -2399,6 +2313,33 @@ async function toggleCutFlag(logId) {
   showToast(log.isCut ? 'Marked as cutting class.' : 'Cutting-class tag removed.', 'ok');
 }
 
+// Guards against stray/accidental scans — a camera left open can pick up a
+// QR code off a monitor or a printed sheet at any time of day. If a scan
+// lands well outside this class's own start–dismiss window (beyond a
+// buffer, not just past the late-grace cutoff), handleQRScan asks the
+// teacher to confirm before recording it.
+const OFFSCHEDULE_BUFFER_MINS = 60;
+function isOutsideClassSchedule(cls, isoTimestamp) {
+  if (!cls) return false;
+  const startTime   = cls.amTime || cls.startTime;
+  const dismissTime = cls.pmTime || cls.dismissTime;
+  if (!startTime && !dismissTime) return false;
+  const grace = cls.graceMins != null ? cls.graceMins : 5;
+
+  const ph = new Date(new Date(isoTimestamp).toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+  const nowMin = ph.getHours() * 60 + ph.getMinutes();
+
+  if (startTime) {
+    const [sh, sm] = startTime.split(':').map(Number);
+    if (nowMin < (sh * 60 + sm) - OFFSCHEDULE_BUFFER_MINS) return true;
+  }
+  if (dismissTime) {
+    const [eh, em] = dismissTime.split(':').map(Number);
+    if (nowMin > (eh * 60 + em) + grace + OFFSCHEDULE_BUFFER_MINS) return true;
+  }
+  return false;
+}
+
 // ── QR SCAN HANDLER ───────────────────────────────────────────────────────
 async function handleQRScan(rawData) {
   try {
@@ -2412,43 +2353,58 @@ async function handleQRScan(rawData) {
       return;
     }
 
-    const today    = todayStr();
+    const cls   = classes.find(c => c.id === currentClassId);
+    const today = todayStr();
     const todayLog = logs.filter(l =>
       l.studentId === student.id &&
       l.classId   === currentClassId &&
       getLogDate(l) === today
     );
 
-    const alreadyLogged = todayLog.find(l => l.type === scanMode);
+    // Teachers scan once per class period now (no separate AM/PM modes),
+    // so a student is "already logged" the moment ANY record exists for
+    // them in this class today.
+    const alreadyLogged = todayLog[0];
     if (alreadyLogged) {
-      const typeLabel = scanMode === 'arrival' ? 'AM' : 'PM';
       const time = new Date(alreadyLogged.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       showFeedback('warn',
-        `⏱ ${typeLabel} already recorded`,
-        `${escapeHTML(student.name)} was logged at ${time}. Switch mode if you meant to log a ${scanMode === 'arrival' ? 'PM' : 'AM'}.`
+        '⏱ Already recorded',
+        `${escapeHTML(student.name)} was already scanned for this class today at ${time}.`
       );
       if (navigator.vibrate) navigator.vibrate([30]);
       return;
     }
 
+    const nowIsoTs = new Date().toISOString();
+
+    // Off-schedule guard — confirm before recording a scan that lands well
+    // outside this class's own window, in case the camera picked up a
+    // stray QR (a photo, a paper copy, someone else's screen) rather than
+    // an actual student physically present.
+    if (isOutsideClassSchedule(cls, nowIsoTs)) {
+      const proceed = confirm(
+        `${student.name} is being scanned outside ${cls ? cls.name : 'this class'}'s scheduled time.\n\n` +
+        `Record this attendance anyway?`
+      );
+      if (!proceed) {
+        showToast('Scan not recorded.', 'warn');
+        return;
+      }
+    }
+
     const logEntry = {
-      timestamp:   new Date().toISOString(),
+      timestamp:   nowIsoTs,
       localDate:   todayStr(), // ADD THIS LINE (Fixes Timezone Bug)
       classId:     currentClassId,
-      className:   (classes.find(c => c.id === currentClassId) || {}).name || '',
+      className:   (cls || {}).name || '',
       studentId:   student.id,
       studentName: student.name,
       studentLrn:  student.lrn || '',
-      type:        scanMode,
-      isLate:      false,
+      type:        'arrival',
+      isLate:      computeArrivalLateFlag(cls, nowIsoTs),
       isCut:       false, // manually toggled later by the teacher, never auto-set
       updatedAt:   nowIso()
     };
-
-    const cls = classes.find(c => c.id === currentClassId);
-    if (scanMode === 'arrival') {
-      logEntry.isLate = computeArrivalLateFlag(cls, logEntry.timestamp);
-    }
 
     const newId = await dbAdd('logs', logEntry);
     logEntry.id = newId;
@@ -2458,12 +2414,11 @@ async function handleQRScan(rawData) {
     scheduleAutoSync();
     checkAutoExport('scan');
 
-    const isArrival = scanMode === 'arrival';
-    const lateTag   = (isArrival && logEntry.isLate)
+    const lateTag = logEntry.isLate
       ? ` <span class="badge badge-late" style="font-size:0.75rem;">⏰ Late</span>` : '';
     showFeedback(
-      isArrival ? 'ok' : 'ok-dep',
-      isArrival ? '🌅 AM recorded' : '🌇 PM recorded',
+      'ok',
+      '✅ Recorded',
       `<strong>${escapeHTML(student.name)}</strong>${student.lrn ? ' · LRN ' + escapeHTML(student.lrn) : ''}${lateTag}<br>` +
       `<span style="font-size:0.82rem;">${new Date(logEntry.timestamp).toLocaleTimeString()}</span>` +
       `<br><button class="btn outline sm" style="margin-top:6px;" onclick="openEditLogModal(${logEntry.id})">✏️ Edit this record</button>`
@@ -3131,7 +3086,9 @@ function isViewingToday(range) {
 // Used by: SF2 export, Summary page, Terms modal, Student record modal.
 //   cls    — class object (needs amTime/pmTime/graceMins)
 //   arrLog — earliest AM scan log for this student on this day (or null)
-//   depLog — latest PM scan log for this student on this day (or null)
+//   depLog — latest PM scan log for this student on this day (or null;
+//            teachers no longer scan at dismissal, so this is normally
+//            null for every current/future record — see below)
 // Returns: 'absent' | 'present' | 'lateAM' | 'cutPM' | 'both'
 function computeSF2Code(cls, arrLog, depLog) {
   if (!arrLog && !depLog) return 'absent';
@@ -3140,16 +3097,18 @@ function computeSF2Code(cls, arrLog, depLog) {
   const pmTime     = cls && (cls.pmTime || cls.dismissTime);
   const isLate     = arrLog ? !!arrLog.isLate : false;
 
-  let cutPM = false;
-  if (pmTime) {
-    const [h, m]    = pmTime.split(':').map(Number);
-    const pmEarly   = h * 60 + m - graceMins;
-    if (!depLog) {
-      cutPM = true; // no PM scan = cut class
-    } else {
-      const phDep = new Date(new Date(depLog.timestamp).toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
-      if (phDep.getHours() * 60 + phDep.getMinutes() < pmEarly) cutPM = true;
-    }
+  // "Cutting class" is a MANUAL teacher-set flag (arrLog.isCut, see
+  // toggleCutFlag) — teachers scan once at class start, not at dismissal,
+  // so a missing depLog is no longer treated as evidence of cutting on its
+  // own (every future record has no depLog by design, not because anyone
+  // cut). Legacy records from when PM scanning existed still honor an
+  // early departure scan as cutPM too, for historical accuracy.
+  let cutPM = !!(arrLog && arrLog.isCut);
+  if (!cutPM && depLog && pmTime) {
+    const [h, m]  = pmTime.split(':').map(Number);
+    const pmEarly = h * 60 + m - graceMins;
+    const phDep = new Date(new Date(depLog.timestamp).toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+    if (phDep.getHours() * 60 + phDep.getMinutes() < pmEarly) cutPM = true;
   }
 
   if (isLate && cutPM) return 'both';
@@ -6546,12 +6505,6 @@ window.addEventListener('DOMContentLoaded', async () => {
   loadSF2Profile();
   checkAutoExport('boot');
   updatePWAInstallUI();
-
-  // Restore last-used scan mode (arrival/departure) so a teacher running
-  // an afternoon dismissal-only session doesn't have to re-flip this
-  // every time the app is reopened.
-  const savedMode = await dbGetSetting('last_scan_mode');
-  if (savedMode === 'arrival' || savedMode === 'departure') setMode(savedMode, false);
 
   // Show install banner after a short delay so it doesn't flash on load
   setTimeout(initInstallBanner, 1200);
