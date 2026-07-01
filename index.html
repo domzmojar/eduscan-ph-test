@@ -204,6 +204,7 @@
     .badge-arrival   { background: var(--arrival-bg);   color: var(--arrival);   border: 1px solid var(--arrival-border); }
     .badge-departure { background: var(--departure-bg); color: var(--departure); border: 1px solid var(--departure-border); }
     .badge-late      { background: #fff7ed; color: #c2410c; border: 1px solid #fdba74; }
+    .badge-cut       { background: #fdf2f8; color: #9d174d; border: 1px solid #f9a8d4; }
     .badge-class     { background: var(--primary-bg);   color: var(--primary); }
 
     #toast { position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%) translateY(100px); background: #1e293b; color: white; padding: 0.65rem 1.25rem; border-radius: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); transition: transform 0.3s ease; z-index: 1000; pointer-events: none; font-size: 0.85rem; white-space: nowrap; max-width: 90vw; text-overflow: ellipsis; overflow: hidden; }
@@ -515,6 +516,7 @@
   letter-spacing: 0.02em;
 }
 .log-chip-late       { background: #fff7ed; color: #c2410c; border: 1px solid #fdba74; }
+.log-chip-cut        { background: #fdf2f8; color: #9d174d; border: 1px solid #f9a8d4; }
 .log-chip-arrival    { background: var(--arrival-bg);   color: var(--arrival);   border: 1px solid var(--arrival-border); }
 .log-chip-departure  { background: var(--departure-bg); color: var(--departure); border: 1px solid var(--departure-border); }
 
@@ -2391,6 +2393,26 @@ function computeArrivalLateFlag(cls, isoTimestamp) {
   return nowMin > cutoffMin;
 }
 
+// "Cutting class" counterpart to computeArrivalLateFlag — a PM (departure)
+// scan is an early leave when it lands before pmTime - grace. This mirrors
+// computeSF2Code()'s cutPM branch for the case where a departure log DOES
+// exist; the other cutPM case (no departure log at all by day's end) has
+// no single log to attach a tag to, so it only shows up in day-level views
+// that already pair arrival/departure (Terms modal, roster range views),
+// not as a per-log badge.
+function isEarlyLeaveFlag(cls, isoTimestamp) {
+  if (!cls) return false;
+  const pmTime = cls.pmTime || cls.dismissTime;
+  if (!pmTime) return false;
+  const [h, m] = pmTime.split(':').map(Number);
+  const grace  = cls.graceMins != null ? cls.graceMins : 5;
+  const pmEarly = h * 60 + m - grace;
+
+  const ph = new Date(new Date(isoTimestamp).toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+  const nowMin = ph.getHours() * 60 + ph.getMinutes();
+  return nowMin < pmEarly;
+}
+
 // ── QR SCAN HANDLER ───────────────────────────────────────────────────────
 async function handleQRScan(rawData) {
   try {
@@ -2436,8 +2458,8 @@ async function handleQRScan(rawData) {
       updatedAt:   nowIso()
     };
 
+    const cls = classes.find(c => c.id === currentClassId);
     if (scanMode === 'arrival') {
-      const cls = classes.find(c => c.id === currentClassId);
       logEntry.isLate = computeArrivalLateFlag(cls, logEntry.timestamp);
     }
 
@@ -2452,10 +2474,12 @@ async function handleQRScan(rawData) {
     const isArrival = scanMode === 'arrival';
     const lateTag   = (isArrival && logEntry.isLate)
       ? ` <span class="badge badge-late" style="font-size:0.75rem;">⏰ Late</span>` : '';
+    const cutTag    = (!isArrival && isEarlyLeaveFlag(cls, logEntry.timestamp))
+      ? ` <span class="badge badge-cut" style="font-size:0.75rem;">✂️ Cutting</span>` : '';
     showFeedback(
       isArrival ? 'ok' : 'ok-dep',
       isArrival ? '🌅 AM recorded' : '🌇 PM recorded',
-      `<strong>${escapeHTML(student.name)}</strong>${student.lrn ? ' · LRN ' + escapeHTML(student.lrn) : ''}${lateTag}<br>` +
+      `<strong>${escapeHTML(student.name)}</strong>${student.lrn ? ' · LRN ' + escapeHTML(student.lrn) : ''}${lateTag}${cutTag}<br>` +
       `<span style="font-size:0.82rem;">${new Date(logEntry.timestamp).toLocaleTimeString()}</span>` +
       `<br><button class="btn outline sm" style="margin-top:6px;" onclick="openEditLogModal(${logEntry.id})">✏️ Edit this record</button>`
     );
@@ -2893,13 +2917,15 @@ function buildLogRowHTML(l) {
     : `<span class="log-chip log-chip-arrival">🌅 AM</span>`;
   const lateChip = (l.type === 'arrival' && l.isLate)
     ? `<span class="log-chip log-chip-late">⏰ Late</span>` : '';
+  const cutChip  = (l.type === 'departure' && isEarlyLeaveFlag(classes.find(c => c.id === l.classId), l.timestamp))
+    ? `<span class="log-chip log-chip-cut">✂️ Cutting</span>` : '';
 
   return `
     <div class="log-feed-item">
       <div class="log-feed-accent ${accentClass}"></div>
       <div class="log-feed-top">
         <span class="log-feed-name-text">${escapeHTML(l.studentName)}</span>
-        ${statusChip}${lateChip}
+        ${statusChip}${lateChip}${cutChip}
       </div>
       <button class="log-feed-edit" onclick="openEditLogModal(${l.id})" title="Edit">✏️</button>
       <div class="log-feed-bottom">
@@ -3831,9 +3857,21 @@ function renderActionableList(range, logsInRange) {
       const activeDays = new Set(classLogs.map(l => getLogDate(l))).size;
       const presentDays = new Set(sLogs.map(l => getLogDate(l))).size; // any scan = present
       const absences = Math.max(0, activeDays - presentDays);
-      
-      if (absences >= 3 || lates.length >= 3) {
-        attentionList.push({ student: s, absences, lates: lates.length });
+
+      // Cutting-class days: per computeSF2Code's cutPM branch, pairing this
+      // student's own AM/PM logs on each day they had at least one scan.
+      const sCls = classes.find(c => c.id === s.classId);
+      const sDays = new Set(sLogs.map(l => getLogDate(l)));
+      let cuttings = 0;
+      sDays.forEach(dateStr => {
+        const dayArr = sLogs.find(l => getLogDate(l) === dateStr && l.type === 'arrival') || null;
+        const dayDep = sLogs.find(l => getLogDate(l) === dateStr && l.type === 'departure') || null;
+        const code = computeSF2Code(sCls, dayArr, dayDep);
+        if (code === 'cutPM' || code === 'both') cuttings++;
+      });
+
+      if (absences >= 3 || lates.length >= 3 || cuttings >= 3) {
+        attentionList.push({ student: s, absences, lates: lates.length, cuttings });
       }
     });
     
@@ -3849,6 +3887,7 @@ function renderActionableList(range, logsInRange) {
         const tags = [];
         if (item.absences >= 3) tags.push(`<span class="badge" style="background:var(--danger-bg); color:var(--danger); border:1px solid var(--danger-border); font-size:0.65rem;">${item.absences} Abs</span>`);
         if (item.lates >= 3) tags.push(`<span class="badge badge-late" style="font-size:0.65rem;">${item.lates} Lates</span>`);
+        if (item.cuttings >= 3) tags.push(`<span class="badge badge-cut" style="font-size:0.65rem;">✂️ ${item.cuttings} Cutting</span>`);
         
         html += `
           <div style="display:flex; justify-content:space-between; align-items:center; padding:0.6rem 0.5rem; border-bottom:1px solid var(--border); font-size:0.85rem;">
@@ -3996,6 +4035,7 @@ function renderPremiumCharts(range, logsInRange) {
 
 function openModalRange(type, classId, fromDate, toDate, encodedClassName) {
   const className     = decodeURIComponent(encodedClassName);
+  const cls           = classes.find(c => c.id === classId);
   const classStudents = students.filter(s => s.classId === classId);
   const rangeLogs     = logs.filter(l =>
     l.classId === classId &&
@@ -4023,11 +4063,16 @@ function openModalRange(type, classId, fromDate, toDate, encodedClassName) {
       const lateCount = rangeLogs.filter(l => l.studentId === s.id && l.type === 'arrival' && l.isLate).length;
       const lateTag   = (type === 'arrived' && lateCount > 0)
         ? `<span class="badge badge-late" style="font-size:0.68rem; margin-left:4px;">⏰ ${lateCount}× late</span>` : '';
+      const cutCount  = (type === 'departed')
+        ? rangeLogs.filter(l => l.studentId === s.id && l.type === 'departure' && isEarlyLeaveFlag(cls, l.timestamp)).length
+        : 0;
+      const cutTag    = cutCount > 0
+        ? `<span class="badge badge-cut" style="font-size:0.68rem; margin-left:4px;">✂️ ${cutCount}× cutting</span>` : '';
       return `
         <div class="modal-student-item">
           <div class="modal-student-avatar">${initials}</div>
           <div style="flex:1;">
-            <div class="modal-student-name">${escapeHTML(s.name)}${lateTag}</div>
+            <div class="modal-student-name">${escapeHTML(s.name)}${lateTag}${cutTag}</div>
             ${s.lrn ? `<div class="modal-student-lrn">LRN: ${escapeHTML(s.lrn)}</div>` : ''}
           </div>
         </div>`;
@@ -4040,6 +4085,7 @@ function openModalRange(type, classId, fromDate, toDate, encodedClassName) {
 
 function openModal(type, classId, dateStr, encodedClassName) {
   const className     = decodeURIComponent(encodedClassName);
+  const cls           = classes.find(c => c.id === classId);
   const classStudents = students.filter(s => s.classId === classId);
   const dateLogs      = logs.filter(l => l.classId === classId && getLogDate(l) === dateStr);
 
@@ -4058,22 +4104,29 @@ function openModal(type, classId, dateStr, encodedClassName) {
     document.getElementById('modal-body').innerHTML = `<p class="empty">No students in this category.</p>`;
   } else {
     document.getElementById('modal-body').innerHTML = studentList.map((s) => {
-      let timeStr = '', isLate = false, logId = null;
+      let timeStr = '', isLate = false, isCut = false, logId = null;
       if (showTime) {
         const logType  = type === 'arrived' ? 'arrival' : 'departure';
         const logEntry = dateLogs.find(l => l.studentId === s.id && l.type === logType);
-        if (logEntry) { timeStr = new Date(logEntry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); isLate = !!logEntry.isLate; logId = logEntry.id; }
+        if (logEntry) {
+          timeStr = new Date(logEntry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          isLate  = !!logEntry.isLate;
+          isCut   = type === 'departed' && isEarlyLeaveFlag(cls, logEntry.timestamp);
+          logId   = logEntry.id;
+        }
       }
       const initials = escapeHTML(s.name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase());
       const lateTag  = (type === 'arrived' && isLate)
         ? `<span class="badge badge-late" style="font-size:0.68rem; margin-left:4px;">⏰ Late</span>` : '';
+      const cutTag   = isCut
+        ? `<span class="badge badge-cut" style="font-size:0.68rem; margin-left:4px;">✂️ Cutting</span>` : '';
       const editBtn  = logId != null
         ? `<button class="btn outline sm" style="padding:2px 7px; font-size:0.72rem;" onclick="closeModalDirect(); openEditLogModal(${logId})">✏️</button>` : '';
       return `
         <div class="modal-student-item">
           <div class="modal-student-avatar">${initials}</div>
           <div style="flex:1;">
-            <div class="modal-student-name">${escapeHTML(s.name)}${lateTag}</div>
+            <div class="modal-student-name">${escapeHTML(s.name)}${lateTag}${cutTag}</div>
             ${s.lrn ? `<div class="modal-student-lrn">LRN: ${escapeHTML(s.lrn)}</div>` : ''}
           </div>
           ${timeStr ? `<div class="modal-student-time" style="margin-right:6px;">${timeStr}</div>` : ''}
@@ -5444,6 +5497,7 @@ function renderTermsModalBody() {
     const term = TERMS.find(t => t.num === termsActiveTerm);
     const termLogs = getTermLogs(termsActiveStudentId, termsActiveClassId, termsActiveTerm);
     const student = students.find(s => s.id === termsActiveStudentId);
+    const cls = classes.find(c => c.id === termsActiveClassId);
     const enrolledDate = student ? (student.enrolledDate || null) : null;
     const schoolDays = getSchoolDaysInTerm(termsActiveClassId, termsActiveTerm, enrolledDate);
 
@@ -5455,16 +5509,28 @@ function renderTermsModalBody() {
 
     const allLogDates = [...new Set(termLogs.map(l => getLogDate(l)))].sort((a, b) => b.localeCompare(a));
 
+    // Count cutting-class days: either an early departure scan, or an
+    // arrival with no matching departure at all for that day (per the
+    // cutPM branch of computeSF2Code).
+    let cutCount = 0;
+    allLogDates.forEach(dateStr => {
+        const dayArr = termLogs.find(l => getLogDate(l) === dateStr && l.type === 'arrival') || null;
+        const dayDep = termLogs.find(l => getLogDate(l) === dateStr && l.type === 'departure') || null;
+        const code = computeSF2Code(cls, dayArr, dayDep);
+        if (code === 'cutPM' || code === 'both') cutCount++;
+    });
+
     let html = `
     <div style="background:var(--bg); border-radius:8px; padding:0.6rem 0.75rem; margin-bottom:0.25rem;">
         <span style="font-size:0.78rem; font-weight:700; color:var(--text-muted);">${term.label} · ${term.range}</span>
         ${schoolDays.size ? `<span style="font-size:0.72rem; color:var(--text-muted); margin-left:8px;">${schoolDays.size} school day${schoolDays.size !== 1 ? 's' : ''} on record</span>` : ''}
         ${enrolledDate ? `<span style="font-size:0.72rem; color:var(--text-muted); margin-left:8px;">· enrolled ${fmtShort(enrolledDate)}</span>` : ''}
     </div>
-    <div class="term-stat-grid" style="grid-template-columns: repeat(4, 1fr);">
+    <div class="term-stat-grid" style="grid-template-columns: repeat(5, 1fr);">
         <div class="term-stat-card arrival-card"><div class="ts-val">${arrivals.length}</div><div class="ts-lbl">Arrivals</div></div>
         <div class="term-stat-card departure-card"><div class="ts-val">${departures.length}</div><div class="ts-lbl">Departures</div></div>
         <div class="term-stat-card" style="background:#fff7ed; border-color:#fdba74; color:#c2410c;"><div class="ts-val">${lateCount}</div><div class="ts-lbl">Late</div></div>
+        <div class="term-stat-card" style="background:#fdf2f8; border-color:#f9a8d4; color:#9d174d;"><div class="ts-val">${cutCount}</div><div class="ts-lbl">Cutting</div></div>
         <div class="term-stat-card absent-card"><div class="ts-val">${absences}</div><div class="ts-lbl">Absences</div></div>
     </div>`;
 
@@ -5474,6 +5540,9 @@ function renderTermsModalBody() {
             const dayLogs = termLogs.filter(l => getLogDate(l) === dateStr);
             const arr = dayLogs.filter(l => l.type === 'arrival');
             const dep = dayLogs.filter(l => l.type === 'departure');
+            const dayCode = computeSF2Code(cls, arr[0] || null, dep[0] || null);
+            const cutDayTag = (dayCode === 'cutPM' || dayCode === 'both')
+                ? `<span class="badge badge-cut" style="font-size:0.65rem;">✂️ Cutting</span>` : '';
             const dateLabel = new Date(dateStr + 'T00:00:00').toLocaleDateString([], { month: 'short', day: 'numeric', weekday: 'short' });
             html += `
             <div class="term-day-row">
@@ -5484,6 +5553,7 @@ function renderTermsModalBody() {
                         return `<span class="badge badge-arrival">🌅 ${new Date(l.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>${lateTag}`;
                     }).join('')}
                     ${dep.map(l => `<span class="badge badge-departure">🌇 ${new Date(l.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>`).join('')}
+                    ${cutDayTag}
                 </div>
             </div>`;
         });
