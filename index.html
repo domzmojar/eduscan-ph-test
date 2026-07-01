@@ -1823,13 +1823,7 @@
         <div id="edit-log-student-name" style="font-weight:700; font-size:0.95rem; padding:0.4rem 0;"></div>
         <div id="edit-log-class-info" style="font-size:0.78rem; color:var(--text-muted); margin-top:-0.3rem; margin-bottom:0.2rem;"></div>
       </div>
-      <div class="form-group">
-        <label for="edit-log-type">Record type</label>
-        <select id="edit-log-type" onchange="onEditLogTypeChange()">
-          <option value="arrival">✅ Arrival (Time In)</option>
-          <option value="departure">🌇 Departure (Time Out)</option>
-        </select>
-      </div>
+      <input type="hidden" id="edit-log-type" value="arrival">
       <div class="form-group">
         <label for="edit-log-time">Time</label>
         <input type="time" id="edit-log-time" onchange="recomputeEditLogLateStatus()">
@@ -2836,20 +2830,15 @@ function buildLogRowHTML(l) {
   const timeStr = new Date(l.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const dateStr = dateObj.toLocaleDateString([], { month: 'short', day: 'numeric' });
 
-  const accentClass = l.type === 'departure' ? 'departure' : 'arrival';
-  // Type-neutral labels: scans no longer map to a fixed AM/PM period, so the
-  // chip just says whether it was a check-in or a (legacy) departure record.
-  const statusChip  = l.type === 'departure'
-    ? `<span class="log-chip log-chip-departure">🌇 Departed</span>`
-    : `<span class="log-chip log-chip-arrival">✅ Scanned</span>`;
-  const lateChip = (l.type === 'arrival' && l.isLate)
+  const accentClass = 'arrival'; // teachers only scan once, at class start — no departure records
+  const statusChip  = `<span class="log-chip log-chip-arrival">✅ Scanned</span>`;
+  const lateChip = l.isLate
     ? `<span class="log-chip log-chip-late">⏰ Late</span>` : '';
-  const cutChip  = (l.type === 'arrival' && l.isCut)
+  const cutChip  = l.isCut
     ? `<span class="log-chip log-chip-cut">✂️ Cutting</span>` : '';
-  // Manual cut-toggle button — arrival records only. Teacher taps this when
-  // a student was scanned in but was noticed missing partway through class.
-  const cutBtn   = l.type === 'arrival'
-    ? `<button class="log-feed-edit" onclick="toggleCutFlag(${l.id})" title="${l.isCut ? 'Unmark cutting class' : 'Mark as cutting class'}">✂️</button>` : '';
+  // Manual cut-toggle button. Teacher taps this when a student was
+  // scanned in but was noticed missing partway through class.
+  const cutBtn   = `<button class="log-feed-edit" onclick="toggleCutFlag(${l.id})" title="${l.isCut ? 'Unmark cutting class' : 'Mark as cutting class'}">✂️</button>`;
 
   return `
     <div class="log-feed-item">
@@ -4189,21 +4178,11 @@ function closeEditClassModalDirect() { document.getElementById('edit-class-modal
 
 // ── EDIT LOG MODAL ────────────────────────────────────────────────────────
 function onEditLogTypeChange() {
-  // "Mark as Late" and "Mark as Cutting Class" are both meaningless for a
-  // departure record — hide them instead of leaving checkboxes visible
-  // that have no effect for that record type.
-  const type    = document.getElementById('edit-log-type').value;
-  const row     = document.getElementById('edit-log-late-row');
-  const cutRow  = document.getElementById('edit-log-cut-row');
-  row.style.display    = type === 'departure' ? 'none' : 'block';
-  cutRow.style.display = type === 'departure' ? 'none' : 'block';
-  if (type === 'departure') {
-    document.getElementById('edit-log-is-late').checked = false;
-    document.getElementById('edit-log-late-auto-note').textContent = '';
-    document.getElementById('edit-log-is-cut').checked = false;
-  } else {
-    recomputeEditLogLateStatus();
-  }
+  // Only arrival records exist now — teachers scan once, at class start.
+  // Late/Cutting checkboxes always apply.
+  document.getElementById('edit-log-late-row').style.display = 'block';
+  document.getElementById('edit-log-cut-row').style.display  = 'block';
+  recomputeEditLogLateStatus();
 }
 
 // Recomputes "Mark as Late" from the entered date/time against the
@@ -4217,10 +4196,7 @@ function onEditLogTypeChange() {
 // scan at that time would be. The checkbox stays editable afterward in
 // case a teacher needs to manually override for a specific record.
 function recomputeEditLogLateStatus() {
-  const type = document.getElementById('edit-log-type').value;
   const note = document.getElementById('edit-log-late-auto-note');
-  if (type === 'departure') { note.textContent = ''; return; }
-
   const dateVal = document.getElementById('edit-log-date').value;
   const timeVal = document.getElementById('edit-log-time').value;
   if (!dateVal || !timeVal) { note.textContent = ''; return; }
@@ -4279,7 +4255,7 @@ function openEditLogModal(logId) {
       infoEl.textContent = '';
     }
 
-    document.getElementById('edit-log-type').value    = log.type || 'arrival';
+    document.getElementById('edit-log-type').value    = 'arrival';
     
     document.getElementById('edit-log-time').value    = localTime;
     document.getElementById('edit-log-date').value    = localDate;
@@ -4303,11 +4279,11 @@ function phLocalToISOString(y, mo, d, h, mi) {
 async function saveEditLog() {
     const logId      = parseInt(document.getElementById('edit-log-id').value);
     const originalTs = document.getElementById('edit-log-original-timestamp').value;
-    const type       = document.getElementById('edit-log-type').value;
+    const type       = 'arrival'; // teachers only scan once, at class start
     const timeVal    = document.getElementById('edit-log-time').value;
     const dateVal    = document.getElementById('edit-log-date').value;
-    const isLate     = type === 'departure' ? false : document.getElementById('edit-log-is-late').checked;
-    const isCut      = type === 'departure' ? false : document.getElementById('edit-log-is-cut').checked;
+    const isLate     = document.getElementById('edit-log-is-late').checked;
+    const isCut      = document.getElementById('edit-log-is-cut').checked;
 
     if (!timeVal || !dateVal) return showToast('Date and time are required.', 'warn');
     const log = logs.find(l => l.id === logId);
