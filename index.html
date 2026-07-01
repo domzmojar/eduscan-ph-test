@@ -520,11 +520,16 @@
 .log-chip-arrival    { background: var(--arrival-bg);   color: var(--arrival);   border: 1px solid var(--arrival-border); }
 .log-chip-departure  { background: var(--departure-bg); color: var(--departure); border: 1px solid var(--departure-border); }
 
-/* Edit button — top-right, subtle */
-.log-feed-edit {
+/* Action buttons (cut toggle + edit) — top-right, subtle */
+.log-feed-actions {
   grid-column: 3;
   grid-row: 1 / 3;
   align-self: center;
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.log-feed-edit {
   background: none;
   border: 1px solid var(--border);
   border-radius: 7px;
@@ -1301,15 +1306,15 @@
           <div style="display:flex; align-items:center; gap:8px; padding:0.6rem 0.75rem; flex:1; border-right:1px solid var(--border);">
             <span style="font-size:1rem; line-height:1;">🕐</span>
             <div style="flex:1; min-width:0;">
-              <div style="font-size:0.7rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:2px;">AM time</div>
+              <div style="font-size:0.7rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:2px;">Start time</div>
               <input type="time" id="class-start-time" value="07:30" style="border:none; outline:none; background:transparent; font-size:0.95rem; font-weight:600; color:var(--text); width:100%; padding:0;">
             </div>
           </div>
           <div style="display:flex; align-items:center; gap:8px; padding:0.6rem 0.75rem; flex:1; border-right:1px solid var(--border);">
             <span style="font-size:1rem; line-height:1;">🕔</span>
             <div style="flex:1; min-width:0;">
-              <div style="font-size:0.7rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:2px;">PM time</div>
-              <input type="time" id="class-dismiss-time" value="17:00" style="border:none; outline:none; background:transparent; font-size:0.95rem; font-weight:600; color:var(--text); width:100%; padding:0;">
+              <div style="font-size:0.7rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:2px;">Dismissal time</div>
+              <input type="time" id="class-dismiss-time" value="08:30" style="border:none; outline:none; background:transparent; font-size:0.95rem; font-weight:600; color:var(--text); width:100%; padding:0;">
             </div>
           </div>
           <div style="display:flex; align-items:center; gap:8px; padding:0.6rem 0.75rem; width:130px; flex-shrink:0;">
@@ -1323,24 +1328,7 @@
             </div>
           </div>
         </div>
-        <p style="font-size:0.73rem; color:var(--text-muted); margin-top:0.4rem;">Late (upper half) triggers after AM time + grace. Cutting class (lower half, shaded) triggers if not scanned by PM time + grace.</p>
-      </div>
-      <div class="form-group">
-        <label>End of Class (Dismissal)</label>
-        <div style="display:flex; align-items:center; gap:0; border:1px solid var(--border); border-radius:8px; overflow:hidden; background:var(--surface);">
-          <div style="display:flex; align-items:center; gap:8px; padding:0.6rem 0.75rem; flex:1;">
-            <span style="font-size:1rem; line-height:1;">🔔</span>
-            <div style="flex:1; min-width:0;">
-              <div style="font-size:0.7rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:2px;">End of class</div>
-              <input type="time" id="class-end-of-class-time" style="border:none; outline:none; background:transparent; font-size:0.95rem; font-weight:600; color:var(--text); width:100%; padding:0;">
-            </div>
-          </div>
-        </div>
-        <label style="display:flex; align-items:center; gap:8px; margin-top:0.5rem; text-transform:none; font-size:0.83rem; font-weight:500; color:var(--text); cursor:pointer;">
-          <input type="checkbox" id="class-keep-endtime-toggle" style="width:16px;height:16px;cursor:pointer;" onchange="onKeepEndTimeToggleChange()">
-          Keep this dismiss time for the next class I create
-        </label>
-        <p style="font-size:0.73rem; color:var(--text-muted); margin-top:0.4rem;">Actual end-of-day dismissal, separate from the PM scan-out time above — for reference/reporting only.</p>
+        <p style="font-size:0.73rem; color:var(--text-muted); margin-top:0.4rem;">Start and dismissal are just this class period's own times — both can fall in the morning or afternoon (e.g. 7:30–8:30 AM). Late triggers after start time + grace; not scanned out by dismissal time + grace counts as missing a PM scan in the SF2 report.</p>
       </div>
       <button class="btn full" onclick="addClass()">Save class</button>
     </div>
@@ -1778,14 +1766,14 @@
           <div style="display:flex; align-items:center; gap:8px; padding:0.6rem 0.75rem; flex:1; border-right:1px solid var(--border);">
             <span style="font-size:1rem; line-height:1;">🕐</span>
             <div style="flex:1; min-width:0;">
-              <div style="font-size:0.7rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:2px;">AM time</div>
+              <div style="font-size:0.7rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:2px;">Start time</div>
               <input type="time" id="edit-class-start-time" style="border:none; outline:none; background:transparent; font-size:0.95rem; font-weight:600; color:var(--text); width:100%; padding:0;">
             </div>
           </div>
           <div style="display:flex; align-items:center; gap:8px; padding:0.6rem 0.75rem; flex:1; border-right:1px solid var(--border);">
             <span style="font-size:1rem; line-height:1;">🕔</span>
             <div style="flex:1; min-width:0;">
-              <div style="font-size:0.7rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:2px;">PM time</div>
+              <div style="font-size:0.7rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:2px;">Dismissal time</div>
               <input type="time" id="edit-class-dismiss-time" style="border:none; outline:none; background:transparent; font-size:0.95rem; font-weight:600; color:var(--text); width:100%; padding:0;">
             </div>
           </div>
@@ -1800,20 +1788,7 @@
             </div>
           </div>
         </div>
-        <p style="font-size:0.73rem; color:var(--text-muted); margin-top:0.4rem; margin-bottom:0.75rem;">Late (upper half) triggers after AM time + grace. Cutting class (lower half, shaded) triggers if not scanned by PM time + grace.</p>
-      </div>
-      <div class="form-group">
-        <label>End of Class (Dismissal)</label>
-        <div style="display:flex; align-items:center; gap:0; border:1px solid var(--border); border-radius:8px; overflow:hidden; background:var(--surface);">
-          <div style="display:flex; align-items:center; gap:8px; padding:0.6rem 0.75rem; flex:1;">
-            <span style="font-size:1rem; line-height:1;">🔔</span>
-            <div style="flex:1; min-width:0;">
-              <div style="font-size:0.7rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:2px;">End of class</div>
-              <input type="time" id="edit-class-end-of-class-time" style="border:none; outline:none; background:transparent; font-size:0.95rem; font-weight:600; color:var(--text); width:100%; padding:0;">
-            </div>
-          </div>
-        </div>
-        <p style="font-size:0.73rem; color:var(--text-muted); margin-top:0.4rem;">Actual end-of-day dismissal, separate from the PM scan-out time above — for reference/reporting only.</p>
+        <p style="font-size:0.73rem; color:var(--text-muted); margin-top:0.4rem; margin-bottom:0.75rem;">Start and dismissal are just this class period's own times — both can fall in the morning or afternoon (e.g. 7:30–8:30 AM). Late triggers after start time + grace; not scanned out by dismissal time + grace counts as missing a PM scan in the SF2 report.</p>
       </div>
       <button class="btn full" onclick="saveEditClass()">Save changes</button>
     </div>
@@ -1907,6 +1882,13 @@
           <label for="edit-log-is-late" style="text-transform:none; font-size:0.9rem; font-weight:600; color:var(--text); cursor:pointer; margin:0;">⏰ Mark as Late</label>
         </div>
         <p id="edit-log-late-auto-note" style="font-size:0.73rem; color:var(--text-muted); margin-top:0.3rem; margin-left:28px;"></p>
+      </div>
+      <div class="form-group" id="edit-log-cut-row" style="margin-bottom:1rem;">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <input type="checkbox" id="edit-log-is-cut" style="width:18px;height:18px;cursor:pointer;">
+          <label for="edit-log-is-cut" style="text-transform:none; font-size:0.9rem; font-weight:600; color:var(--text); cursor:pointer; margin:0;">✂️ Mark as Cutting Class</label>
+        </div>
+        <p style="font-size:0.73rem; color:var(--text-muted); margin-top:0.3rem; margin-left:28px;">Student was scanned present, but was noticed missing during the lesson. This is set manually by the teacher — never auto-detected.</p>
       </div>
       <button class="btn full" onclick="saveEditLog()">Save changes</button>
       <button class="btn full danger" style="margin-top:0.5rem;" onclick="deleteLogEntry()">Delete this record</button>
@@ -2393,24 +2375,28 @@ function computeArrivalLateFlag(cls, isoTimestamp) {
   return nowMin > cutoffMin;
 }
 
-// "Cutting class" counterpart to computeArrivalLateFlag — a PM (departure)
-// scan is an early leave when it lands before pmTime - grace. This mirrors
-// computeSF2Code()'s cutPM branch for the case where a departure log DOES
-// exist; the other cutPM case (no departure log at all by day's end) has
-// no single log to attach a tag to, so it only shows up in day-level views
-// that already pair arrival/departure (Terms modal, roster range views),
-// not as a per-log badge.
-function isEarlyLeaveFlag(cls, isoTimestamp) {
-  if (!cls) return false;
-  const pmTime = cls.pmTime || cls.dismissTime;
-  if (!pmTime) return false;
-  const [h, m] = pmTime.split(':').map(Number);
-  const grace  = cls.graceMins != null ? cls.graceMins : 5;
-  const pmEarly = h * 60 + m - grace;
-
-  const ph = new Date(new Date(isoTimestamp).toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
-  const nowMin = ph.getHours() * 60 + ph.getMinutes();
-  return nowMin < pmEarly;
+// "Cutting class" is now a MANUAL, teacher-set flag — not time-derived.
+// Real-world scenario: a student is scanned present at arrival, but partway
+// through the lesson the teacher notices they're no longer in the room.
+// There's no reliable automatic signal for that (no scan happens at all),
+// so the teacher marks it themselves via toggleCutFlag() / the Edit Log
+// modal. The flag lives on the ARRIVAL record (log.isCut) since that's the
+// record that was "true" at scan time but turned out to be wrong later.
+// NOTE: this is separate from computeSF2Code()'s cutPM branch below, which
+// is pre-existing logic for the official DepEd SF2 export and is untouched
+// — that branch governs report cell-shading based on missing/early PM
+// scans, not this manual UI tag.
+async function toggleCutFlag(logId) {
+  const log = logs.find(l => l.id === logId);
+  if (!log || log.type !== 'arrival') return;
+  log.isCut = !log.isCut;
+  log.updatedAt = nowIso();
+  log.needsSync = true;
+  await dbPutAll('logs', [log]);
+  renderLog(false);
+  renderTodayList();
+  scheduleAutoSync();
+  showToast(log.isCut ? 'Marked as cutting class.' : 'Cutting-class tag removed.', 'ok');
 }
 
 // ── QR SCAN HANDLER ───────────────────────────────────────────────────────
@@ -2455,6 +2441,7 @@ async function handleQRScan(rawData) {
       studentLrn:  student.lrn || '',
       type:        scanMode,
       isLate:      false,
+      isCut:       false, // manually toggled later by the teacher, never auto-set
       updatedAt:   nowIso()
     };
 
@@ -2474,12 +2461,10 @@ async function handleQRScan(rawData) {
     const isArrival = scanMode === 'arrival';
     const lateTag   = (isArrival && logEntry.isLate)
       ? ` <span class="badge badge-late" style="font-size:0.75rem;">⏰ Late</span>` : '';
-    const cutTag    = (!isArrival && isEarlyLeaveFlag(cls, logEntry.timestamp))
-      ? ` <span class="badge badge-cut" style="font-size:0.75rem;">✂️ Cutting</span>` : '';
     showFeedback(
       isArrival ? 'ok' : 'ok-dep',
       isArrival ? '🌅 AM recorded' : '🌇 PM recorded',
-      `<strong>${escapeHTML(student.name)}</strong>${student.lrn ? ' · LRN ' + escapeHTML(student.lrn) : ''}${lateTag}${cutTag}<br>` +
+      `<strong>${escapeHTML(student.name)}</strong>${student.lrn ? ' · LRN ' + escapeHTML(student.lrn) : ''}${lateTag}<br>` +
       `<span style="font-size:0.82rem;">${new Date(logEntry.timestamp).toLocaleTimeString()}</span>` +
       `<br><button class="btn outline sm" style="margin-top:6px;" onclick="openEditLogModal(${logEntry.id})">✏️ Edit this record</button>`
     );
@@ -2536,30 +2521,14 @@ function renderTodayList() {
 }
 
 // ── CLASSES ───────────────────────────────────────────────────────────────
-// "End of class" (endOfClassTime) is the real dismissal time for the whole
-// school day — separate from pmTime/dismissTime, which is just the PM
-// scan-out cutoff used for the "cutting class" check. It's reference/
-// reporting data only and never feeds the late/cutting-class math.
-// If "Keep this dismiss time for the next class" is on, the value and the
-// toggle state persist across class creations via dbSetSetting so a
-// teacher entering several sections with the same bell schedule doesn't
-// have to retype it each time.
-async function onKeepEndTimeToggleChange() {
-  const on  = document.getElementById('class-keep-endtime-toggle').checked;
-  const val = document.getElementById('class-end-of-class-time').value;
-  await dbSetSetting('keep_end_of_class_toggle', on);
-  if (on && val) await dbSetSetting('last_end_of_class_time', val);
-}
-
-async function prefillEndOfClassTime() {
-  const keepOn = !!(await dbGetSetting('keep_end_of_class_toggle'));
-  document.getElementById('class-keep-endtime-toggle').checked = keepOn;
-  if (keepOn) {
-    const lastVal = await dbGetSetting('last_end_of_class_time');
-    if (lastVal) document.getElementById('class-end-of-class-time').value = lastVal;
-  }
-}
-
+// Each class carries just its own start time and dismissal time — no
+// separate "End of Class (Dismissal)" field. Teachers can have several
+// classes back-to-back in the same morning (e.g. 7:30–8:30, then
+// 8:30–9:30), so start/dismiss times are NOT assumed to straddle noon;
+// they're purely this class period's own bell times, whatever time of day
+// they happen to fall on. Late triggers off start time + grace; the PM
+// scan-out cutoff for the SF2 report's cutPM logic uses dismiss time +
+// grace (see computeSF2Code below).
 async function addClass() {
   const glInput  = document.getElementById('class-grade-level-input');
   const secInput = document.getElementById('class-section-input');
@@ -2568,19 +2537,12 @@ async function addClass() {
   if (!gradeLevel || !section) return showToast('Enter both Grade Level and Section.', 'warn');
   const name      = gradeLevel + ' - ' + section;
   const startTime  = document.getElementById('class-start-time').value || '07:30';
-  const dismissTime = document.getElementById('class-dismiss-time').value || '17:00';
+  const dismissTime = document.getElementById('class-dismiss-time').value || '08:30';
   const graceMins  = parseInt(document.getElementById('class-grace-mins').value) || 5;
-  const endOfClassTime = document.getElementById('class-end-of-class-time').value || '';
-  const keepEndTime    = document.getElementById('class-keep-endtime-toggle').checked;
-  classes.push({ id: makeId('class'), name, gradeLevel, section, amTime: startTime, pmTime: dismissTime, startTime, dismissTime, graceMins, endOfClassTime, updatedAt: nowIso() });
+  classes.push({ id: makeId('class'), name, gradeLevel, section, amTime: startTime, pmTime: dismissTime, startTime, dismissTime, graceMins, updatedAt: nowIso() });
   await saveClasses();
   scheduleRosterSync();
   glInput.value = ''; secInput.value = '';
-  if (keepEndTime) {
-    if (endOfClassTime) await dbSetSetting('last_end_of_class_time', endOfClassTime);
-  } else {
-    document.getElementById('class-end-of-class-time').value = '';
-  }
   renderClasses(); populateDropdowns();
   showToast('Class saved.', 'ok');
 }
@@ -2620,16 +2582,15 @@ function renderClasses() {
   }
   tbody.innerHTML = classes.map(c => {
     const count     = students.filter(s => s.classId === c.id).length;
-    const amTime    = c.amTime || c.startTime || '—';
-    const pmTime    = c.pmTime || c.dismissTime || '—';
+    const startTime = c.amTime || c.startTime || '—';
+    const dismissTime = c.pmTime || c.dismissTime || '—';
     const grace     = c.graceMins != null ? `${c.graceMins}m grace` : '';
-    const endTime   = c.endOfClassTime ? ` · Ends ${c.endOfClassTime}` : '';
     return `
     <tr class="class-row-clickable" onclick="openClassRosterModal('${escapeAttr(c.id)}')">
       <td>
         <strong style="color:var(--primary);">${escapeHTML(c.name)}</strong><br>
         <span style="font-size:0.75rem;color:var(--text-muted);">
-          ${count} student${count !== 1 ? 's' : ''} · AM ${amTime} · PM ${pmTime}${grace ? ' · ' + grace : ''}${endTime} · tap to view roster
+          ${count} student${count !== 1 ? 's' : ''} · Start ${startTime} · Dismiss ${dismissTime}${grace ? ' · ' + grace : ''} · tap to view roster
         </span>
       </td>
       <td style="text-align:right; white-space:nowrap;" onclick="event.stopPropagation()">
@@ -2917,8 +2878,12 @@ function buildLogRowHTML(l) {
     : `<span class="log-chip log-chip-arrival">🌅 AM</span>`;
   const lateChip = (l.type === 'arrival' && l.isLate)
     ? `<span class="log-chip log-chip-late">⏰ Late</span>` : '';
-  const cutChip  = (l.type === 'departure' && isEarlyLeaveFlag(classes.find(c => c.id === l.classId), l.timestamp))
+  const cutChip  = (l.type === 'arrival' && l.isCut)
     ? `<span class="log-chip log-chip-cut">✂️ Cutting</span>` : '';
+  // Manual cut-toggle button — arrival records only. Teacher taps this when
+  // a student was scanned in but was noticed missing partway through class.
+  const cutBtn   = l.type === 'arrival'
+    ? `<button class="log-feed-edit" onclick="toggleCutFlag(${l.id})" title="${l.isCut ? 'Unmark cutting class' : 'Mark as cutting class'}">✂️</button>` : '';
 
   return `
     <div class="log-feed-item">
@@ -2927,7 +2892,7 @@ function buildLogRowHTML(l) {
         <span class="log-feed-name-text">${escapeHTML(l.studentName)}</span>
         ${statusChip}${lateChip}${cutChip}
       </div>
-      <button class="log-feed-edit" onclick="openEditLogModal(${l.id})" title="Edit">✏️</button>
+      <div class="log-feed-actions">${cutBtn}<button class="log-feed-edit" onclick="openEditLogModal(${l.id})" title="Edit">✏️</button></div>
       <div class="log-feed-bottom">
         <span class="log-feed-meta">${escapeHTML(l.className || 'Unknown Class')} · ${escapeHTML(l.studentLrn || 'N/A')}</span>
         <div class="log-feed-time-pill">
@@ -4063,8 +4028,8 @@ function openModalRange(type, classId, fromDate, toDate, encodedClassName) {
       const lateCount = rangeLogs.filter(l => l.studentId === s.id && l.type === 'arrival' && l.isLate).length;
       const lateTag   = (type === 'arrived' && lateCount > 0)
         ? `<span class="badge badge-late" style="font-size:0.68rem; margin-left:4px;">⏰ ${lateCount}× late</span>` : '';
-      const cutCount  = (type === 'departed')
-        ? rangeLogs.filter(l => l.studentId === s.id && l.type === 'departure' && isEarlyLeaveFlag(cls, l.timestamp)).length
+      const cutCount  = (type === 'arrived')
+        ? rangeLogs.filter(l => l.studentId === s.id && l.type === 'arrival' && l.isCut).length
         : 0;
       const cutTag    = cutCount > 0
         ? `<span class="badge badge-cut" style="font-size:0.68rem; margin-left:4px;">✂️ ${cutCount}× cutting</span>` : '';
@@ -4111,7 +4076,7 @@ function openModal(type, classId, dateStr, encodedClassName) {
         if (logEntry) {
           timeStr = new Date(logEntry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
           isLate  = !!logEntry.isLate;
-          isCut   = type === 'departed' && isEarlyLeaveFlag(cls, logEntry.timestamp);
+          isCut   = type === 'arrived' && !!logEntry.isCut;
           logId   = logEntry.id;
         }
       }
@@ -4157,9 +4122,8 @@ function openEditClassModal(classId) {
   document.getElementById('edit-class-grade-level').value   = gl;
   document.getElementById('edit-class-section').value       = sec;
   document.getElementById('edit-class-start-time').value    = cls.amTime || cls.startTime || '07:30';
-  document.getElementById('edit-class-dismiss-time').value  = cls.pmTime || cls.dismissTime || '17:00';
+  document.getElementById('edit-class-dismiss-time').value  = cls.pmTime || cls.dismissTime || '08:30';
   document.getElementById('edit-class-grace-mins').value    = cls.graceMins != null ? cls.graceMins : 5;
-  document.getElementById('edit-class-end-of-class-time').value = cls.endOfClassTime || '';
   document.getElementById('edit-class-modal').classList.add('open');
   document.body.style.overflow = 'hidden';
 }
@@ -4169,15 +4133,14 @@ async function saveEditClass() {
   const gradeLevel = document.getElementById('edit-class-grade-level').value.trim();
   const section    = document.getElementById('edit-class-section').value.trim();
   const startTime   = document.getElementById('edit-class-start-time').value || '07:30';
-  const dismissTime = document.getElementById('edit-class-dismiss-time').value || '17:00';
+  const dismissTime = document.getElementById('edit-class-dismiss-time').value || '08:30';
   const graceMins   = parseInt(document.getElementById('edit-class-grace-mins').value) || 0;
-  const endOfClassTime = document.getElementById('edit-class-end-of-class-time').value || '';
   if (!gradeLevel || !section) return showToast('Grade Level and Section cannot be empty.', 'warn');
   const name = gradeLevel + ' - ' + section;
   const cls = classes.find(c => c.id === id);
   if (!cls) return;
   cls.name = name; cls.gradeLevel = gradeLevel; cls.section = section;
-  cls.amTime = startTime; cls.pmTime = dismissTime; cls.startTime = startTime; cls.dismissTime = dismissTime; cls.graceMins = graceMins; cls.endOfClassTime = endOfClassTime; cls.updatedAt = nowIso();
+  cls.amTime = startTime; cls.pmTime = dismissTime; cls.startTime = startTime; cls.dismissTime = dismissTime; cls.graceMins = graceMins; delete cls.endOfClassTime; cls.updatedAt = nowIso();
   await saveClasses();
   scheduleRosterSync();
   closeEditClassModalDirect();
@@ -4190,14 +4153,18 @@ function closeEditClassModalDirect() { document.getElementById('edit-class-modal
 
 // ── EDIT LOG MODAL ────────────────────────────────────────────────────────
 function onEditLogTypeChange() {
-  // "Mark as Late" is meaningless for a departure record — hide it instead
-  // of leaving a checkbox visible that has no effect for that record type.
-  const type = document.getElementById('edit-log-type').value;
-  const row  = document.getElementById('edit-log-late-row');
-  row.style.display = type === 'departure' ? 'none' : 'block';
+  // "Mark as Late" and "Mark as Cutting Class" are both meaningless for a
+  // departure record — hide them instead of leaving checkboxes visible
+  // that have no effect for that record type.
+  const type    = document.getElementById('edit-log-type').value;
+  const row     = document.getElementById('edit-log-late-row');
+  const cutRow  = document.getElementById('edit-log-cut-row');
+  row.style.display    = type === 'departure' ? 'none' : 'block';
+  cutRow.style.display = type === 'departure' ? 'none' : 'block';
   if (type === 'departure') {
     document.getElementById('edit-log-is-late').checked = false;
     document.getElementById('edit-log-late-auto-note').textContent = '';
+    document.getElementById('edit-log-is-cut').checked = false;
   } else {
     recomputeEditLogLateStatus();
   }
@@ -4238,7 +4205,7 @@ function recomputeEditLogLateStatus() {
       ? `Auto-detected: Late (cutoff is ${amTime} + ${grace}m grace). Untick above to override.`
       : `Auto-detected: On time (cutoff is ${amTime} + ${grace}m grace).`;
   } else {
-    note.textContent = 'No AM time set for this class — defaulting to On time.';
+    note.textContent = 'No start time set for this class — defaulting to On time.';
   }
 }
 
@@ -4266,6 +4233,7 @@ function openEditLogModal(logId) {
     
     document.getElementById('edit-log-time').value    = localTime;
     document.getElementById('edit-log-date').value    = localDate;
+    document.getElementById('edit-log-is-cut').checked = !!log.isCut;
     
     onEditLogTypeChange(); // also triggers the initial auto-recompute for arrivals
     document.getElementById('edit-log-modal').classList.add('open');
@@ -4289,6 +4257,7 @@ async function saveEditLog() {
     const timeVal    = document.getElementById('edit-log-time').value;
     const dateVal    = document.getElementById('edit-log-date').value;
     const isLate     = type === 'departure' ? false : document.getElementById('edit-log-is-late').checked;
+    const isCut      = type === 'departure' ? false : document.getElementById('edit-log-is-cut').checked;
 
     if (!timeVal || !dateVal) return showToast('Date and time are required.', 'warn');
     const log = logs.find(l => l.id === logId);
@@ -4304,6 +4273,7 @@ async function saveEditLog() {
     log.localDate = dateVal;
     log.type  = type;
     log.isLate = isLate;
+    log.isCut  = isCut;
     log.updatedAt = nowIso();
     
     // Flag for the v7 GAS script to update the row instead of duplicating
@@ -6572,7 +6542,6 @@ window.addEventListener('DOMContentLoaded', async () => {
   syncPendingWhenOnline('boot');
 
   populateDropdowns();
-  prefillEndOfClassTime();
   initSummaryPeriod();
   loadSF2Profile();
   checkAutoExport('boot');
