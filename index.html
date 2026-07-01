@@ -472,17 +472,20 @@
   grid-row: 1;
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
+  row-gap: 4px;
   min-width: 0;
 }
 .log-feed-name-text {
+  flex: 1 1 auto;
+  min-width: 100%;
   font-weight: 700;
   font-size: 0.92rem;
   color: var(--text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  min-width: 0;
 }
 .log-chip {
   display: inline-flex; align-items: center;
@@ -1231,19 +1234,12 @@
 
       <div id="scan-result-box"></div>
 
-      <!-- Separate Arrival & Departure counters -->
+      <!-- Scanned counter (unique students scanned today, of total enrolled) -->
       <div id="scan-progress-container" style="display:none; margin-top:1rem; border-radius:10px; border:1px solid var(--border); overflow:hidden;">
-        <div style="display:flex;">
-          <div style="flex:1; background:var(--arrival-bg); border-right:1px solid var(--arrival-border); padding:0.75rem; text-align:center;">
-            <div style="font-size:0.65rem; color:var(--arrival); font-weight:700; text-transform:uppercase; letter-spacing:0.05em;">🌅 AM</div>
-            <div id="scan-arrival-count" style="font-size:1.6rem; font-weight:800; color:var(--arrival); margin-top:0.2rem; line-height:1;">0</div>
-            <div id="scan-arrival-sub" style="font-size:0.68rem; color:var(--arrival); margin-top:0.15rem; opacity:0.8;">of <span id="scan-arrival-total">0</span></div>
-          </div>
-          <div style="flex:1; background:var(--departure-bg); padding:0.75rem; text-align:center;">
-            <div style="font-size:0.65rem; color:var(--departure); font-weight:700; text-transform:uppercase; letter-spacing:0.05em;">🌇 PM</div>
-            <div id="scan-departure-count" style="font-size:1.6rem; font-weight:800; color:var(--departure); margin-top:0.2rem; line-height:1;">0</div>
-            <div id="scan-departure-sub" style="font-size:0.68rem; color:var(--departure); margin-top:0.15rem; opacity:0.8;">of <span id="scan-departure-total">0</span></div>
-          </div>
+        <div style="background:var(--arrival-bg); padding:0.85rem; text-align:center;">
+          <div style="font-size:0.65rem; color:var(--arrival); font-weight:700; text-transform:uppercase; letter-spacing:0.05em;">✅ Scanned</div>
+          <div id="scan-total-count" style="font-size:1.8rem; font-weight:800; color:var(--arrival); margin-top:0.2rem; line-height:1;">0</div>
+          <div id="scan-total-sub" style="font-size:0.7rem; color:var(--arrival); margin-top:0.15rem; opacity:0.8;">of <span id="scan-total-total">0</span> students</div>
         </div>
       </div>
     </div>
@@ -1480,7 +1476,7 @@
 
     <details id="sf2-profile-details" style="margin-top:1.25rem; border:1.5px solid var(--border); border-radius:10px; padding:0.75rem 1rem; background:var(--bg);">
       <summary style="cursor:pointer; font-size:0.87rem; font-weight:700; color:var(--primary);">🏫 School details for SF2 report</summary>
-      <p style="font-size:0.78rem; color:var(--text-muted); margin:0.5rem 0 0.75rem;">Filled in once — printed on every SF2 you generate. Grade Level applies app-wide; Section is taken from the class name.</p>
+      <p style="font-size:0.78rem; color:var(--text-muted); margin:0.5rem 0 0.75rem;">Filled in once — printed on every SF2 you generate. Section is taken from the class name.</p>
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.6rem;">
         <div>
           <label for="sf2-school-id" style="font-size:0.78rem; margin-bottom:0.25rem;">School ID</label>
@@ -1493,14 +1489,6 @@
         <div style="grid-column:1 / -1;">
           <label for="sf2-school-name" style="font-size:0.78rem; margin-bottom:0.25rem;">Name of School</label>
           <input type="text" id="sf2-school-name" placeholder="e.g. Cebu City Central Elementary School" oninput="saveSF2Profile()">
-        </div>
-        <div>
-          <label for="sf2-grade-level" style="font-size:0.78rem; margin-bottom:0.25rem;">Grade Level</label>
-          <input type="text" id="sf2-grade-level" placeholder="e.g. Grade 6" oninput="saveSF2Profile()">
-        </div>
-        <div>
-          <label for="sf2-page-of" style="font-size:0.78rem; margin-bottom:0.25rem;">Page ___ of ___</label>
-          <input type="text" id="sf2-page-of" placeholder="e.g. 1" oninput="saveSF2Profile()">
         </div>
       </div>
     </details>
@@ -1833,12 +1821,13 @@
       <div class="form-group">
         <label>Student</label>
         <div id="edit-log-student-name" style="font-weight:700; font-size:0.95rem; padding:0.4rem 0;"></div>
+        <div id="edit-log-class-info" style="font-size:0.78rem; color:var(--text-muted); margin-top:-0.3rem; margin-bottom:0.2rem;"></div>
       </div>
       <div class="form-group">
         <label for="edit-log-type">Record type</label>
         <select id="edit-log-type" onchange="onEditLogTypeChange()">
-          <option value="arrival">🌅 AM</option>
-          <option value="departure">🌇 PM</option>
+          <option value="arrival">✅ Arrival (Time In)</option>
+          <option value="departure">🌇 Departure (Time Out)</option>
         </select>
       </div>
       <div class="form-group">
@@ -1985,8 +1974,6 @@ const SF2_PROFILE_FIELDS = [
   ['sf2-school-id',    'schoolId'],
   ['sf2-school-year',  'schoolYear'],
   ['sf2-school-name',  'schoolName'],
-  ['sf2-grade-level',  'gradeLevel'],
-  ['sf2-page-of',      'pageOf'],
 ];
 
 async function loadSF2Profile() {
@@ -2478,31 +2465,20 @@ function renderTodayList() {
   const todayLogs = logs.filter(l => l.classId === currentClassId && getLogDate(l) === today);
   const totalStudents = students.filter(s => s.classId === currentClassId).length;
 
-  // Arrivals: unique students with an arrival log today
-  const arrivedIds  = new Set(todayLogs.filter(l => l.type === 'arrival').map(l => l.studentId));
-  // Departures: unique students with a departure log today
-  const departedIds = new Set(todayLogs.filter(l => l.type === 'departure').map(l => l.studentId));
+  // Scanned: unique students with ANY log (arrival or departure) today
+  const scannedIds = new Set(todayLogs.map(l => l.studentId));
+  const scannedCount = scannedIds.size;
 
-  const arrCount = arrivedIds.size;
-  const depCount = departedIds.size;
-
-  if (arrCount > 0 || depCount > 0 || totalStudents > 0) {
+  if (scannedCount > 0 || totalStudents > 0) {
     container.style.display = 'block';
 
-    document.getElementById('scan-arrival-count').textContent = arrCount;
-    document.getElementById('scan-arrival-total').textContent = totalStudents;
-    document.getElementById('scan-departure-count').textContent = depCount;
-    document.getElementById('scan-departure-total').textContent = totalStudents;
+    document.getElementById('scan-total-count').textContent = scannedCount;
+    document.getElementById('scan-total-total').textContent = totalStudents;
 
-    // Turn arrival count green when whole class has arrived
-    const arrEl = document.getElementById('scan-arrival-count');
-    arrEl.style.color = (arrCount === totalStudents && totalStudents > 0)
+    // Turn count green when the whole class has been scanned
+    const totalEl = document.getElementById('scan-total-count');
+    totalEl.style.color = (scannedCount === totalStudents && totalStudents > 0)
       ? 'var(--success)' : 'var(--arrival)';
-
-    // Turn departure count green when whole class has been dismissed
-    const depEl = document.getElementById('scan-departure-count');
-    depEl.style.color = (depCount === totalStudents && totalStudents > 0)
-      ? 'var(--success)' : 'var(--departure)';
   } else {
     container.style.display = 'none';
   }
@@ -3182,13 +3158,41 @@ function studentsEnrolledInRange(classId, range) {
   return studentsEnrolledAsOf(classId, range.to);
 }
 
+// True if the given YYYY-MM-DD date string falls on a Saturday or Sunday.
+// The Attendance Dashboard only counts weekdays — schools have no classes
+// (and thus no attendance) on weekends.
+function isWeekend(dateStr) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const dow = new Date(y, m - 1, d).getDay();
+  return dow === 0 || dow === 6;
+}
+
 function renderSummary() {
   const range = getActiveDateRange();
   if (!range) return;
 
-  // 1. Filter Logs based on Range
+  // Daily view on a weekend: there are no classes, so show a friendly
+  // "no school" state instead of treating every enrolled student as absent.
+  if (summaryPeriod === 'daily' && isWeekend(range.from)) {
+    destroyCharts();
+    document.getElementById('metric-rate').textContent = '—';
+    document.getElementById('metric-rate-detail').textContent = 'weekend';
+    document.getElementById('metric-absent').textContent = '—';
+    document.getElementById('metric-absent-detail').textContent = 'no classes';
+    document.getElementById('metric-late').textContent = '—';
+    document.getElementById('metric-late-detail').textContent = 'no classes';
+    document.getElementById('metric-days').textContent = '0';
+    document.getElementById('metric-days-detail').textContent = 'weekend';
+    const listEl = document.getElementById('actionable-list-container');
+    if (listEl) listEl.innerHTML = '<div style="text-align:center; padding:2rem; color:var(--text-muted); font-weight:600;">📅 Weekend — no classes scheduled.</div>';
+    return;
+  }
+
+  // 1. Filter Logs based on Range — weekends are excluded since Saturdays
+  //    and Sundays are never school days.
   const logsInRange = logs.filter(l => {
     const d = getLogDate(l);
+    if (isWeekend(d)) return false;
     return d >= range.from && d <= range.to;
   });
 
@@ -4261,6 +4265,20 @@ function openEditLogModal(logId) {
     document.getElementById('edit-log-original-timestamp').value = log.timestamp;
     document.getElementById('edit-log-class-id').value           = log.classId || '';
     document.getElementById('edit-log-student-name').textContent = log.studentName + (log.studentLrn ? ' · LRN ' + log.studentLrn : '');
+
+    // Useful context in place of the old AM/PM badge: Grade, Section, and
+    // this class's scheduled time — pulled from the class record.
+    const logCls = classes.find(c => c.id === log.classId);
+    const infoEl = document.getElementById('edit-log-class-info');
+    if (logCls) {
+      const gl  = logCls.gradeLevel || (logCls.name && logCls.name.includes(' - ') ? logCls.name.split(' - ')[0].trim() : '');
+      const sec = logCls.section || (logCls.name && logCls.name.includes(' - ') ? logCls.name.split(' - ')[1].trim() : '');
+      const sched = (logCls.startTime || logCls.amTime) ? `${logCls.startTime || logCls.amTime}–${logCls.dismissTime || logCls.pmTime || ''}` : '';
+      infoEl.textContent = [gl, sec].filter(Boolean).join(' · ') + (sched ? ` · 🕐 ${sched}` : '');
+    } else {
+      infoEl.textContent = '';
+    }
+
     document.getElementById('edit-log-type').value    = log.type || 'arrival';
     
     document.getElementById('edit-log-time').value    = localTime;
