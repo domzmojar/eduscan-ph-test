@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -2330,25 +2329,6 @@ function getLogMonth(l) {
   return parseInt(dateStr.split('-')[1], 10);
 }
 
-// ── SMART LATE DETECTION ─────────────────────────────────────────────────
-// Single source of truth for "is this AM (arrival) time late?", used by
-// both the live QR scanner and the manual log editor. Always derives the
-// answer fresh from the class's AM time + grace vs. the given clock time,
-// instead of trusting a stale/manual flag — so an arrival record edited
-// to e.g. 4:30 PM is correctly flagged late even though that's nowhere
-// near the AM window (AM only ever runs from AM-time up to PM-time; any
-// arrival timestamp at or after PM-time is automatically late too, since
-// it's past the entire AM period).
-function computeAutoLate(cls, type, hh, mm) {
-  if (type !== 'arrival' || !cls) return false;
-  const amTime = cls.amTime || cls.startTime || '07:30';
-  const [amH, amM] = amTime.split(':').map(Number);
-  const grace     = cls.graceMins != null ? cls.graceMins : 5;
-  const cutoffMin = amH * 60 + amM + grace;
-  const nowMin    = hh * 60 + mm;
-  return nowMin > cutoffMin;
-}
-
 // ── QR SCAN HANDLER ───────────────────────────────────────────────────────
 async function handleQRScan(rawData) {
   try {
@@ -2396,9 +2376,16 @@ async function handleQRScan(rawData) {
 
     if (scanMode === 'arrival') {
       const cls = classes.find(c => c.id === currentClassId);
-      // Use Philippine time consistently — see nowPHTime() comment above.
-      const { h: nowH, m: nowM } = nowPHTime();
-      logEntry.isLate = computeAutoLate(cls, 'arrival', nowH, nowM);
+      const amTime = cls && (cls.amTime || cls.startTime);
+      if (amTime) {
+        // Use Philippine time consistently — see nowPHTime() comment above.
+        const { h: nowH, m: nowM } = nowPHTime();
+        const [h, m]    = amTime.split(':').map(Number);
+        const grace     = cls.graceMins != null ? cls.graceMins : 5;
+        const cutoffMin = h * 60 + m + grace;
+        const nowMin    = nowH * 60 + nowM;
+        if (nowMin > cutoffMin) logEntry.isLate = true;
+      }
     }
 
     const newId = await dbAdd('logs', logEntry);
