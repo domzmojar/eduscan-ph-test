@@ -3696,13 +3696,7 @@ async function printSummaryReport() {
     // For cutPM: upper unfilled but line still needed to show the split
     const diagLine = true;
 
-    // NOTE: OOXML schema (CT_TwoCellAnchor) allows exactly ONE shape per
-    // anchor. Packing 2 <xdr:sp> into one anchor is invalid and triggers
-    // Excel's "we found a problem with some content" repair prompt, which
-    // then strips drawing1.xml entirely. Fix: one anchor per shape.
-    const anchorFromTo = `<xdr:from>${cellAnchor(fromRow, fromCol, 0, 0)}</xdr:from><xdr:to>${cellAnchor(toRow, toCol, 0, 0)}</xdr:to>`;
-    anchors += `<xdr:twoCellAnchor editAs="oneCell">${anchorFromTo}${triangleShape(shapeId++, drawUpper, true, diagLine)}<xdr:clientData/></xdr:twoCellAnchor>`;
-    anchors += `<xdr:twoCellAnchor editAs="oneCell">${anchorFromTo}${triangleShape(shapeId++, drawLower, false, false)}<xdr:clientData/></xdr:twoCellAnchor>`;
+    anchors += `<xdr:twoCellAnchor editAs="oneCell"><xdr:from>${cellAnchor(fromRow, fromCol, 0, 0)}</xdr:from><xdr:to>${cellAnchor(toRow, toCol, 0, 0)}</xdr:to>${triangleShape(shapeId++, drawUpper, true, diagLine)}${triangleShape(shapeId++, drawLower, false, false)}<xdr:clientData/></xdr:twoCellAnchor>`;
   }
 
   const drawingXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">${anchors}</xdr:wsDr>`;
