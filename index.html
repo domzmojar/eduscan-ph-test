@@ -3322,8 +3322,11 @@ async function generateSF2Official() {
   ws.getCell('K6').value  = profile.schoolYear || '';
   ws.getCell('X6').value  = monthLabel;
   ws.getCell('C8').value  = profile.schoolName || '';
-  ws.getCell('T8').value  = sf2GradeLevel || '';
-  ws.getCell('Z8').value  = sectionName || '';
+  // T8:W8 = "Grade Level" label (template, untouched), X8:Y8 = value box.
+  // Z8:AB8 = "Section" label (template, untouched), AC8:AH8 = value box.
+  const gradeLevelNumOnly = String(sf2GradeLevel || '').replace(/grade/i, '').trim();
+  ws.getCell('X8').value  = gradeLevelNumOnly;
+  ws.getCell('AC8').value = sectionName || '';
 
   // Row 10 = merged instructional label "(1st row for date, 2nd row for
   // Day: M,T,W,TH,F)" (D10:AB10) — DO NOT write into it. Actual per-column
@@ -3380,6 +3383,13 @@ async function generateSF2Official() {
   ws.getCell('AH75').value = pctAttendanceM;
   ws.getCell('AI75').value = pctAttendanceF;
   ws.getCell('AJ75').value = pctAttendance;
+  // Template has these three cells set to textRotation 87/90 (vertical
+  // text) — override to horizontal so the number reads normally like the
+  // other summary rows.
+  ['AH77', 'AI77', 'AJ77'].forEach(coord => {
+    const cell = ws.getCell(coord);
+    cell.alignment = { ...cell.alignment, textRotation: 0 };
+  });
   ws.getCell('AH77').value = fiveConsecutiveCountM;
   ws.getCell('AI77').value = fiveConsecutiveCountF;
   ws.getCell('AJ77').value = fiveConsecutiveCount;
