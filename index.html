@@ -3327,22 +3327,24 @@ async function generateSF2Official() {
     ws.getCell(62, col).value = totalDayPresentM[i] + totalDayPresentF[i];
   }
 
-  // Verify these value-cell coordinates visually against the template before
-  // relying on them — merges only confirm label spans, not blank input cells.
-  ws.getCell('AH65').value = maleCount;
-  ws.getCell('AI65').value = femaleCount;
-  ws.getCell('AJ65').value = maleCount + femaleCount;
-  ws.getCell('AB66').value = enrolledAsOfFirstFriday;
-  ws.getCell('AB70').value = registeredEndOfMonth;
-  ws.getCell('AB72').value = pctEnrolment;
-  ws.getCell('AB74').value = ada;
-  ws.getCell('AB75').value = pctAttendance;
-  ws.getCell('AB77').value = fiveConsecutiveCount;
-  ws.getCell('AB79').value = droppedOut;
-  ws.getCell('AB81').value = transferredOut;
-  ws.getCell('AB83').value = transferredIn;
-  ws.getCell('D63').value  = monthLabel;
-  ws.getCell('AF64').value = numDays;
+  // OCR-verified via LibreOffice render: label cells are AB{row} (must stay
+  // untouched), value cells are AH{row}(M) / AI{row}(F) / AJ{row}(Total).
+  // NOTE: we only compute aggregate (non-gender-split) totals right now —
+  // writing the same total into M and F columns would be wrong data, so
+  // M/F columns are left blank until real per-gender breakdown logic is
+  // added. Only the Total (AJ) column is populated below. AH65/AI65/AJ65
+  // are the 'M'/'F'/'TOTAL' column headers — never write to those.
+  ws.getCell('AJ66').value = enrolledAsOfFirstFriday;  // * Enrolment as of 1st Friday of June
+  ws.getCell('AJ70').value = registeredEndOfMonth;      // Registered as of end of month
+  ws.getCell('AJ72').value = pctEnrolment;
+  ws.getCell('AJ74').value = ada;
+  ws.getCell('AJ75').value = pctAttendance;
+  ws.getCell('AJ77').value = fiveConsecutiveCount;
+  ws.getCell('AJ79').value = droppedOut;
+  ws.getCell('AJ81').value = transferredOut;
+  ws.getCell('AJ83').value = transferredIn;
+  ws.getCell('AC64').value = monthLabel; // "Month:" label is AB64 (untouched); value sits in AC64
+  ws.getCell('AG64').value = numDays;    // "No. of Days of Classes:" label is merged AE64:AF65 (untouched); value sits in AG64
 
   let outBuf = await wb.xlsx.writeBuffer();
   try {
