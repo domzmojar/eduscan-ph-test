@@ -1239,8 +1239,12 @@
       <div id="scan-progress-container" style="display:none; margin-top:1rem; border-radius:10px; border:1px solid var(--border); overflow:hidden;">
         <div style="background:var(--arrival-bg); padding:0.85rem; text-align:center;">
           <div style="font-size:0.65rem; color:var(--arrival); font-weight:700; text-transform:uppercase; letter-spacing:0.05em;">✅ Scanned</div>
-          <div id="scan-total-count" style="font-size:1.8rem; font-weight:800; color:var(--arrival); margin-top:0.2rem; line-height:1;">0</div>
-          <div id="scan-total-sub" style="font-size:0.7rem; color:var(--arrival); margin-top:0.15rem; opacity:0.8;">of <span id="scan-total-total">0</span> students</div>
+          <div style="display:flex; align-items:baseline; justify-content:center; gap:0.35rem; margin-top:0.2rem; line-height:1;">
+            <span id="scan-total-count" style="font-size:1.8rem; font-weight:800; color:var(--arrival);">0</span>
+            <span style="font-size:1.4rem; font-weight:700; color:var(--arrival); opacity:0.6;">/</span>
+            <span id="scan-total-total" style="font-size:1.8rem; font-weight:800; color:var(--arrival);">0</span>
+          </div>
+          <div style="font-size:0.7rem; color:var(--arrival); margin-top:0.15rem; opacity:0.8;">students scanned</div>
         </div>
       </div>
     </div>
@@ -1387,6 +1391,39 @@
 <div id="page-summary" class="page">
   <div class="card">
     <h2 style="margin-bottom:1rem;">📊 Attendance Dashboard</h2>
+
+    <!-- SF2 REPORT GENERATOR (moved to top — no scrolling needed once a
+         month of logs is recorded) -->
+    <div id="sf2-generator-box" style="border:1.5px solid var(--primary); border-radius:12px; padding:1rem; margin-bottom:1.5rem; background:var(--primary-bg);">
+      <label for="sf2-class-select" style="font-size:0.83rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.04em; display:block; margin-bottom:0.4rem;">Class / Section for SF2</label>
+      <select id="sf2-class-select" style="width:100%; padding:0.65rem 0.75rem; border:1px solid var(--border); border-radius:8px; font-size:0.95rem; background:var(--surface); color:var(--text);">
+        <option value="">— Select a class —</option>
+      </select>
+
+      <details id="sf2-profile-details" style="margin-top:0.9rem; border:1.5px solid var(--border); border-radius:10px; padding:0.75rem 1rem; background:var(--bg);">
+        <summary style="cursor:pointer; font-size:0.87rem; font-weight:700; color:var(--primary);">🏫 School details for SF2 report</summary>
+        <p style="font-size:0.78rem; color:var(--text-muted); margin:0.5rem 0 0.75rem;">Filled in once — printed on every SF2 you generate. Section is taken from the class name.</p>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.6rem;">
+          <div>
+            <label for="sf2-school-id" style="font-size:0.78rem; margin-bottom:0.25rem;">School ID</label>
+            <input type="text" id="sf2-school-id" placeholder="e.g. 123456" oninput="saveSF2Profile()">
+          </div>
+          <div>
+            <label for="sf2-school-year" style="font-size:0.78rem; margin-bottom:0.25rem;">School Year</label>
+            <input type="text" id="sf2-school-year" placeholder="e.g. 2026-2027" oninput="saveSF2Profile()">
+          </div>
+          <div style="grid-column:1 / -1;">
+            <label for="sf2-school-name" style="font-size:0.78rem; margin-bottom:0.25rem;">Name of School</label>
+            <input type="text" id="sf2-school-name" placeholder="e.g. Cebu City Central Elementary School" oninput="saveSF2Profile()">
+          </div>
+        </div>
+      </details>
+
+      <button class="btn full" onclick="generateSF2Official()" style="margin-top:1rem; background:linear-gradient(135deg,#1d4ed8,#3b82f6); font-size:0.9rem; padding:0.85rem; border-radius:10px;">
+        📊 Generate SF2 Report (XLSX)
+      </button>
+      <p style="font-size:0.72rem; color:var(--text-muted); text-align:center; margin-top:0.5rem;">SF2 covers the full calendar month. Select a class above before generating.</p>
+    </div>
     
     <!-- 1. PERIOD FILTERS -->
     <div class="summary-period-tabs" id="summary-period-tabs" style="margin-bottom:1rem;">
@@ -1466,39 +1503,6 @@
     <div id="actionable-list-container">
       <!-- Content injected by JS -->
     </div>
-
-              <!-- 4. SF2 SCHOOL PROFILE (saved once, reused on every SF2 export) -->
-    <div style="margin-top:1.25rem;">
-      <label for="sf2-class-select" style="font-size:0.83rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.04em; display:block; margin-bottom:0.4rem;">Class / Section for SF2</label>
-      <select id="sf2-class-select" style="width:100%; padding:0.65rem 0.75rem; border:1px solid var(--border); border-radius:8px; font-size:0.95rem; background:var(--surface); color:var(--text);">
-        <option value="">— Select a class —</option>
-      </select>
-    </div>
-
-    <details id="sf2-profile-details" style="margin-top:1.25rem; border:1.5px solid var(--border); border-radius:10px; padding:0.75rem 1rem; background:var(--bg);">
-      <summary style="cursor:pointer; font-size:0.87rem; font-weight:700; color:var(--primary);">🏫 School details for SF2 report</summary>
-      <p style="font-size:0.78rem; color:var(--text-muted); margin:0.5rem 0 0.75rem;">Filled in once — printed on every SF2 you generate. Section is taken from the class name.</p>
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.6rem;">
-        <div>
-          <label for="sf2-school-id" style="font-size:0.78rem; margin-bottom:0.25rem;">School ID</label>
-          <input type="text" id="sf2-school-id" placeholder="e.g. 123456" oninput="saveSF2Profile()">
-        </div>
-        <div>
-          <label for="sf2-school-year" style="font-size:0.78rem; margin-bottom:0.25rem;">School Year</label>
-          <input type="text" id="sf2-school-year" placeholder="e.g. 2026-2027" oninput="saveSF2Profile()">
-        </div>
-        <div style="grid-column:1 / -1;">
-          <label for="sf2-school-name" style="font-size:0.78rem; margin-bottom:0.25rem;">Name of School</label>
-          <input type="text" id="sf2-school-name" placeholder="e.g. Cebu City Central Elementary School" oninput="saveSF2Profile()">
-        </div>
-      </div>
-    </details>
-
-              <!-- 4. PRINT / SHARE BUTTON -->
-    <button class="btn full" onclick="generateSF2Official()" style="margin-top:1rem; background:linear-gradient(135deg,#1d4ed8,#3b82f6); font-size:0.9rem; padding:0.85rem; border-radius:10px;">
-      📊 Generate SF2 Report (XLSX)
-    </button>
-    <p style="font-size:0.72rem; color:var(--text-muted); text-align:center; margin-top:0.5rem;">SF2 covers the full calendar month. Select a class above before generating.</p>
 
   </div>
 </div>
