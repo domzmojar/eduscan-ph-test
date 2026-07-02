@@ -3178,15 +3178,31 @@ async function generateSF2Official() {
   const monthLabel = monthStart.toLocaleDateString('en-PH', { month: 'long', year: 'numeric' });
 
   const DOW_LETTER = ['', 'M', 'T', 'W', 'TH', 'F', ''];
+  // Template's D:AB = 25 fixed columns = 5 Mon–Fri weeks. Column for a given
+  // school day is anchored to the Monday of the week containing the 1st of
+  // the month (that Monday can fall in the previous month — that's fine,
+  // it's only used as a zero-point for the offset math, never written).
+  const DAY_START_COL = 4; // D
+  const isoDowStart = monthStart.getDay() === 0 ? 7 : monthStart.getDay(); // 1=Mon..7=Sun
+  const mondayAnchor = new Date(monthStart);
+  mondayAnchor.setDate(mondayAnchor.getDate() - (isoDowStart - 1));
+
   const schoolDays = [];
+  const dayCols = []; // parallel array — actual template column for schoolDays[i]
   for (let d = new Date(monthStart); d <= monthEnd; d.setDate(d.getDate() + 1)) {
     const dow = d.getDay();
     if (dow === 0 || dow === 6) continue;
+    const dowIndex = dow - 1; // Mon=0 .. Fri=4
+    const daysSinceAnchor = Math.round((d - mondayAnchor) / 86400000);
+    const weekIndex = Math.floor(daysSinceAnchor / 7);
+    if (weekIndex > 4) {
+      return showToast('This month spans more than 5 Monday–Friday weeks — official template only has 25 day columns (D:AB). Cannot fit.', 'warn');
+    }
     schoolDays.push(dateToStr(new Date(d)));
+    dayCols.push(DAY_START_COL + weekIndex * 5 + dowIndex);
   }
   const numDays = schoolDays.length;
   if (numDays === 0) return showToast('No school days found in this month.', 'warn');
-  if (numDays > 25) return showToast('Month has more than 25 school days — official template only has 25 day columns (D:AB). Cannot fit.', 'warn');
 
   const logsInMonth = logs.filter(l => {
     const d = getLogDate(l);
@@ -3337,9 +3353,8 @@ async function generateSF2Official() {
   // Row 10 = merged instructional label "(1st row for date, 2nd row for
   // Day: M,T,W,TH,F)" (D10:AB10) — DO NOT write into it. Actual per-column
   // input cells are rows 11 (date number) and 12 (day letter), unmerged.
-  const DAY_START_COL = 4; // D
   for (let i = 0; i < numDays; i++) {
-    const col = DAY_START_COL + i;
+    const col = dayCols[i];
     ws.getCell(11, col).value = dayNums[i];
     ws.getCell(12, col).value = dayDows[i];
   }
@@ -3356,7 +3371,7 @@ async function generateSF2Official() {
       if (idx >= maxRows) return;
       ws.getCell(`B${r}`).value = s.name;
       s.dayCodes.forEach((code, i) => {
-        const col = DAY_START_COL + i;
+        const col = dayCols[i];
         const cell = centerCell(r, col);
         cell.value = sf2CellText(code);
         boldenIfAbsent(cell, code);
@@ -3372,7 +3387,7 @@ async function generateSF2Official() {
   fillRoster(femaleData, 36, 25);
 
   for (let i = 0; i < numDays; i++) {
-    const col = DAY_START_COL + i;
+    const col = dayCols[i];
     // Template has row 35 (Male total per day) set to textRotation 90 —
     // override to horizontal like rows 61/62 (Female / Combined totals).
     const mCell = ws.getCell(35, col);
