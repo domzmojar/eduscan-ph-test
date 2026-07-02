@@ -3517,13 +3517,23 @@ async function printSummaryReport() {
     }
   }
 
-  // ── GUIDELINES / LEGEND / SUMMARY / SIGNATURES ─────────────────────────
-  // Single-tab SF2: everything below is appended under the main grid on
-  // the SAME sheet (row-offset), instead of a separate "SF2 (Guidelines)"
-  // tab. put2/M2 just forward into put1/M1 with the offset baked in.
-  const ROW_OFFSET = totalRows1 + 2;
-  function put2(rr, cc, cell) { put1(rr + ROW_OFFSET, cc, cell); }
-  function M2(r1_, c1, r2_, c2) { M1(r1_ + ROW_OFFSET, c1, r2_ + ROW_OFFSET, c2); }
+  const ws1 = XLSX.utils.aoa_to_sheet(aoa1);
+  ws1['!merges'] = merges1;
+  ws1['!cols'] = [
+    { wch:3 }, { wch:16 }, { wch:11 },
+    ...schoolDays.map(() => ({ wch:3.1 })),
+    { wch:7 }, { wch:6.5 }, { wch:11 }, { wch:11 }, { wch:10 }, { wch:10 }, { wch:10 }, { wch:10 }
+  ];
+  const rh1 = {};
+  rh1[0] = 22; rh1[1] = 16; rh1[R_HDR1] = 24; rh1[R_HDR2] = 14; rh1[R_HDR3] = 16;
+  ws1['!rows'] = Array.from({ length: totalRows1 }, (_, i) => ({ hpt: rh1[i] || 14 }));
+  ws1['!sheetView'] = [{ showGridLines:false }];
+
+  // ── SHEET 2: Guidelines / Legend / Summary / Signatures ───────────────
+  const aoa2 = [];
+  const merges2 = [];
+  function M2(r1_,c1,r2_,c2){ merges2.push({ s:{r:r1_,c:c1}, e:{r:r2_,c:c2} }); }
+  function put2(rr, cc, cell) { if (!aoa2[rr]) aoa2[rr] = []; aoa2[rr][cc] = cell; }
 
   let g = 0;
   put2(g,0, styleCell('GUIDELINES:', { bold:true, size:9, align:'left', border:false })); M2(g,0,g,5); g++;
@@ -3619,31 +3629,25 @@ async function printSummaryReport() {
   put2(sg,8, styleCell('_______________________________', { border:false })); M2(sg,8,sg,12); sg++;
   put2(sg,8, styleCell('(Signature of School Head over Printed Name)', { size:7.5, italic:true, border:false })); M2(sg,8,sg,12); sg += 2;
 
-  const finalRow = Math.max(guidelinesEnd, legendEnd, sg) + 2 + ROW_OFFSET;
-  put1(finalRow,0, styleCell(`School Form 2: Page ${parseInt(profile.pageOf || '1', 10) + 1} of ________`, { size:9, align:'left', border:false })); M1(finalRow,0,finalRow,TOTAL_COLS-1);
+  const finalRow = Math.max(guidelinesEnd, legendEnd, sg) + 2;
+  put2(finalRow,0, styleCell(`School Form 2: Page ${parseInt(profile.pageOf || '1', 10) + 1} of ________`, { size:9, align:'left', border:false })); M2(finalRow,0,finalRow,12);
 
-  const totalRowsCombined = finalRow + 1;
-  for (let rr = totalRows1; rr < totalRowsCombined; rr++) {
-    ensureRow1(rr);
-    for (let cc = 0; cc < TOTAL_COLS; cc++) {
-      if (aoa1[rr][cc] === undefined) aoa1[rr][cc] = blankCell({ border:false });
+  const totalRows2 = finalRow + 1;
+  for (let rr = 0; rr < totalRows2; rr++) {
+    if (!aoa2[rr]) aoa2[rr] = [];
+    for (let cc = 0; cc < 13; cc++) {
+      if (aoa2[rr][cc] === undefined) aoa2[rr][cc] = blankCell({ border:false });
     }
   }
 
-  const ws1 = XLSX.utils.aoa_to_sheet(aoa1);
-  ws1['!merges'] = merges1;
-  ws1['!cols'] = [
-    { wch:3 }, { wch:16 }, { wch:11 },
-    ...schoolDays.map(() => ({ wch:3.1 })),
-    { wch:7 }, { wch:6.5 }, { wch:11 }, { wch:11 }, { wch:10 }, { wch:10 }, { wch:10 }, { wch:10 }
-  ];
-  const rh1 = {};
-  rh1[0] = 22; rh1[1] = 16; rh1[R_HDR1] = 24; rh1[R_HDR2] = 14; rh1[R_HDR3] = 16;
-  ws1['!rows'] = Array.from({ length: totalRowsCombined }, (_, i) => ({ hpt: rh1[i] || 14 }));
-  ws1['!sheetView'] = [{ showGridLines:false }];
+  const ws2 = XLSX.utils.aoa_to_sheet(aoa2);
+  ws2['!merges'] = merges2;
+  ws2['!cols'] = [{ wch:3 }, { wch:24 }, { wch:9 }, { wch:9 }, { wch:9 }, { wch:2 }, { wch:30 }, { wch:2 }, { wch:16 }, { wch:16 }, { wch:6 }, { wch:6 }, { wch:8 }];
+  ws2['!sheetView'] = [{ showGridLines:false }];
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws1, 'SF2');
+  XLSX.utils.book_append_sheet(wb, ws2, 'SF2 (Guidelines)');
 
   const filename = `SF2_${sectionName.replace(/[^a-zA-Z0-9]/g,'_')}_${monthFrom.slice(0,7)}.xlsx`;
 
