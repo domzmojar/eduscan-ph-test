@@ -3177,7 +3177,6 @@ async function generateSF2Official() {
   const monthTo    = dateToStr(monthEnd);
   const monthLabel = monthStart.toLocaleDateString('en-PH', { month: 'long', year: 'numeric' });
 
-  const DOW_LETTER = ['', 'M', 'T', 'W', 'TH', 'F', ''];
   // Template's D:AB = 25 fixed columns = 5 Mon–Fri weeks. Column for a given
   // school day is anchored to the Monday of the week containing the 1st of
   // the month (that Monday can fall in the previous month — that's fine,
@@ -3330,10 +3329,6 @@ async function generateSF2Official() {
   if (typeof ExcelJS === 'undefined') return showToast('ExcelJS library not loaded yet. Try again in a moment.', 'warn');
 
   const dayNums = schoolDays.map(d => parseInt(d.split('-')[2], 10));
-  const dayDows = schoolDays.map(d => {
-    const [dy, dm, dd] = d.split('-').map(Number);
-    return DOW_LETTER[new Date(dy, dm - 1, dd).getDay()];
-  });
 
   const buf = await loadSF2TemplateBuffer();
   const wb = new ExcelJS.Workbook();
@@ -3353,10 +3348,17 @@ async function generateSF2Official() {
   // Row 10 = merged instructional label "(1st row for date, 2nd row for
   // Day: M,T,W,TH,F)" (D10:AB10) — DO NOT write into it. Actual per-column
   // input cells are rows 11 (date number) and 12 (day letter), unmerged.
+  // Row 12 (M/T/W/TH/F) is a fixed header across all 25 template columns —
+  // always write the repeating Mon–Fri pattern regardless of which columns
+  // actually have a school day this month. Row 11 (date numbers) only gets
+  // written for columns that have a real date.
+  const FIXED_DOW = ['M', 'T', 'W', 'TH', 'F'];
+  for (let c = 0; c < 25; c++) {
+    ws.getCell(12, DAY_START_COL + c).value = FIXED_DOW[c % 5];
+  }
   for (let i = 0; i < numDays; i++) {
     const col = dayCols[i];
     ws.getCell(11, col).value = dayNums[i];
-    ws.getCell(12, col).value = dayDows[i];
   }
 
   const triangleCells = []; // { row, col, state } — lateAM/cutPM/both only
