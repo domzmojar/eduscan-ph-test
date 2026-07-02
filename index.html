@@ -3441,15 +3441,10 @@ async function printSummaryReport() {
   r1 = R_HDR3 + 1;
 
   // Track cells needing triangle shapes: { row, col, state }
+  const triangleCells = [];
   // Dark fill for full-row shading of CUTTING CLASS days (per user request:
   // cutting class records get the whole day-cell shaded, not just a triangle).
   const cuttingFill = { patternType: 'solid', fgColor: { rgb: 'BFBFBF' } };
-  // Late-only: native diagonal-hatch pattern fill (standard OOXML fill
-  // pattern, no custom drawingML). Renders identically in Excel, Google
-  // Sheets, LibreOffice — unlike a hand-built shape overlay, this can never
-  // trigger Excel's "we found a problem with some content" repair prompt.
-  const lateFill = { patternType: 'lightUp', fgColor: { rgb: '808080' } };
-  const bothFill = { patternType: 'darkUp',  fgColor: { rgb: '808080' } };
 
   function writeStudentRow1(rowIdx, student) {
     put1(rowIdx, NAME_START, styleCell(student ? student.name : '', { align:'left', size:8 }));
@@ -3460,12 +3455,15 @@ async function printSummaryReport() {
       let cellFill = null;
       if (code === 'absent') {
         cellVal = 'x';
-      } else if (code === 'both') {
-        cellFill = bothFill;
-      } else if (code === 'cutPM') {
+      } else if (code === 'cutPM' || code === 'both') {
+        // Cutting class: shade the WHOLE cell (lower-half triangle convention
+        // still drawn for visual parity with the printed legend, but the
+        // user asked for the record itself to read as shaded).
         cellFill = cuttingFill;
+        triangleCells.push({ aoa1row: rowIdx, col: DAY_START + i, state: code });
       } else if (code === 'lateAM') {
-        cellFill = lateFill;
+        // Late only — upper-half triangle, no full shading.
+        triangleCells.push({ aoa1row: rowIdx, col: DAY_START + i, state: code });
       }
       // present or '' = blank with gray fill if enrolled
       if (!student || (!cellVal && !cellFill && code === '')) cellFill = grayFill;
@@ -3651,8 +3649,113 @@ async function printSummaryReport() {
 
   const filename = `SF2_${sectionName.replace(/[^a-zA-Z0-9]/g,'_')}_${monthFrom.slice(0,7)}.xlsx`;
 
-  XLSX.writeFile(wb, filename);
-  showToast('SF2 exported ✓  (Official DepEd format)', 'ok');
+  // ── TRIANGLE SHAPE INJECTION ──────────────────────────────────────────────
+  // If no cells need triangles, use simple writeFile. Otherwise inject via JSZip.
+  if (triangleCells.length === 0 || typeof JSZip === 'undefined') {
+    XLSX.writeFile(wb, filename);
+    showToast('SF2 exported ✓  (Official DepEd format)', 'ok');
+    return;
+  }
+
+  // Build xl/drawings/drawing1.xml with one two-cell-anchor per flagged cell.
+  // Each anchor contains up to 2 triangle shapes (upper = lateAM, lower = cutPM).
+  // State: 'lateAM' = upper shaded; 'cutPM' = lower shaded; 'both' = both shaded.
+  // We need the Excel row/col indices that correspond to aoa1 row/col.
+  // xlsx-js-style uses 0-based AOA rows → Excel row = aoa1row (0-based).
+  // Column = col (0-based). EMU/offset not needed with twoCell anchor + editAs=oneCell.
+
+  // col widths for precise anchor offsets: NAME_SPAN cols (A-C) ~20ch, LRN ~10ch, day cols ~2ch
+  // We use row/col indices directly — Excel positions shapes from cell bounds.
+
+  const GRAY_FILL_RGB  = 'FF808080'; // shaded triangle fill (medium gray)
+  const DIAG_LINE_RGB  = 'FF000000'; // diagonal border line
+
+  let shapeId = 1;
+  let anchors = '';
+
+  for (const { aoa1row, col, state } of triangleCells) {
+    // Two-cell anchor: from = top-left of cell, to = bottom-right of same cell
+    const fromRow = aoa1row, fromCol = col;
+    const toRow   = aoa1row + 1, toCol = col + 1;
+
+    function cellAnchor(row, col, rowOff, colOff) {
+      return `<xdr:col>${col}</xdr:col><xdr:colOff>${colOff}</xdr:colOff><xdr:row>${row}</xdr:row><xdr:rowOff>${rowOff}</xdr:rowOff>`;
+    }
+
+    function triangleShape(id, filled, isUpper, drawDiagLine) {
+      // diagonal line only when explicitly requested (upper shape + shading condition exists)
+      const lnXml = drawDiagLine
+        ? `<a:ln w="6350"><a:solidFill><a:srgbClr val="000000"/></a:solidFill></a:ln>`
+        : `<a:ln w="0"><a:noFill/></a:ln>`;
+      return `<xdr:sp macro="" textlink=""><xdr:nvSpPr><xdr:cNvPr id="${id}" name="tri${id}"/><xdr:cNvSpPr><a:spLocks noGrp="1"/></xdr:cNvSpPr></xdr:nvSpPr><xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="914400" cy="457200"/></a:xfrm><a:custGeom><a:avLst/><a:gdLst/><a:ahLst/><a:cxnLst/><a:rect l="0" t="0" r="r" b="b"/><a:pathLst><a:path w="1" h="1"><a:moveTo><a:pt x="${isUpper?'0':'1'}" y="${isUpper?'0':'0'}"/></a:moveTo><a:lnTo><a:pt x="${isUpper?'1':'1'}" y="${isUpper?'0':'1'}"/></a:lnTo><a:lnTo><a:pt x="${isUpper?'0':'0'}" y="${isUpper?'1':'1'}"/></a:lnTo><a:close/></a:path></a:pathLst></a:custGeom><a:solidFill>${filled?'<a:srgbClr val="BFBFBF"/>':'<a:schemeClr val="bg1"/>'}</a:solidFill>${lnXml}</xdr:spPr><xdr:style><a:lnRef idx="0"><a:scrgbClr r="0" g="0" b="0"/></a:lnRef><a:fillRef idx="0"><a:scrgbClr r="0" g="0" b="0"/></a:fillRef><a:effectRef idx="0"><a:scrgbClr r="0" g="0" b="0"/></a:effectRef><a:fontRef idx="none"><a:scrgbClr r="0" g="0" b="0"/></a:fontRef></xdr:style><xdr:txBody><a:bodyPr/><a:lstStyle/><a:p/></xdr:txBody></xdr:sp>`;
+    }
+
+    const drawUpper = (state === 'lateAM' || state === 'both');
+    const drawLower = (state === 'cutPM'  || state === 'both');
+    // Draw diagonal line on upper shape always (it IS the hypotenuse = the slash)
+    // For cutPM: upper unfilled but line still needed to show the split
+    const diagLine = true;
+
+    // NOTE: OOXML schema (CT_TwoCellAnchor) allows exactly ONE shape per
+    // anchor. Packing 2 <xdr:sp> into one anchor is invalid and triggers
+    // Excel's "we found a problem with some content" repair prompt, which
+    // then strips drawing1.xml entirely. Fix: one anchor per shape.
+    const anchorFromTo = `<xdr:from>${cellAnchor(fromRow, fromCol, 0, 0)}</xdr:from><xdr:to>${cellAnchor(toRow, toCol, 0, 0)}</xdr:to>`;
+    anchors += `<xdr:twoCellAnchor editAs="oneCell">${anchorFromTo}${triangleShape(shapeId++, drawUpper, true, diagLine)}<xdr:clientData/></xdr:twoCellAnchor>`;
+    anchors += `<xdr:twoCellAnchor editAs="oneCell">${anchorFromTo}${triangleShape(shapeId++, drawLower, false, false)}<xdr:clientData/></xdr:twoCellAnchor>`;
+  }
+
+  const drawingXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">${anchors}</xdr:wsDr>`;
+
+  try {
+    // Write workbook to array buffer, then patch via JSZip
+    const wbArrayBuf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const zip = await JSZip.loadAsync(wbArrayBuf);
+
+    // Add drawing file
+    zip.file('xl/drawings/drawing1.xml', drawingXml);
+
+    // Wire drawing relationship into xl/worksheets/_rels/sheet1.xml.rels
+    const relsPath = 'xl/worksheets/_rels/sheet1.xml.rels';
+    let relsXml = '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>';
+    try { relsXml = await zip.file(relsPath)?.async('string') || relsXml; } catch(e) {}
+    if (!relsXml.includes('drawing1.xml')) {
+      relsXml = relsXml.replace('</Relationships>',
+        '<Relationship Id="rId9001" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing1.xml"/></Relationships>');
+    }
+    zip.file(relsPath, relsXml);
+
+    // Add <drawing r:id="rId9001"/> to sheet1.xml before </worksheet>
+    const sheet1Path = 'xl/worksheets/sheet1.xml';
+    let sheet1Xml = await zip.file(sheet1Path).async('string');
+    if (!sheet1Xml.includes('drawing r:id')) {
+      sheet1Xml = sheet1Xml.replace('</worksheet>',
+        '<drawing xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:id="rId9001"/></worksheet>');
+    }
+    zip.file(sheet1Path, sheet1Xml);
+
+    // Register content type for drawing
+    const ctPath = '[Content_Types].xml';
+    let ctXml = await zip.file(ctPath).async('string');
+    if (!ctXml.includes('drawing1.xml')) {
+      ctXml = ctXml.replace('</Types>',
+        '<Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/></Types>');
+    }
+    zip.file(ctPath, ctXml);
+
+    // Generate and download
+    const blob = await zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 3000);
+    showToast('SF2 exported ✓  (Official DepEd format)', 'ok');
+  } catch(err) {
+    console.error('SF2 triangle export error:', err);
+    // Fallback to plain export
+    XLSX.writeFile(wb, filename);
+    showToast('SF2 exported ✓  (plain fallback — check console)', 'warn');
+  }
 }
 
 function renderActionableList(range, logsInRange) {
