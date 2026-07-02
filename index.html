@@ -3290,10 +3290,14 @@ async function generateSF2Official() {
   ws.getCell('T8').value  = sf2GradeLevel || '';
   ws.getCell('Z8').value  = sectionName || '';
 
+  // Row 10 = merged instructional label "(1st row for date, 2nd row for
+  // Day: M,T,W,TH,F)" (D10:AB10) — DO NOT write into it. Actual per-column
+  // input cells are rows 11 (date number) and 12 (day letter), unmerged.
   const DAY_START_COL = 4; // D
   for (let i = 0; i < numDays; i++) {
     const col = DAY_START_COL + i;
-    ws.getCell(10, col).value = `${dayNums[i]}\n${dayDows[i]}`;
+    ws.getCell(11, col).value = dayNums[i];
+    ws.getCell(12, col).value = dayDows[i];
   }
 
   const triangleCells = []; // { row, col, state } — lateAM/cutPM/both only
