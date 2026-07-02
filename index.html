@@ -3095,18 +3095,60 @@ async function loadSF2TemplateBuffer() {
   return _sf2TemplateBufCache;
 }
 
-// code -> official cell text. Official form uses half-shaded cells for
-// late/cutting; ExcelJS can't easily do diagonal shading, so use letter
-// markers instead. Adjust if your school annotates differently.
+// code -> official cell text. Official form: blank cell text for
+// present/late/cutting (the diagonal shading — injected separately via
+// injectSF2Triangles — is what actually marks late/cutting, matching the
+// real DepEd form). Only 'absent' gets a literal 'x'.
 function sf2CellText(code) {
-  switch (code) {
-    case 'absent': return 'x';
-    case 'present': return '';
-    case 'lateAM':  return 'L';
-    case 'cutPM':   return 'C';
-    case 'both':    return 'LC';
-    default:        return '';
+  return code === 'absent' ? 'x' : '';
+}
+
+// ── DIAGONAL TRIANGLE SHADING (matches printed SF2's half-shaded cells) ───
+// Official legend: blank = present, x = absent, upper-half shaded = late
+// arrival, lower-half shaded = cutting class, both shaded = both.
+// Template already ships its own xl/drawings/drawing1.xml (DepEd seal +
+// arrow markers, shape ids 2-9) — we APPEND to it, never overwrite, and
+// start our own shape ids well above the template's own range.
+async function injectSF2Triangles(xlsxArrayBuffer, triangleCells) {
+  if (triangleCells.length === 0 || typeof JSZip === 'undefined') return xlsxArrayBuffer;
+
+  const zip = await JSZip.loadAsync(xlsxArrayBuffer);
+  const drawPath = 'xl/drawings/drawing1.xml';
+  const drawFile = zip.file(drawPath);
+  if (!drawFile) return xlsxArrayBuffer; // template has no drawing part — bail safely, no shading
+  let drawingXml = await drawFile.async('string');
+
+  let shapeId = 1000; // template's own ids max out at 9; stay clear
+  let anchors = '';
+
+  function cellAnchor(row, col, rowOff, colOff) {
+    return `<xdr:col>${col}</xdr:col><xdr:colOff>${colOff}</xdr:colOff><xdr:row>${row}</xdr:row><xdr:rowOff>${rowOff}</xdr:rowOff>`;
   }
+  function triangleShape(id, filled, isUpper, drawDiagLine) {
+    const lnXml = drawDiagLine
+      ? `<a:ln w="6350"><a:solidFill><a:srgbClr val="000000"/></a:solidFill></a:ln>`
+      : `<a:ln w="0"><a:noFill/></a:ln>`;
+    return `<xdr:sp macro="" textlink=""><xdr:nvSpPr><xdr:cNvPr id="${id}" name="tri${id}"/><xdr:cNvSpPr><a:spLocks noGrp="1"/></xdr:cNvSpPr></xdr:nvSpPr><xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="914400" cy="457200"/></a:xfrm><a:custGeom><a:avLst/><a:gdLst/><a:ahLst/><a:cxnLst/><a:rect l="0" t="0" r="r" b="b"/><a:pathLst><a:path w="1" h="1"><a:moveTo><a:pt x="${isUpper?'0':'1'}" y="0"/></a:moveTo><a:lnTo><a:pt x="1" y="${isUpper?'0':'1'}"/></a:lnTo><a:lnTo><a:pt x="0" y="1"/></a:lnTo><a:close/></a:path></a:pathLst></a:custGeom><a:solidFill>${filled?'<a:srgbClr val="BFBFBF"/>':'<a:schemeClr val="bg1"/>'}</a:solidFill>${lnXml}</xdr:spPr><xdr:style><a:lnRef idx="0"><a:scrgbClr r="0" g="0" b="0"/></a:lnRef><a:fillRef idx="0"><a:scrgbClr r="0" g="0" b="0"/></a:fillRef><a:effectRef idx="0"><a:scrgbClr r="0" g="0" b="0"/></a:effectRef><a:fontRef idx="none"><a:scrgbClr r="0" g="0" b="0"/></a:fontRef></xdr:style><xdr:txBody><a:bodyPr/><a:lstStyle/><a:p/></xdr:txBody></xdr:sp>`;
+  }
+
+  // NOTE: OOXML (CT_TwoCellAnchor) allows exactly ONE shape per anchor —
+  // packing 2 shapes into one anchor triggers Excel's repair prompt and
+  // strips the whole drawing. One anchor per shape, always.
+  for (const { row, col, state } of triangleCells) {
+    // row/col here are ExcelJS 1-based; anchor XML is 0-based.
+    const fromRow = row - 1, fromCol = col - 1;
+    const toRow   = row,     toCol   = col;
+    const drawUpper = (state === 'lateAM' || state === 'both');
+    const drawLower = (state === 'cutPM'  || state === 'both');
+    const anchorFromTo = `<xdr:from>${cellAnchor(fromRow, fromCol, 0, 0)}</xdr:from><xdr:to>${cellAnchor(toRow, toCol, 0, 0)}</xdr:to>`;
+    anchors += `<xdr:twoCellAnchor editAs="oneCell">${anchorFromTo}${triangleShape(shapeId++, drawUpper, true, true)}<xdr:clientData/></xdr:twoCellAnchor>`;
+    anchors += `<xdr:twoCellAnchor editAs="oneCell">${anchorFromTo}${triangleShape(shapeId++, drawLower, false, false)}<xdr:clientData/></xdr:twoCellAnchor>`;
+  }
+
+  drawingXml = drawingXml.replace('</xdr:wsDr>', anchors + '</xdr:wsDr>');
+  zip.file(drawPath, drawingXml);
+
+  return await zip.generateAsync({ type: 'arraybuffer' });
 }
 
 async function generateSF2Official() {
@@ -3254,6 +3296,7 @@ async function generateSF2Official() {
     ws.getCell(10, col).value = `${dayNums[i]}\n${dayDows[i]}`;
   }
 
+  const triangleCells = []; // { row, col, state } — lateAM/cutPM/both only
   function fillRoster(data, startRow, maxRows) {
     data.forEach((s, idx) => {
       const r = startRow + idx;
@@ -3262,6 +3305,9 @@ async function generateSF2Official() {
       s.dayCodes.forEach((code, i) => {
         const col = DAY_START_COL + i;
         ws.getCell(r, col).value = sf2CellText(code);
+        if (code === 'lateAM' || code === 'cutPM' || code === 'both') {
+          triangleCells.push({ row: r, col, state: code });
+        }
       });
       ws.getCell(`AC${r}`).value = s.absCount;
       ws.getCell(`AD${r}`).value = s.tardyCount;
@@ -3294,7 +3340,14 @@ async function generateSF2Official() {
   ws.getCell('D63').value  = monthLabel;
   ws.getCell('AF64').value = numDays;
 
-  const outBuf = await wb.xlsx.writeBuffer();
+  let outBuf = await wb.xlsx.writeBuffer();
+  try {
+    outBuf = await injectSF2Triangles(outBuf, triangleCells);
+  } catch (err) {
+    console.error('SF2 triangle shading injection failed, exporting without shading:', err);
+    // outBuf stays as the pre-injection buffer — export still succeeds, just
+    // without the late/cutting diagonal shading (falls back to blank cells).
+  }
   const blob = new Blob([outBuf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   const filename = `SF2_${sectionName.replace(/[^a-zA-Z0-9]/g, '_')}_${monthFrom.slice(0, 7)}.xlsx`;
   const url = URL.createObjectURL(blob);
