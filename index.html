@@ -3335,9 +3335,10 @@ async function printSummaryReport() {
   // matching the two physical pages of the printed form.
   // ─────────────────────────────────────────────────────────────────────────
 
-  const FONT_NAME = 'Arial Narrow';
+  const FONT_NAME = 'Arial';
   const thinBorder = { style: 'thin', color: { rgb: '000000' } };
   const allBorders = { top: thinBorder, bottom: thinBorder, left: thinBorder, right: thinBorder };
+  const grayFill = { patternType: 'solid', fgColor: { rgb: 'D9D9D9' } };
 
   function styleCell(v, opts) {
     opts = opts || {};
@@ -3384,71 +3385,66 @@ async function printSummaryReport() {
   function put1(r, c, cell) { ensureRow1(r); aoa1[r][c] = cell; }
 
   let r1 = 0;
-  put1(r1, 0, styleCell('School Form 2 (SF2) Daily Attendance Report of Learners', { bold:true, size:22, border:false }));
+  put1(r1, 0, styleCell('School Form 2 (SF2) Daily Attendance Report of Learners', { bold:true, size:14, border:false }));
   M1(r1,0,r1,TOTAL_COLS-1); r1++;
-  put1(r1, 0, styleCell('(This replaced Form 1, Form 2 & STS Form 4 - Absenteeism and Dropout Profile)', { italic:true, size:12, border:false }));
+  put1(r1, 0, styleCell('(This replaced Form 1, Form 2 & STS Form 4 - Absenteeism and Dropout Profile)', { italic:true, size:9, border:false }));
   M1(r1,0,r1,TOTAL_COLS-1); r1++;
   r1++; // spacer
 
   // Info row 1: School ID | School Year | Report for the Month
-  put1(r1,0, styleCell('School ID', { align:'right', border:false, wrap:false, size:16 }));
+  put1(r1,0, styleCell('School ID', { align:'left', border:false, wrap:false }));
   M1(r1,0,r1,1);
   put1(r1,2, styleCell(profile.schoolId || '', { border:true, align:'left' }));
   M1(r1,2,r1,4);
-  put1(r1,6, styleCell('School Year', { align:'right', border:false, wrap:false, size:16 }));
+  put1(r1,6, styleCell('School Year', { align:'left', border:false, wrap:false }));
   M1(r1,6,r1,7);
   put1(r1,8, styleCell(profile.schoolYear || '', { border:true, align:'left' }));
   M1(r1,8,r1,10);
-  put1(r1,12, styleCell('Report for the Month of', { align:'right', border:false, wrap:false, size:16 }));
+  put1(r1,12, styleCell('Report for the Month of', { align:'left', border:false, wrap:false }));
   M1(r1,12,r1,15);
   put1(r1,16, styleCell(monthLabel, { border:true, align:'left' }));
   M1(r1,16,r1,TOTAL_COLS-1);
   r1++; r1++;
 
   // Info row 2: Name of School | Grade Level | Section
-  put1(r1,0, styleCell('Name of School', { align:'right', border:false, wrap:false, size:16 }));
+  put1(r1,0, styleCell('Name of School', { align:'left', border:false, wrap:false }));
   M1(r1,0,r1,1);
   put1(r1,2, styleCell(profile.schoolName || '', { border:true, align:'left' }));
   M1(r1,2,r1,10);
-  put1(r1,12, styleCell('Grade Level', { align:'right', border:false, wrap:false, size:16 }));
+  put1(r1,12, styleCell('Grade Level', { align:'left', border:false, wrap:false }));
   M1(r1,12,r1,13);
   put1(r1,14, styleCell(sf2GradeLevel || '', { border:true, align:'left' }));
   M1(r1,14,r1,15);
-  put1(r1,17, styleCell('Section', { align:'right', border:false, wrap:false, size:16 }));
+  put1(r1,17, styleCell('Section', { align:'left', border:false, wrap:false }));
   put1(r1,18, styleCell(sectionName || '', { border:true, align:'left' }));
   M1(r1,18,r1,TOTAL_COLS-1);
   r1++; r1++;
 
   // Grid header: 3 rows (banner / date numbers / day letters + Absent/Tardy)
   const R_HDR1 = r1, R_HDR2 = r1+1, R_HDR3 = r1+2;
-  put1(R_HDR1, 0, styleCell("LEARNER'S NAME\n(Last Name, First Name, Middle Name)", { bold:true, size:10 }));
+  put1(R_HDR1, 0, styleCell("LEARNER'S NAME\n(Last Name, First Name, Middle Name)", { bold:true, size:8 }));
   M1(R_HDR1,0,R_HDR3,NAME_END);
-  put1(R_HDR1, DAY_START, styleCell('(1st row for date, 2nd row for Day: M,T,W,TH,F)', { bold:true, size:9 }));
+  put1(R_HDR1, DAY_START, styleCell('(1st row for date, 2nd row for Day: M,T,W,TH,F)', { bold:true, size:8 }));
   M1(R_HDR1, DAY_START, R_HDR1, DAY_END);
   for (let i = 0; i < numDays; i++) {
     put1(R_HDR2, DAY_START+i, styleCell(dayNums[i], { size:7 }));
     put1(R_HDR3, DAY_START+i, styleCell(dayDows[i], { bold:true, size:7 }));
   }
-  put1(R_HDR1, ABS_COL, styleCell('Total for the\nMonth', { bold:true, size:9 }));
+  put1(R_HDR1, ABS_COL, styleCell('Total for the\nMonth', { bold:true, size:8 }));
   M1(R_HDR1, ABS_COL, R_HDR1, TAR_COL);
   put1(R_HDR2, ABS_COL, blankCell());
   M1(R_HDR2, ABS_COL, R_HDR2, TAR_COL);
-  put1(R_HDR3, ABS_COL, styleCell('ABSENT', { bold:true, size:8 }));
-  put1(R_HDR3, TAR_COL, styleCell('TARDY', { bold:true, size:8 }));
+  put1(R_HDR3, ABS_COL, styleCell('ABSENT', { bold:true, size:7 }));
+  put1(R_HDR3, TAR_COL, styleCell('TARDY', { bold:true, size:7 }));
   put1(R_HDR1, REM_COL, styleCell('REMARK/S (If DROPPED OUT, state reason, please refer to legend number 2.\nIf TRANSFERRED IN/OUT, write the name of School.)', { bold:true, size:7 }));
   M1(R_HDR1, REM_COL, R_HDR3, REM_SPAN_END);
   r1 = R_HDR3 + 1;
 
   // Track cells needing triangle shapes: { row, col, state }
+  const triangleCells = [];
   // Dark fill for full-row shading of CUTTING CLASS days (per user request:
   // cutting class records get the whole day-cell shaded, not just a triangle).
   const cuttingFill = { patternType: 'solid', fgColor: { rgb: 'BFBFBF' } };
-  // Late-only: native diagonal-hatch pattern fill (standard OOXML fill
-  // pattern, no custom drawingML). Renders identically in Excel, Google
-  // Sheets, LibreOffice — unlike a hand-built shape overlay, this can never
-  // trigger Excel's "we found a problem with some content" repair prompt.
-  const lateFill = { patternType: 'lightUp', fgColor: { rgb: '808080' } };
-  const bothFill = { patternType: 'darkUp',  fgColor: { rgb: '808080' } };
 
   function writeStudentRow1(rowIdx, student) {
     put1(rowIdx, NAME_START, styleCell(student ? student.name : '', { align:'left', size:8 }));
@@ -3459,15 +3455,18 @@ async function printSummaryReport() {
       let cellFill = null;
       if (code === 'absent') {
         cellVal = 'x';
-      } else if (code === 'both') {
-        cellFill = bothFill;
-      } else if (code === 'cutPM') {
+      } else if (code === 'cutPM' || code === 'both') {
+        // Cutting class: shade the WHOLE cell (lower-half triangle convention
+        // still drawn for visual parity with the printed legend, but the
+        // user asked for the record itself to read as shaded).
         cellFill = cuttingFill;
+        triangleCells.push({ aoa1row: rowIdx, col: DAY_START + i, state: code });
       } else if (code === 'lateAM') {
-        cellFill = lateFill;
+        // Late only — upper-half triangle, no full shading.
+        triangleCells.push({ aoa1row: rowIdx, col: DAY_START + i, state: code });
       }
-      // present or '' = blank, no fill (matches official form — blank cells
-      // are unshaded; only late/cutting get a fill)
+      // present or '' = blank with gray fill if enrolled
+      if (!student || (!cellVal && !cellFill && code === '')) cellFill = grayFill;
       put1(rowIdx, DAY_START+i, styleCell(cellVal, { size:7, fill: cellFill }));
     }
     put1(rowIdx, ABS_COL, styleCell(student ? (student.absCount || '') : '', { size:8 }));
@@ -3516,13 +3515,23 @@ async function printSummaryReport() {
     }
   }
 
-  // ── GUIDELINES / LEGEND / SUMMARY / SIGNATURES ─────────────────────────
-  // Single-tab SF2: everything below is appended under the main grid on
-  // the SAME sheet (row-offset), instead of a separate "SF2 (Guidelines)"
-  // tab. put2/M2 just forward into put1/M1 with the offset baked in.
-  const ROW_OFFSET = totalRows1 + 2;
-  function put2(rr, cc, cell) { put1(rr + ROW_OFFSET, cc, cell); }
-  function M2(r1_, c1, r2_, c2) { M1(r1_ + ROW_OFFSET, c1, r2_ + ROW_OFFSET, c2); }
+  const ws1 = XLSX.utils.aoa_to_sheet(aoa1);
+  ws1['!merges'] = merges1;
+  ws1['!cols'] = [
+    { wch:3 }, { wch:16 }, { wch:11 },
+    ...schoolDays.map(() => ({ wch:3.1 })),
+    { wch:7 }, { wch:6.5 }, { wch:11 }, { wch:11 }, { wch:10 }, { wch:10 }, { wch:10 }, { wch:10 }
+  ];
+  const rh1 = {};
+  rh1[0] = 22; rh1[1] = 16; rh1[R_HDR1] = 24; rh1[R_HDR2] = 14; rh1[R_HDR3] = 16;
+  ws1['!rows'] = Array.from({ length: totalRows1 }, (_, i) => ({ hpt: rh1[i] || 14 }));
+  ws1['!sheetView'] = [{ showGridLines:false }];
+
+  // ── SHEET 2: Guidelines / Legend / Summary / Signatures ───────────────
+  const aoa2 = [];
+  const merges2 = [];
+  function M2(r1_,c1,r2_,c2){ merges2.push({ s:{r:r1_,c:c1}, e:{r:r2_,c:c2} }); }
+  function put2(rr, cc, cell) { if (!aoa2[rr]) aoa2[rr] = []; aoa2[rr][cc] = cell; }
 
   let g = 0;
   put2(g,0, styleCell('GUIDELINES:', { bold:true, size:9, align:'left', border:false })); M2(g,0,g,5); g++;
@@ -3618,39 +3627,135 @@ async function printSummaryReport() {
   put2(sg,8, styleCell('_______________________________', { border:false })); M2(sg,8,sg,12); sg++;
   put2(sg,8, styleCell('(Signature of School Head over Printed Name)', { size:7.5, italic:true, border:false })); M2(sg,8,sg,12); sg += 2;
 
-  const finalRow = Math.max(guidelinesEnd, legendEnd, sg) + 2 + ROW_OFFSET;
-  put1(finalRow,0, styleCell(`School Form 2: Page ${parseInt(profile.pageOf || '1', 10) + 1} of ________`, { size:9, align:'left', border:false })); M1(finalRow,0,finalRow,TOTAL_COLS-1);
+  const finalRow = Math.max(guidelinesEnd, legendEnd, sg) + 2;
+  put2(finalRow,0, styleCell(`School Form 2: Page ${parseInt(profile.pageOf || '1', 10) + 1} of ________`, { size:9, align:'left', border:false })); M2(finalRow,0,finalRow,12);
 
-  const totalRowsCombined = finalRow + 1;
-  for (let rr = totalRows1; rr < totalRowsCombined; rr++) {
-    ensureRow1(rr);
-    for (let cc = 0; cc < TOTAL_COLS; cc++) {
-      if (aoa1[rr][cc] === undefined) aoa1[rr][cc] = blankCell({ border:false });
+  const totalRows2 = finalRow + 1;
+  for (let rr = 0; rr < totalRows2; rr++) {
+    if (!aoa2[rr]) aoa2[rr] = [];
+    for (let cc = 0; cc < 13; cc++) {
+      if (aoa2[rr][cc] === undefined) aoa2[rr][cc] = blankCell({ border:false });
     }
   }
 
-  const ws1 = XLSX.utils.aoa_to_sheet(aoa1);
-  ws1['!merges'] = merges1;
-  ws1['!cols'] = [
-    { wch:4.14 }, { wch:32 }, { wch:14.14 },
-    ...schoolDays.map(() => ({ wch:4.71 })),
-    { wch:8.43 }, { wch:7.57 }, { wch:9.0 }, { wch:7.0 }, { wch:6.57 }, { wch:5.57 }, { wch:5.57 }, { wch:6.57 }
-  ];
-  const rh1 = {};
-  rh1[0] = 30; rh1[1] = 16; rh1[2] = 7;
-  rh1[3] = 24; rh1[4] = 7; rh1[5] = 24; rh1[6] = 7;
-  rh1[R_HDR1] = 24; rh1[R_HDR2] = 16; rh1[R_HDR3] = 18;
-  for (let rr = R_HDR3 + 1; rr < totalRows1; rr++) rh1[rr] = 22; // student rows, match replica's 21.95
-  ws1['!rows'] = Array.from({ length: totalRowsCombined }, (_, i) => ({ hpt: rh1[i] || 14 }));
-  ws1['!sheetView'] = [{ showGridLines:false }];
+  const ws2 = XLSX.utils.aoa_to_sheet(aoa2);
+  ws2['!merges'] = merges2;
+  ws2['!cols'] = [{ wch:3 }, { wch:24 }, { wch:9 }, { wch:9 }, { wch:9 }, { wch:2 }, { wch:30 }, { wch:2 }, { wch:16 }, { wch:16 }, { wch:6 }, { wch:6 }, { wch:8 }];
+  ws2['!sheetView'] = [{ showGridLines:false }];
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws1, 'SF2');
+  XLSX.utils.book_append_sheet(wb, ws2, 'SF2 (Guidelines)');
 
   const filename = `SF2_${sectionName.replace(/[^a-zA-Z0-9]/g,'_')}_${monthFrom.slice(0,7)}.xlsx`;
 
-  XLSX.writeFile(wb, filename);
-  showToast('SF2 exported ✓  (Official DepEd format)', 'ok');
+  // ── TRIANGLE SHAPE INJECTION ──────────────────────────────────────────────
+  // If no cells need triangles, use simple writeFile. Otherwise inject via JSZip.
+  if (triangleCells.length === 0 || typeof JSZip === 'undefined') {
+    XLSX.writeFile(wb, filename);
+    showToast('SF2 exported ✓  (Official DepEd format)', 'ok');
+    return;
+  }
+
+  // Build xl/drawings/drawing1.xml with one two-cell-anchor per flagged cell.
+  // Each anchor contains up to 2 triangle shapes (upper = lateAM, lower = cutPM).
+  // State: 'lateAM' = upper shaded; 'cutPM' = lower shaded; 'both' = both shaded.
+  // We need the Excel row/col indices that correspond to aoa1 row/col.
+  // xlsx-js-style uses 0-based AOA rows → Excel row = aoa1row (0-based).
+  // Column = col (0-based). EMU/offset not needed with twoCell anchor + editAs=oneCell.
+
+  // col widths for precise anchor offsets: NAME_SPAN cols (A-C) ~20ch, LRN ~10ch, day cols ~2ch
+  // We use row/col indices directly — Excel positions shapes from cell bounds.
+
+  const GRAY_FILL_RGB  = 'FF808080'; // shaded triangle fill (medium gray)
+  const DIAG_LINE_RGB  = 'FF000000'; // diagonal border line
+
+  let shapeId = 1;
+  let anchors = '';
+
+  for (const { aoa1row, col, state } of triangleCells) {
+    // Two-cell anchor: from = top-left of cell, to = bottom-right of same cell
+    const fromRow = aoa1row, fromCol = col;
+    const toRow   = aoa1row + 1, toCol = col + 1;
+
+    function cellAnchor(row, col, rowOff, colOff) {
+      return `<xdr:col>${col}</xdr:col><xdr:colOff>${colOff}</xdr:colOff><xdr:row>${row}</xdr:row><xdr:rowOff>${rowOff}</xdr:rowOff>`;
+    }
+
+    function triangleShape(id, filled, isUpper, drawDiagLine) {
+      // diagonal line only when explicitly requested (upper shape + shading condition exists)
+      const lnXml = drawDiagLine
+        ? `<a:ln w="6350"><a:solidFill><a:srgbClr val="000000"/></a:solidFill></a:ln>`
+        : `<a:ln w="0"><a:noFill/></a:ln>`;
+      return `<xdr:sp macro="" textlink=""><xdr:nvSpPr><xdr:cNvPr id="${id}" name="tri${id}"/><xdr:cNvSpPr><a:spLocks noGrp="1"/></xdr:cNvSpPr></xdr:nvSpPr><xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="914400" cy="457200"/></a:xfrm><a:custGeom><a:avLst/><a:gdLst/><a:ahLst/><a:cxnLst/><a:rect l="0" t="0" r="r" b="b"/><a:pathLst><a:path w="1" h="1"><a:moveTo><a:pt x="${isUpper?'0':'1'}" y="${isUpper?'0':'0'}"/></a:moveTo><a:lnTo><a:pt x="${isUpper?'1':'1'}" y="${isUpper?'0':'1'}"/></a:lnTo><a:lnTo><a:pt x="${isUpper?'0':'0'}" y="${isUpper?'1':'1'}"/></a:lnTo><a:close/></a:path></a:pathLst></a:custGeom><a:solidFill>${filled?'<a:srgbClr val="BFBFBF"/>':'<a:schemeClr val="bg1"/>'}</a:solidFill>${lnXml}</xdr:spPr><xdr:style><a:lnRef idx="0"><a:scrgbClr r="0" g="0" b="0"/></a:lnRef><a:fillRef idx="0"><a:scrgbClr r="0" g="0" b="0"/></a:fillRef><a:effectRef idx="0"><a:scrgbClr r="0" g="0" b="0"/></a:effectRef><a:fontRef idx="none"><a:scrgbClr r="0" g="0" b="0"/></a:fontRef></xdr:style><xdr:txBody><a:bodyPr/><a:lstStyle/><a:p/></xdr:txBody></xdr:sp>`;
+    }
+
+    const drawUpper = (state === 'lateAM' || state === 'both');
+    const drawLower = (state === 'cutPM'  || state === 'both');
+    // Draw diagonal line on upper shape always (it IS the hypotenuse = the slash)
+    // For cutPM: upper unfilled but line still needed to show the split
+    const diagLine = true;
+
+    // NOTE: OOXML schema (CT_TwoCellAnchor) allows exactly ONE shape per
+    // anchor. Packing 2 <xdr:sp> into one anchor is invalid and triggers
+    // Excel's "we found a problem with some content" repair prompt, which
+    // then strips drawing1.xml entirely. Fix: one anchor per shape.
+    const anchorFromTo = `<xdr:from>${cellAnchor(fromRow, fromCol, 0, 0)}</xdr:from><xdr:to>${cellAnchor(toRow, toCol, 0, 0)}</xdr:to>`;
+    anchors += `<xdr:twoCellAnchor editAs="oneCell">${anchorFromTo}${triangleShape(shapeId++, drawUpper, true, diagLine)}<xdr:clientData/></xdr:twoCellAnchor>`;
+    anchors += `<xdr:twoCellAnchor editAs="oneCell">${anchorFromTo}${triangleShape(shapeId++, drawLower, false, false)}<xdr:clientData/></xdr:twoCellAnchor>`;
+  }
+
+  const drawingXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">${anchors}</xdr:wsDr>`;
+
+  try {
+    // Write workbook to array buffer, then patch via JSZip
+    const wbArrayBuf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const zip = await JSZip.loadAsync(wbArrayBuf);
+
+    // Add drawing file
+    zip.file('xl/drawings/drawing1.xml', drawingXml);
+
+    // Wire drawing relationship into xl/worksheets/_rels/sheet1.xml.rels
+    const relsPath = 'xl/worksheets/_rels/sheet1.xml.rels';
+    let relsXml = '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>';
+    try { relsXml = await zip.file(relsPath)?.async('string') || relsXml; } catch(e) {}
+    if (!relsXml.includes('drawing1.xml')) {
+      relsXml = relsXml.replace('</Relationships>',
+        '<Relationship Id="rId9001" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing1.xml"/></Relationships>');
+    }
+    zip.file(relsPath, relsXml);
+
+    // Add <drawing r:id="rId9001"/> to sheet1.xml before </worksheet>
+    const sheet1Path = 'xl/worksheets/sheet1.xml';
+    let sheet1Xml = await zip.file(sheet1Path).async('string');
+    if (!sheet1Xml.includes('drawing r:id')) {
+      sheet1Xml = sheet1Xml.replace('</worksheet>',
+        '<drawing xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:id="rId9001"/></worksheet>');
+    }
+    zip.file(sheet1Path, sheet1Xml);
+
+    // Register content type for drawing
+    const ctPath = '[Content_Types].xml';
+    let ctXml = await zip.file(ctPath).async('string');
+    if (!ctXml.includes('drawing1.xml')) {
+      ctXml = ctXml.replace('</Types>',
+        '<Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/></Types>');
+    }
+    zip.file(ctPath, ctXml);
+
+    // Generate and download
+    const blob = await zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 3000);
+    showToast('SF2 exported ✓  (Official DepEd format)', 'ok');
+  } catch(err) {
+    console.error('SF2 triangle export error:', err);
+    // Fallback to plain export
+    XLSX.writeFile(wb, filename);
+    showToast('SF2 exported ✓  (plain fallback — check console)', 'warn');
+  }
 }
 
 function renderActionableList(range, logsInRange) {
