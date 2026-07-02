@@ -3225,50 +3225,85 @@ async function generateSF2Official() {
   const maleData   = buildStudentData(males, totalDayPresentM);
   const femaleData = buildStudentData(femalesPlusMissing, totalDayPresentF);
 
-  const enrolledAsOfFirstFriday = (() => {
+  const juneFirstFridayStr = (() => {
     let juneYear = ry;
     if (rm < 6) juneYear = ry - 1;
     const june1 = new Date(juneYear, 5, 1);
     while (june1.getDay() !== 5) june1.setDate(june1.getDate() + 1);
-    return studentsEnrolledAsOf(selectedClassId, dateToStr(june1)).length;
+    return dateToStr(june1);
   })();
+  const enrolledAsOfFirstFridayAll = studentsEnrolledAsOf(selectedClassId, juneFirstFridayStr);
+  const enrolledAsOfFirstFriday  = enrolledAsOfFirstFridayAll.length;
+  const enrolledAsOfFirstFridayM = enrolledAsOfFirstFridayAll.filter(s => s.gender === 'M').length;
+  const enrolledAsOfFirstFridayF = enrolledAsOfFirstFridayAll.filter(s => s.gender !== 'M').length;
 
   const registeredEndOfMonth = enrolled.length;
   const maleCount   = males.length;
   const femaleCount = femalesPlusMissing.length;
   const allAttendanceLogs = logsInMonth.filter(l => l.type === 'arrival' || l.type === 'departure');
-  let totalStudentDays = 0;
-  enrolled.forEach(s => {
-    schoolDays.forEach(d => { if (!s.enrolledDate || d >= s.enrolledDate) totalStudentDays++; });
-  });
-  const presentDaySet = new Set();
-  allAttendanceLogs
-    .filter(l => enrolled.some(s => s.id === l.studentId))
-    .forEach(l => presentDaySet.add(l.studentId + '|' + getLogDate(l)));
-  const presentStudentDays = presentDaySet.size;
-  const ada = numDays > 0 ? (presentStudentDays / numDays).toFixed(1) : '0';
-  const pctEnrolment = enrolledAsOfFirstFriday > 0
-    ? ((registeredEndOfMonth / enrolledAsOfFirstFriday) * 100).toFixed(1) + '%' : '0%';
-  const pctAttendance = totalStudentDays > 0
-    ? ((presentStudentDays / totalStudentDays) * 100).toFixed(1) + '%' : '0%';
 
-  let fiveConsecutiveCount = 0;
-  enrolled.forEach(s => {
-    const sLogs = logsInMonth.filter(l => l.studentId === s.id && (l.type === 'arrival' || l.type === 'departure'));
-    const presentDays = new Set(sLogs.map(l => getLogDate(l)));
-    let streak = 0, maxStreak = 0;
-    schoolDays.forEach(d => {
-      const enrolledOnDay = !s.enrolledDate || d >= s.enrolledDate;
-      if (enrolledOnDay && !presentDays.has(d)) { streak++; maxStreak = Math.max(maxStreak, streak); }
-      else streak = 0;
+  // Per-gender + combined student-day totals (denominator for % attendance).
+  function countStudentDays(list) {
+    let n = 0;
+    list.forEach(s => schoolDays.forEach(d => { if (!s.enrolledDate || d >= s.enrolledDate) n++; }));
+    return n;
+  }
+  const totalStudentDaysM = countStudentDays(males);
+  const totalStudentDaysF = countStudentDays(femalesPlusMissing);
+  const totalStudentDays  = totalStudentDaysM + totalStudentDaysF;
+
+  function countPresentStudentDays(list) {
+    const ids = new Set(list.map(s => s.id));
+    const set = new Set();
+    allAttendanceLogs
+      .filter(l => ids.has(l.studentId))
+      .forEach(l => set.add(l.studentId + '|' + getLogDate(l)));
+    return set.size;
+  }
+  const presentStudentDaysM = countPresentStudentDays(males);
+  const presentStudentDaysF = countPresentStudentDays(femalesPlusMissing);
+  const presentStudentDays  = presentStudentDaysM + presentStudentDaysF;
+
+  // ADA (Average Daily Attendance) — sum of daily-present headcounts / numDays.
+  const adaM = numDays > 0 ? (totalDayPresentM.reduce((a, b) => a + b, 0) / numDays).toFixed(1) : '0';
+  const adaF = numDays > 0 ? (totalDayPresentF.reduce((a, b) => a + b, 0) / numDays).toFixed(1) : '0';
+  const ada  = numDays > 0 ? (presentStudentDays / numDays).toFixed(1) : '0';
+
+  function pctStr(n, d) { return d > 0 ? ((n / d) * 100).toFixed(1) + '%' : '0%'; }
+  const pctEnrolmentM = pctStr(maleCount, enrolledAsOfFirstFridayM);
+  const pctEnrolmentF = pctStr(femaleCount, enrolledAsOfFirstFridayF);
+  const pctEnrolment  = pctStr(registeredEndOfMonth, enrolledAsOfFirstFriday);
+
+  const pctAttendanceM = pctStr(presentStudentDaysM, totalStudentDaysM);
+  const pctAttendanceF = pctStr(presentStudentDaysF, totalStudentDaysF);
+  const pctAttendance  = pctStr(presentStudentDays, totalStudentDays);
+
+  function countFiveConsecutive(list) {
+    let n = 0;
+    list.forEach(s => {
+      const sLogs = logsInMonth.filter(l => l.studentId === s.id && (l.type === 'arrival' || l.type === 'departure'));
+      const presentDays = new Set(sLogs.map(l => getLogDate(l)));
+      let streak = 0, maxStreak = 0;
+      schoolDays.forEach(d => {
+        const enrolledOnDay = !s.enrolledDate || d >= s.enrolledDate;
+        if (enrolledOnDay && !presentDays.has(d)) { streak++; maxStreak = Math.max(maxStreak, streak); }
+        else streak = 0;
+      });
+      if (maxStreak >= 5) n++;
     });
-    if (maxStreak >= 5) fiveConsecutiveCount++;
-  });
+    return n;
+  }
+  const fiveConsecutiveCountM = countFiveConsecutive(males);
+  const fiveConsecutiveCountF = countFiveConsecutive(femalesPlusMissing);
+  const fiveConsecutiveCount  = fiveConsecutiveCountM + fiveConsecutiveCountF;
 
-  // NOTE: hardcoded 0 — old exporter never computed these. Wire up real
-  // tracking if student records have a status/dropReason field; otherwise
-  // this stays 0 and you must fill it manually on the printed form.
-  let droppedOut = 0, transferredOut = 0, transferredIn = 0;
+  // NOTE: hardcoded 0 — old exporter never computed these, and there's no
+  // per-student status/dropReason field to attribute a drop-out/transfer to
+  // a gender. M, F, and Total columns are all written as 0 — wire up real
+  // tracking if you want non-zero values here.
+  let droppedOutM = 0, droppedOutF = 0, droppedOut = 0;
+  let transferredOutM = 0, transferredOutF = 0, transferredOut = 0;
+  let transferredInM = 0, transferredInF = 0, transferredIn = 0;
 
   if (typeof ExcelJS === 'undefined') return showToast('ExcelJS library not loaded yet. Try again in a moment.', 'warn');
 
@@ -3329,21 +3364,37 @@ async function generateSF2Official() {
 
   // OCR-verified via LibreOffice render: label cells are AB{row} (must stay
   // untouched), value cells are AH{row}(M) / AI{row}(F) / AJ{row}(Total).
-  // NOTE: we only compute aggregate (non-gender-split) totals right now —
-  // writing the same total into M and F columns would be wrong data, so
-  // M/F columns are left blank until real per-gender breakdown logic is
-  // added. Only the Total (AJ) column is populated below. AH65/AI65/AJ65
-  // are the 'M'/'F'/'TOTAL' column headers — never write to those.
+  // AH65/AI65/AJ65 are the 'M'/'F'/'TOTAL' column headers — never write to those.
+  ws.getCell('AH66').value = enrolledAsOfFirstFridayM;
+  ws.getCell('AI66').value = enrolledAsOfFirstFridayF;
   ws.getCell('AJ66').value = enrolledAsOfFirstFriday;  // * Enrolment as of 1st Friday of June
+  ws.getCell('AH70').value = maleCount;
+  ws.getCell('AI70').value = femaleCount;
   ws.getCell('AJ70').value = registeredEndOfMonth;      // Registered as of end of month
+  ws.getCell('AH72').value = pctEnrolmentM;
+  ws.getCell('AI72').value = pctEnrolmentF;
   ws.getCell('AJ72').value = pctEnrolment;
+  ws.getCell('AH74').value = adaM;
+  ws.getCell('AI74').value = adaF;
   ws.getCell('AJ74').value = ada;
+  ws.getCell('AH75').value = pctAttendanceM;
+  ws.getCell('AI75').value = pctAttendanceF;
   ws.getCell('AJ75').value = pctAttendance;
+  ws.getCell('AH77').value = fiveConsecutiveCountM;
+  ws.getCell('AI77').value = fiveConsecutiveCountF;
   ws.getCell('AJ77').value = fiveConsecutiveCount;
+  ws.getCell('AH79').value = droppedOutM;
+  ws.getCell('AI79').value = droppedOutF;
   ws.getCell('AJ79').value = droppedOut;
+  ws.getCell('AH81').value = transferredOutM;
+  ws.getCell('AI81').value = transferredOutF;
   ws.getCell('AJ81').value = transferredOut;
+  ws.getCell('AH83').value = transferredInM;
+  ws.getCell('AI83').value = transferredInF;
   ws.getCell('AJ83').value = transferredIn;
-  ws.getCell('AC64').value = monthLabel; // "Month:" label is AB64 (untouched); value sits in AC64
+  // "Month:" label is AB64 (untouched); value box spans AC64:AD64 (unmerged,
+  // shared border) — write to AD64, the confirmed-correct half of the box.
+  ws.getCell('AD64').value = monthLabel;
   ws.getCell('AG64').value = numDays;    // "No. of Days of Classes:" label is merged AE64:AF65 (untouched); value sits in AG64
 
   let outBuf = await wb.xlsx.writeBuffer();
