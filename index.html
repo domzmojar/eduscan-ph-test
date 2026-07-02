@@ -3100,7 +3100,15 @@ async function loadSF2TemplateBuffer() {
 // injectSF2Triangles — is what actually marks late/cutting, matching the
 // real DepEd form). Only 'absent' gets a literal 'x'.
 function sf2CellText(code) {
-  return code === 'absent' ? 'x' : '';
+  return code === 'absent' ? 'X' : '';
+}
+
+// Applies bold + slightly larger font to the "X" (absent) mark so it reads
+// clearly at print size, without disturbing the template's other formatting.
+function boldenIfAbsent(cell, code) {
+  if (code === 'absent') {
+    cell.font = { ...cell.font, bold: true, size: 13 };
+  }
 }
 
 // ── DIAGONAL TRIANGLE SHADING (matches printed SF2's half-shaded cells) ───
@@ -3242,16 +3250,6 @@ async function generateSF2Official() {
   const femaleCount = femalesPlusMissing.length;
   const allAttendanceLogs = logsInMonth.filter(l => l.type === 'arrival' || l.type === 'departure');
 
-  // Per-gender + combined student-day totals (denominator for % attendance).
-  function countStudentDays(list) {
-    let n = 0;
-    list.forEach(s => schoolDays.forEach(d => { if (!s.enrolledDate || d >= s.enrolledDate) n++; }));
-    return n;
-  }
-  const totalStudentDaysM = countStudentDays(males);
-  const totalStudentDaysF = countStudentDays(femalesPlusMissing);
-  const totalStudentDays  = totalStudentDaysM + totalStudentDaysF;
-
   function countPresentStudentDays(list) {
     const ids = new Set(list.map(s => s.id));
     const set = new Set();
@@ -3265,18 +3263,24 @@ async function generateSF2Official() {
   const presentStudentDays  = presentStudentDaysM + presentStudentDaysF;
 
   // ADA (Average Daily Attendance) — sum of daily-present headcounts / numDays.
-  const adaM = numDays > 0 ? (totalDayPresentM.reduce((a, b) => a + b, 0) / numDays).toFixed(1) : '0';
-  const adaF = numDays > 0 ? (totalDayPresentF.reduce((a, b) => a + b, 0) / numDays).toFixed(1) : '0';
-  const ada  = numDays > 0 ? (presentStudentDays / numDays).toFixed(1) : '0';
+  const adaMNum = numDays > 0 ? totalDayPresentM.reduce((a, b) => a + b, 0) / numDays : 0;
+  const adaFNum = numDays > 0 ? totalDayPresentF.reduce((a, b) => a + b, 0) / numDays : 0;
+  const adaNum  = numDays > 0 ? presentStudentDays / numDays : 0;
+  const adaM = adaMNum.toFixed(1);
+  const adaF = adaFNum.toFixed(1);
+  const ada  = adaNum.toFixed(1);
 
   function pctStr(n, d) { return d > 0 ? ((n / d) * 100).toFixed(1) + '%' : '0%'; }
   const pctEnrolmentM = pctStr(maleCount, enrolledAsOfFirstFridayM);
   const pctEnrolmentF = pctStr(femaleCount, enrolledAsOfFirstFridayF);
   const pctEnrolment  = pctStr(registeredEndOfMonth, enrolledAsOfFirstFriday);
 
-  const pctAttendanceM = pctStr(presentStudentDaysM, totalStudentDaysM);
-  const pctAttendanceF = pctStr(presentStudentDaysF, totalStudentDaysF);
-  const pctAttendance  = pctStr(presentStudentDays, totalStudentDays);
+  // DepEd guideline c: % Attendance for the month = Average Daily Attendance
+  // / Registered Learner as of End of the Month × 100 (NOT present-days /
+  // total-possible-days — that was the old, guideline-inconsistent formula).
+  const pctAttendanceM = pctStr(adaMNum, maleCount);
+  const pctAttendanceF = pctStr(adaFNum, femaleCount);
+  const pctAttendance  = pctStr(adaNum, registeredEndOfMonth);
 
   function countFiveConsecutive(list) {
     let n = 0;
@@ -3351,7 +3355,9 @@ async function generateSF2Official() {
       ws.getCell(`B${r}`).value = s.name;
       s.dayCodes.forEach((code, i) => {
         const col = DAY_START_COL + i;
-        centerCell(r, col).value = sf2CellText(code);
+        const cell = centerCell(r, col);
+        cell.value = sf2CellText(code);
+        boldenIfAbsent(cell, code);
         if (code === 'lateAM' || code === 'cutPM' || code === 'both') {
           triangleCells.push({ row: r, col, state: code });
         }
