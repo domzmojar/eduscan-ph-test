@@ -3248,24 +3248,23 @@ async function generateSF2Official() {
   const registeredEndOfMonth = enrolled.length;
   const maleCount   = males.length;
   const femaleCount = femalesPlusMissing.length;
-  const allAttendanceLogs = logsInMonth.filter(l => l.type === 'arrival' || l.type === 'departure');
 
-  function countPresentStudentDays(list) {
-    const ids = new Set(list.map(s => s.id));
-    const set = new Set();
-    allAttendanceLogs
-      .filter(l => ids.has(l.studentId))
-      .forEach(l => set.add(l.studentId + '|' + getLogDate(l)));
-    return set.size;
-  }
-  const presentStudentDaysM = countPresentStudentDays(males);
-  const presentStudentDaysF = countPresentStudentDays(femalesPlusMissing);
-  const presentStudentDays  = presentStudentDaysM + presentStudentDaysF;
+  // "Total Daily Attendance" (guideline b's numerator) = sum of every day's
+  // present headcount across the whole month — i.e. exactly what's already
+  // printed in row 35 (Male TOTAL per day) + row 61 (Female TOTAL per day) +
+  // row 62 (Combined), added up across all day columns. Using the same
+  // totalDayPresentM/F arrays here (instead of re-deriving from raw logs)
+  // guarantees the ADA shown in the summary always matches what's printed
+  // in the day-by-day totals on the same sheet.
+  const totalDailyAttendanceM = totalDayPresentM.reduce((a, b) => a + b, 0);
+  const totalDailyAttendanceF = totalDayPresentF.reduce((a, b) => a + b, 0);
+  const totalDailyAttendance  = totalDailyAttendanceM + totalDailyAttendanceF;
 
-  // ADA (Average Daily Attendance) — sum of daily-present headcounts / numDays.
-  const adaMNum = numDays > 0 ? totalDayPresentM.reduce((a, b) => a + b, 0) / numDays : 0;
-  const adaFNum = numDays > 0 ? totalDayPresentF.reduce((a, b) => a + b, 0) / numDays : 0;
-  const adaNum  = numDays > 0 ? presentStudentDays / numDays : 0;
+  // ADA (Average Daily Attendance) = Total Daily Attendance / Number of
+  // School Days in reporting month (guideline b).
+  const adaMNum = numDays > 0 ? totalDailyAttendanceM / numDays : 0;
+  const adaFNum = numDays > 0 ? totalDailyAttendanceF / numDays : 0;
+  const adaNum  = numDays > 0 ? totalDailyAttendance / numDays : 0;
   const adaM = adaMNum.toFixed(1);
   const adaF = adaFNum.toFixed(1);
   const ada  = adaNum.toFixed(1);
