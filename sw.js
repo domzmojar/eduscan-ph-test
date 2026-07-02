@@ -1,6 +1,6 @@
-// EduScan PH — Service Worker v6
+// EduScan PH — Service Worker v7
 // Caches the app shell first, then best-effort CDN assets for offline use.
-const CACHE_NAME = 'eduscan-ph-v6';
+const CACHE_NAME = 'eduscan-ph-v7';
 
 const APP_SHELL = [
   '/',
@@ -9,14 +9,16 @@ const APP_SHELL = [
   '/icon-192-any.png',
   '/icon-192-maskable.png',
   '/icon-512-any.png',
-  '/icon-512-maskable.png'
+  '/icon-512-maskable.png',
+  '/assets/sf2_template.xlsx'
 ];
 
 const CDN_ASSETS = [
   'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js',
   'https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js',
   'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js',
-  'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2'
+  'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2',
+  'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js'
 ];
 
 self.addEventListener('install', event => {

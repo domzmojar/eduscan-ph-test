@@ -14,6 +14,7 @@ const REQUIRED = [
   'icon-192-maskable.png',
   'icon-512-any.png',
   'icon-512-maskable.png',
+  'assets/sf2_template.xlsx',
 ];
 
 const dir    = __dirname;

@@ -16,6 +16,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 
   <style>
     :root {
@@ -1494,7 +1495,7 @@
     </details>
 
               <!-- 4. PRINT / SHARE BUTTON -->
-    <button class="btn full" onclick="printSummaryReport()" style="margin-top:1rem; background:linear-gradient(135deg,#1d4ed8,#3b82f6); font-size:0.9rem; padding:0.85rem; border-radius:10px;">
+    <button class="btn full" onclick="generateSF2Official()" style="margin-top:1rem; background:linear-gradient(135deg,#1d4ed8,#3b82f6); font-size:0.9rem; padding:0.85rem; border-radius:10px;">
       📊 Generate SF2 Report (XLSX)
     </button>
     <p style="font-size:0.72rem; color:var(--text-muted); text-align:center; margin-top:0.5rem;">SF2 covers the full calendar month. Select a class above before generating.</p>
@@ -3081,6 +3082,230 @@ function isViewingToday(range) {
 // excluding anyone whose enrolledDate is after that date. Used everywhere
 // enrollment counts feed into a metric, so a late transfer isn't counted
 // as "absent" for days before they actually joined.
+// ── SF2 OFFICIAL TEMPLATE EXPORT (ExcelJS-based) ──────────────────────────
+// Loads official DepEd template, fills cells only, preserves logo/borders/print setup.
+const SF2_TEMPLATE_PATH = '/assets/sf2_template.xlsx';
+let _sf2TemplateBufCache = null;
+
+async function loadSF2TemplateBuffer() {
+  if (_sf2TemplateBufCache) return _sf2TemplateBufCache;
+  const res = await fetch(SF2_TEMPLATE_PATH);
+  if (!res.ok) throw new Error(`SF2 template fetch failed: ${res.status}`);
+  _sf2TemplateBufCache = await res.arrayBuffer();
+  return _sf2TemplateBufCache;
+}
+
+// code -> official cell text. Official form uses half-shaded cells for
+// late/cutting; ExcelJS can't easily do diagonal shading, so use letter
+// markers instead. Adjust if your school annotates differently.
+function sf2CellText(code) {
+  switch (code) {
+    case 'absent': return 'x';
+    case 'present': return '';
+    case 'lateAM':  return 'L';
+    case 'cutPM':   return 'C';
+    case 'both':    return 'LC';
+    default:        return '';
+  }
+}
+
+async function generateSF2Official() {
+  const range = getActiveDateRange();
+  if (!range) return showToast('Select a date range first.', 'warn');
+
+  const sf2ClassEl = document.getElementById('sf2-class-select');
+  const selectedClassId = sf2ClassEl ? sf2ClassEl.value || null : null;
+  if (!selectedClassId) return showToast('Please select a class before generating SF2.', 'warn');
+
+  const [ry, rm] = range.from.split('-').map(Number);
+  const monthStart = new Date(ry, rm - 1, 1);
+  const monthEnd   = new Date(ry, rm, 0);
+  const monthFrom  = dateToStr(monthStart);
+  const monthTo    = dateToStr(monthEnd);
+  const monthLabel = monthStart.toLocaleDateString('en-PH', { month: 'long', year: 'numeric' });
+
+  const DOW_LETTER = ['', 'M', 'T', 'W', 'TH', 'F', ''];
+  const schoolDays = [];
+  for (let d = new Date(monthStart); d <= monthEnd; d.setDate(d.getDate() + 1)) {
+    const dow = d.getDay();
+    if (dow === 0 || dow === 6) continue;
+    schoolDays.push(dateToStr(new Date(d)));
+  }
+  const numDays = schoolDays.length;
+  if (numDays === 0) return showToast('No school days found in this month.', 'warn');
+  if (numDays > 25) return showToast('Month has more than 25 school days — official template only has 25 day columns (D:AB). Cannot fit.', 'warn');
+
+  const logsInMonth = logs.filter(l => {
+    const d = getLogDate(l);
+    return d >= monthFrom && d <= monthTo;
+  });
+
+  const monthRange = { from: monthFrom, to: monthTo };
+  const enrolled  = studentsEnrolledInRange(selectedClassId, monthRange);
+  const males     = enrolled.filter(s => s.gender === 'M');
+  const females   = enrolled.filter(s => s.gender === 'F');
+  const ungrouped = enrolled.filter(s => s.gender !== 'M' && s.gender !== 'F');
+  const femalesPlusMissing = [...females, ...ungrouped];
+
+  if (males.length > 21)  return showToast('More than 21 male learners — official template only has 21 male rows.', 'warn');
+  if (femalesPlusMissing.length > 25) return showToast('More than 25 female learners — official template only has 25 female rows.', 'warn');
+
+  const profile = getSF2Profile();
+  const selectedClass = classes.find(c => c.id === selectedClassId);
+  const sectionName = selectedClass ? (selectedClass.section || selectedClass.name) : '';
+  const sf2GradeLevel = selectedClass
+    ? (selectedClass.gradeLevel || (selectedClass.name.includes(' - ') ? selectedClass.name.split(' - ')[0].trim() : selectedClass.name))
+    : (profile.gradeLevel || '');
+
+  let totalDayPresentM = new Array(numDays).fill(0);
+  let totalDayPresentF = new Array(numDays).fill(0);
+
+  function buildStudentData(studentList, totalsArr) {
+    const cls = selectedClass;
+    return studentList.map(s => {
+      const { arrByDay, depByDay } = buildDayMaps(logsInMonth.filter(l => l.studentId === s.id));
+      let absCount = 0, tardyCount = 0;
+      const dayCodes = schoolDays.map((d, i) => {
+        if (!s.enrolledDate || d >= s.enrolledDate) {
+          const code = computeSF2Code(cls, arrByDay[d], depByDay[d]);
+          if (code === 'absent') { absCount++; return 'absent'; }
+          totalsArr[i]++;
+          if (code !== 'present') tardyCount++;
+          return code;
+        }
+        return '';
+      });
+      const sf2Name = s.lastName ? buildStudentName(s.lastName, s.firstName, s.middleName) : s.name;
+      return { name: sf2Name, dayCodes, absCount, tardyCount };
+    });
+  }
+
+  const maleData   = buildStudentData(males, totalDayPresentM);
+  const femaleData = buildStudentData(femalesPlusMissing, totalDayPresentF);
+
+  const enrolledAsOfFirstFriday = (() => {
+    let juneYear = ry;
+    if (rm < 6) juneYear = ry - 1;
+    const june1 = new Date(juneYear, 5, 1);
+    while (june1.getDay() !== 5) june1.setDate(june1.getDate() + 1);
+    return studentsEnrolledAsOf(selectedClassId, dateToStr(june1)).length;
+  })();
+
+  const registeredEndOfMonth = enrolled.length;
+  const maleCount   = males.length;
+  const femaleCount = femalesPlusMissing.length;
+  const allAttendanceLogs = logsInMonth.filter(l => l.type === 'arrival' || l.type === 'departure');
+  let totalStudentDays = 0;
+  enrolled.forEach(s => {
+    schoolDays.forEach(d => { if (!s.enrolledDate || d >= s.enrolledDate) totalStudentDays++; });
+  });
+  const presentDaySet = new Set();
+  allAttendanceLogs
+    .filter(l => enrolled.some(s => s.id === l.studentId))
+    .forEach(l => presentDaySet.add(l.studentId + '|' + getLogDate(l)));
+  const presentStudentDays = presentDaySet.size;
+  const ada = numDays > 0 ? (presentStudentDays / numDays).toFixed(1) : '0';
+  const pctEnrolment = enrolledAsOfFirstFriday > 0
+    ? ((registeredEndOfMonth / enrolledAsOfFirstFriday) * 100).toFixed(1) + '%' : '0%';
+  const pctAttendance = totalStudentDays > 0
+    ? ((presentStudentDays / totalStudentDays) * 100).toFixed(1) + '%' : '0%';
+
+  let fiveConsecutiveCount = 0;
+  enrolled.forEach(s => {
+    const sLogs = logsInMonth.filter(l => l.studentId === s.id && (l.type === 'arrival' || l.type === 'departure'));
+    const presentDays = new Set(sLogs.map(l => getLogDate(l)));
+    let streak = 0, maxStreak = 0;
+    schoolDays.forEach(d => {
+      const enrolledOnDay = !s.enrolledDate || d >= s.enrolledDate;
+      if (enrolledOnDay && !presentDays.has(d)) { streak++; maxStreak = Math.max(maxStreak, streak); }
+      else streak = 0;
+    });
+    if (maxStreak >= 5) fiveConsecutiveCount++;
+  });
+
+  // NOTE: hardcoded 0 — old exporter never computed these. Wire up real
+  // tracking if student records have a status/dropReason field; otherwise
+  // this stays 0 and you must fill it manually on the printed form.
+  let droppedOut = 0, transferredOut = 0, transferredIn = 0;
+
+  if (typeof ExcelJS === 'undefined') return showToast('ExcelJS library not loaded yet. Try again in a moment.', 'warn');
+
+  const dayNums = schoolDays.map(d => parseInt(d.split('-')[2], 10));
+  const dayDows = schoolDays.map(d => {
+    const [dy, dm, dd] = d.split('-').map(Number);
+    return DOW_LETTER[new Date(dy, dm - 1, dd).getDay()];
+  });
+
+  const buf = await loadSF2TemplateBuffer();
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(buf);
+  const ws = wb.getWorksheet('School Form 2 (SF2)') || wb.worksheets[0];
+
+  ws.getCell('C6').value  = profile.schoolId || '';
+  ws.getCell('K6').value  = profile.schoolYear || '';
+  ws.getCell('X6').value  = monthLabel;
+  ws.getCell('C8').value  = profile.schoolName || '';
+  ws.getCell('T8').value  = sf2GradeLevel || '';
+  ws.getCell('Z8').value  = sectionName || '';
+
+  const DAY_START_COL = 4; // D
+  for (let i = 0; i < numDays; i++) {
+    const col = DAY_START_COL + i;
+    ws.getCell(10, col).value = `${dayNums[i]}\n${dayDows[i]}`;
+  }
+
+  function fillRoster(data, startRow, maxRows) {
+    data.forEach((s, idx) => {
+      const r = startRow + idx;
+      if (idx >= maxRows) return;
+      ws.getCell(`B${r}`).value = s.name;
+      s.dayCodes.forEach((code, i) => {
+        const col = DAY_START_COL + i;
+        ws.getCell(r, col).value = sf2CellText(code);
+      });
+      ws.getCell(`AC${r}`).value = s.absCount;
+      ws.getCell(`AD${r}`).value = s.tardyCount;
+    });
+  }
+  fillRoster(maleData, 14, 21);
+  fillRoster(femaleData, 36, 25);
+
+  for (let i = 0; i < numDays; i++) {
+    const col = DAY_START_COL + i;
+    ws.getCell(35, col).value = totalDayPresentM[i];
+    ws.getCell(61, col).value = totalDayPresentF[i];
+    ws.getCell(62, col).value = totalDayPresentM[i] + totalDayPresentF[i];
+  }
+
+  // Verify these value-cell coordinates visually against the template before
+  // relying on them — merges only confirm label spans, not blank input cells.
+  ws.getCell('AH65').value = maleCount;
+  ws.getCell('AI65').value = femaleCount;
+  ws.getCell('AJ65').value = maleCount + femaleCount;
+  ws.getCell('AB66').value = enrolledAsOfFirstFriday;
+  ws.getCell('AB70').value = registeredEndOfMonth;
+  ws.getCell('AB72').value = pctEnrolment;
+  ws.getCell('AB74').value = ada;
+  ws.getCell('AB75').value = pctAttendance;
+  ws.getCell('AB77').value = fiveConsecutiveCount;
+  ws.getCell('AB79').value = droppedOut;
+  ws.getCell('AB81').value = transferredOut;
+  ws.getCell('AB83').value = transferredIn;
+  ws.getCell('D63').value  = monthLabel;
+  ws.getCell('AF64').value = numDays;
+
+  const outBuf = await wb.xlsx.writeBuffer();
+  const blob = new Blob([outBuf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const filename = `SF2_${sectionName.replace(/[^a-zA-Z0-9]/g, '_')}_${monthFrom.slice(0, 7)}.xlsx`;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+
+  showToast('SF2 exported ✓ (official DepEd template)', 'ok');
+}
+
 // ── SF2 CORE ATTENDANCE CODE ──────────────────────────────────────────────
 // Single source of truth for deriving an SF2 attendance code.
 // Used by: SF2 export, Summary page, Terms modal, Student record modal.
