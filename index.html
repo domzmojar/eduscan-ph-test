@@ -3182,8 +3182,15 @@ async function generateSF2Official() {
   // the month (that Monday can fall in the previous month — that's fine,
   // it's only used as a zero-point for the offset math, never written).
   const DAY_START_COL = 4; // D
-  const isoDowStart = monthStart.getDay() === 0 ? 7 : monthStart.getDay(); // 1=Mon..7=Sun
-  const mondayAnchor = new Date(monthStart);
+  // Anchor off the first actual weekday IN the month (not monthStart itself)
+  // — if monthStart is Sat/Sun, that weekend-stub week has zero school days
+  // in this month and must not burn a week-slot in the 5-week grid.
+  const firstWeekday = new Date(monthStart);
+  while (firstWeekday.getDay() === 0 || firstWeekday.getDay() === 6) {
+    firstWeekday.setDate(firstWeekday.getDate() + 1);
+  }
+  const isoDowStart = firstWeekday.getDay(); // 1=Mon..5=Fri (already skipped weekends)
+  const mondayAnchor = new Date(firstWeekday);
   mondayAnchor.setDate(mondayAnchor.getDate() - (isoDowStart - 1));
 
   const schoolDays = [];
