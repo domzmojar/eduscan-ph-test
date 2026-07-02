@@ -3339,6 +3339,11 @@ async function generateSF2Official() {
   }
 
   const triangleCells = []; // { row, col, state } — lateAM/cutPM/both only
+  function centerCell(coordOrRow, col) {
+    const cell = col !== undefined ? ws.getCell(coordOrRow, col) : ws.getCell(coordOrRow);
+    cell.alignment = { ...cell.alignment, horizontal: 'center' };
+    return cell;
+  }
   function fillRoster(data, startRow, maxRows) {
     data.forEach((s, idx) => {
       const r = startRow + idx;
@@ -3346,13 +3351,13 @@ async function generateSF2Official() {
       ws.getCell(`B${r}`).value = s.name;
       s.dayCodes.forEach((code, i) => {
         const col = DAY_START_COL + i;
-        ws.getCell(r, col).value = sf2CellText(code);
+        centerCell(r, col).value = sf2CellText(code);
         if (code === 'lateAM' || code === 'cutPM' || code === 'both') {
           triangleCells.push({ row: r, col, state: code });
         }
       });
-      ws.getCell(`AC${r}`).value = s.absCount;
-      ws.getCell(`AD${r}`).value = s.tardyCount;
+      centerCell(`AC${r}`).value = s.absCount;
+      centerCell(`AD${r}`).value = s.tardyCount;
     });
   }
   fillRoster(maleData, 14, 21);
@@ -3360,9 +3365,13 @@ async function generateSF2Official() {
 
   for (let i = 0; i < numDays; i++) {
     const col = DAY_START_COL + i;
-    ws.getCell(35, col).value = totalDayPresentM[i];
-    ws.getCell(61, col).value = totalDayPresentF[i];
-    ws.getCell(62, col).value = totalDayPresentM[i] + totalDayPresentF[i];
+    // Template has row 35 (Male total per day) set to textRotation 90 —
+    // override to horizontal like rows 61/62 (Female / Combined totals).
+    const mCell = ws.getCell(35, col);
+    mCell.alignment = { ...mCell.alignment, textRotation: 0, horizontal: 'center' };
+    mCell.value = totalDayPresentM[i];
+    centerCell(61, col).value = totalDayPresentF[i];
+    centerCell(62, col).value = totalDayPresentM[i] + totalDayPresentF[i];
   }
 
   // OCR-verified via LibreOffice render: label cells are AB{row} (must stay
@@ -3405,7 +3414,9 @@ async function generateSF2Official() {
   // "Month:" label is AB64 (untouched); value box spans AC64:AD64 (unmerged,
   // shared border) — write to AD64, the confirmed-correct half of the box.
   ws.getCell('AD64').value = monthLabel;
-  ws.getCell('AG64').value = numDays;    // "No. of Days of Classes:" label is merged AE64:AF65 (untouched); value sits in AG64
+  const ag64Cell = ws.getCell('AG64');
+  ag64Cell.alignment = { ...ag64Cell.alignment, horizontal: 'center' };
+  ag64Cell.value = numDays;    // "No. of Days of Classes:" label is merged AE64:AF65 (untouched); value sits in AG64
 
   let outBuf = await wb.xlsx.writeBuffer();
   try {
