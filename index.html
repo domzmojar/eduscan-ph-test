@@ -69,37 +69,55 @@
       --shadow-md: 0 4px 16px rgba(0,0,0,0.06);
       --shadow-lg: 0 8px 28px rgba(0,0,0,0.10);
       --nav-height: 66px;
+
+      /* ── Peak tier: glass, gradient, spring motion ── */
+      --brand-gradient: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
+      --glass-bg: rgba(255,255,255,0.68);
+      --glass-bg-strong: rgba(255,255,255,0.82);
+      --glass-border: rgba(255,255,255,0.6);
+      --card-blur: 20px;
+      --motion-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+      --motion-spring-soft: cubic-bezier(0.22, 1, 0.36, 1);
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: var(--font-sans); }
 
-    body { background: var(--bg); color: var(--text); display: flex; flex-direction: column; min-height: 100vh; }
+    body {
+      background:
+        radial-gradient(circle at 8% -10%, rgba(0,56,168,0.08), transparent 45%),
+        radial-gradient(circle at 100% 10%, rgba(252,212,0,0.10), transparent 40%),
+        var(--bg);
+      color: var(--text); display: flex; flex-direction: column; min-height: 100vh;
+    }
 
-    header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0.85rem 1rem; text-align: center; position: relative; z-index: 20; }
+    header { background: var(--glass-bg-strong); backdrop-filter: blur(var(--card-blur)) saturate(180%); -webkit-backdrop-filter: blur(var(--card-blur)) saturate(180%); border-bottom: 1px solid var(--glass-border); padding: 0.85rem 1rem; text-align: center; position: relative; z-index: 20; }
     header h1 { font-size: 1.2rem; font-weight: 700; color: var(--primary); letter-spacing: -0.02em; }
     header p { font-size: 0.78rem; color: var(--text-muted); margin-top: 2px; }
 
-    nav.top-nav { display: flex; background: var(--surface); border-bottom: 1px solid var(--border); overflow-x: auto; position: sticky; top: 0; z-index: 10; }
-    .nav-btn { flex: 1; padding: 0.85rem 0.5rem; border: none; background: none; font-weight: 600; font-size: 0.78rem; color: var(--text-muted); cursor: pointer; text-align: center; white-space: nowrap; border-bottom: 3px solid transparent; transition: all 0.2s; }
+    nav.top-nav { display: flex; background: var(--glass-bg-strong); backdrop-filter: blur(var(--card-blur)); -webkit-backdrop-filter: blur(var(--card-blur)); border-bottom: 1px solid var(--glass-border); overflow-x: auto; position: sticky; top: 0; z-index: 10; }
+    .nav-btn { flex: 1; padding: 0.85rem 0.5rem; border: none; background: none; font-weight: 600; font-size: 0.78rem; color: var(--text-muted); cursor: pointer; text-align: center; white-space: nowrap; border-bottom: 3px solid transparent; transition: all 0.25s var(--motion-spring-soft); }
     .nav-btn.active { color: var(--primary); border-bottom-color: var(--primary); }
 
     main { flex: 1; padding: 1rem; max-width: 800px; width: 100%; margin: 0 auto; }
 
     .page { display: none; }
-    .page.active { display: block; }
+    .page.active { display: block; animation: pageIn 0.4s var(--motion-spring-soft); }
+    @keyframes pageIn { from { opacity: 0; transform: translateY(8px) scale(0.99); } to { opacity: 1; transform: translateY(0) scale(1); } }
+
 
     h2 { margin-bottom: 1rem; font-size: 1.15rem; font-weight: 600; line-height: 1.4; }
 
     /* Level 1 (static): white surface + 1px outline, no shadow.
        Level 2 (active/interactive/selected): add a low, diffused lift via .elevated. */
-    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.25rem; margin-bottom: 1rem; box-shadow: var(--shadow-xs); }
-    .card.elevated { box-shadow: var(--shadow-sm); border-color: var(--border); }
+    .card { background: var(--glass-bg); backdrop-filter: blur(var(--card-blur)) saturate(160%); -webkit-backdrop-filter: blur(var(--card-blur)) saturate(160%); border: 1px solid var(--glass-border); border-radius: var(--radius); padding: 1.25rem; margin-bottom: 1rem; box-shadow: var(--shadow-xs); transition: box-shadow 0.3s var(--motion-spring-soft); }
+    .card.elevated { box-shadow: var(--shadow-sm); background: var(--glass-bg-strong); }
     .card.flat { box-shadow: none; }
 
     /* ── BOTTOM NAVIGATION (mobile) ── */
     .bottom-nav {
       display: none; position: fixed; left: 0; right: 0; bottom: 0; z-index: 50;
-      background: var(--surface); border-top: 1px solid var(--border);
+      background: var(--glass-bg-strong); backdrop-filter: blur(var(--card-blur)) saturate(180%); -webkit-backdrop-filter: blur(var(--card-blur)) saturate(180%);
+      border-top: 1px solid var(--glass-border);
       box-shadow: 0 -2px 8px rgba(0,0,0,0.04);
       padding-bottom: env(safe-area-inset-bottom);
     }
@@ -110,10 +128,10 @@
       background: none; border: none; color: var(--text-muted); font-size: 0.64rem; font-weight: 700;
       cursor: pointer; position: relative; -webkit-tap-highlight-color: transparent;
     }
-    .bnav-btn svg { width: 22px; height: 22px; transition: transform 0.15s; }
+    .bnav-btn svg { width: 22px; height: 22px; transition: transform 0.35s var(--motion-spring); }
     .bnav-btn.active { color: var(--primary); }
-    .bnav-btn.active svg { transform: translateY(-1px); }
-    .bnav-btn:active svg { transform: scale(0.9); }
+    .bnav-btn.active svg { transform: translateY(-2px) scale(1.08); }
+    .bnav-btn:active svg { transform: scale(0.85); }
     .bnav-dot { position: absolute; top: 4px; right: calc(50% - 16px); width: 6px; height: 6px; border-radius: 50%; background: var(--danger); display: none; }
     .bnav-dot.show { display: block; }
 
@@ -122,9 +140,10 @@
     #more-sheet-backdrop.show { display: block; }
     #more-sheet {
       position: fixed; left: 0; right: 0; bottom: 0; z-index: 61;
-      background: var(--surface); border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+      background: var(--glass-bg-strong); backdrop-filter: blur(var(--card-blur)) saturate(180%); -webkit-backdrop-filter: blur(var(--card-blur)) saturate(180%);
+      border-radius: var(--radius-lg) var(--radius-lg) 0 0;
       box-shadow: var(--shadow-lg); padding: 0 0.6rem calc(1rem + env(safe-area-inset-bottom));
-      transform: translateY(100%); transition: transform 0.28s cubic-bezier(.32,.72,0,1); max-width: 800px; margin: 0 auto;
+      transform: translateY(100%); transition: transform 0.4s var(--motion-spring); max-width: 800px; margin: 0 auto;
     }
     #more-sheet.show { transform: translateY(0); }
     #more-sheet .sheet-handle { width: 36px; height: 4px; border-radius: 2px; background: var(--border); margin: 0.65rem auto 0.75rem; }
@@ -234,6 +253,18 @@
     .scan-corners.flash-ok .sc-br::before, .scan-corners.flash-ok .sc-br::after  { border-color: #2ba84a; }
     .scan-corners.flash-err::before, .scan-corners.flash-err::after,
     .scan-corners.flash-err .sc-br::before, .scan-corners.flash-err .sc-br::after { border-color: #ff5449; }
+    .scan-corners.flash-ok  { animation: cornerSnap 0.45s var(--motion-spring); }
+    .scan-corners.flash-err { animation: cornerShake 0.4s var(--motion-spring); }
+    @keyframes cornerSnap {
+      0%   { inset: 12px; }
+      35%  { inset: 22px; }
+      100% { inset: 12px; }
+    }
+    @keyframes cornerShake {
+      0%, 100% { transform: translateX(0); }
+      25% { transform: translateX(-4px); }
+      75% { transform: translateX(4px); }
+    }
 
     /* Dimmed periphery — darkens everything outside the capture window so
        the eye locks onto the framed area during high-speed scanning. */
@@ -359,16 +390,18 @@
     .stat-row-btns { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.4rem; }
 
     .modal-backdrop {
-      display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+      display: none; position: fixed; inset: 0; background: rgba(25,28,30,0.4);
+      backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
       z-index: 500; align-items: flex-end; justify-content: center;
     }
     .modal-backdrop.open { display: flex; }
     .modal-sheet {
-      background: var(--surface); border-radius: 18px 18px 0 0;
+      background: var(--glass-bg-strong); backdrop-filter: blur(var(--card-blur)) saturate(180%); -webkit-backdrop-filter: blur(var(--card-blur)) saturate(180%);
+      border-radius: 18px 18px 0 0;
       width: 100%; max-width: 600px; max-height: 80vh;
       display: flex; flex-direction: column;
       box-shadow: 0 -4px 24px rgba(0,0,0,0.15);
-      animation: slideUp 0.25s ease;
+      animation: slideUp 0.4s var(--motion-spring);
     }
     @keyframes slideUp { from { transform: translateY(40px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
     .modal-header {
@@ -387,15 +420,17 @@
 
     /* Custom confirm dialog — replaces browser confirm() so it matches app styling */
     .confirm-modal-backdrop {
-      display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+      display: none; position: fixed; inset: 0; background: rgba(25,28,30,0.4);
+      backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
       z-index: 900; align-items: center; justify-content: center; padding: 1.25rem;
     }
     .confirm-modal-backdrop.open { display: flex; }
     .confirm-modal-sheet {
-      background: var(--surface); border-radius: 16px;
+      background: var(--glass-bg-strong); backdrop-filter: blur(var(--card-blur)) saturate(180%); -webkit-backdrop-filter: blur(var(--card-blur)) saturate(180%);
+      border-radius: 16px;
       width: 100%; max-width: 380px;
       box-shadow: 0 8px 32px rgba(0,0,0,0.2);
-      animation: slideUp 0.2s ease;
+      animation: slideUp 0.35s var(--motion-spring);
       padding: 1.25rem 1.25rem 1rem;
     }
     .confirm-modal-title { font-weight: 700; font-size: 1rem; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 6px; }
@@ -1366,12 +1401,31 @@
         <div class="scan-corners" id="scan-corners"><div class="sc-br"></div></div>
         <div class="scan-flash" id="scan-flash"></div>
         <div id="cam-idle">
-          <svg width="44" height="44" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" style="opacity:0.4;">
-            <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
-            <rect x="3" y="14" width="7" height="7" rx="1"/>
-            <path stroke-linecap="round" d="M14 14h3m0 0h4m-4 0v4m0-4v-1"/>
+          <svg width="128" height="108" viewBox="0 0 128 108" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <!-- ID card -->
+            <rect x="6" y="34" width="62" height="42" rx="7" fill="#0038a8" opacity="0.14"/>
+            <rect x="6" y="34" width="62" height="42" rx="7" stroke="#0038a8" stroke-width="1.6" opacity="0.55"/>
+            <circle cx="22" cy="49" r="6" fill="#0038a8" opacity="0.5"/>
+            <rect x="32" y="45" width="28" height="3" rx="1.5" fill="#0038a8" opacity="0.45"/>
+            <rect x="32" y="52" width="20" height="3" rx="1.5" fill="#0038a8" opacity="0.3"/>
+            <rect x="14" y="62" width="12" height="12" rx="1.5" fill="#0038a8" opacity="0.35"/>
+            <rect x="28" y="62" width="4" height="4" fill="#0038a8" opacity="0.35"/>
+            <rect x="34" y="62" width="4" height="4" fill="#0038a8" opacity="0.35"/>
+            <rect x="28" y="68" width="4" height="4" fill="#0038a8" opacity="0.35"/>
+            <!-- Phone -->
+            <rect x="60" y="14" width="46" height="80" rx="10" fill="#191c1e" opacity="0.06"/>
+            <rect x="60" y="14" width="46" height="80" rx="10" stroke="#191c1e" stroke-width="2" opacity="0.7"/>
+            <rect x="66" y="22" width="34" height="52" rx="3" fill="#fcd400" opacity="0.18"/>
+            <rect x="66" y="22" width="34" height="52" rx="3" stroke="#fcd400" stroke-width="1.6"/>
+            <path d="M66 40h34" stroke="#fcd400" stroke-width="2" stroke-linecap="round"/>
+            <rect x="76" y="82" width="14" height="3" rx="1.5" fill="#191c1e" opacity="0.3"/>
+            <!-- scan corner brackets on phone viewport -->
+            <path d="M68 26v-2a2 2 0 0 1 2-2h2" stroke="#0038a8" stroke-width="2" stroke-linecap="round"/>
+            <path d="M98 22h2a2 2 0 0 1 2 2v2" stroke="#0038a8" stroke-width="2" stroke-linecap="round"/>
+            <path d="M68 70v2a2 2 0 0 0 2 2h2" stroke="#0038a8" stroke-width="2" stroke-linecap="round"/>
+            <path d="M98 74h2a2 2 0 0 0 2-2v-2" stroke="#0038a8" stroke-width="2" stroke-linecap="round"/>
           </svg>
-          <p id="idle-notice-text" style="font-size:0.85rem; line-height:1.4; margin-top:0.5rem;">Select a class to start scanning</p>
+          <p id="idle-notice-text" style="font-size:0.85rem; line-height:1.4; margin-top:0.65rem;">Select a class to start scanning</p>
         </div>
       </div>
 
@@ -1613,29 +1667,36 @@
 
     <!-- 2. DYNAMIC METRIC CARDS (Premium: Attendance Rate + Context) -->
     <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:0.75rem; margin-bottom:1.5rem;">
-      <div id="rate-card" style="background:var(--arrival-bg); border:1px solid var(--arrival-border); border-radius:var(--radius); padding:0.9rem 1rem; text-align:center;">
-        <div style="font-size:0.7rem; color:var(--arrival); font-weight:600; margin-bottom:0.35rem;">Attendance Rate</div>
-        <svg width="72" height="72" viewBox="0 0 80 80" style="display:block; margin:0 auto;">
-          <circle cx="40" cy="40" r="32" fill="none" stroke="rgba(3,105,161,0.15)" stroke-width="8"/>
-          <circle id="rate-ring" cx="40" cy="40" r="32" fill="none" stroke="var(--arrival)" stroke-width="8"
-                  stroke-linecap="round" stroke-dasharray="201.06" stroke-dashoffset="201.06"
-                  transform="rotate(-90 40 40)" style="transition: stroke-dashoffset 0.6s ease, stroke 0.3s ease;"/>
-          <text id="metric-rate" x="40" y="45" text-anchor="middle" font-size="16" font-weight="800" fill="var(--arrival)">0%</text>
+      <div id="rate-card" style="background:var(--arrival-bg); border:1px solid var(--arrival-border); border-radius:var(--radius); padding:0.9rem 1rem; text-align:center; position:relative; overflow:hidden;">
+        <svg id="rate-spark" viewBox="0 0 100 30" preserveAspectRatio="none" style="position:absolute; left:0; right:0; bottom:0; width:100%; height:32px; pointer-events:none;">
+          <path id="rate-spark-area" d="" fill="var(--arrival)" opacity="0.16"></path>
+          <path id="rate-spark-line" d="" fill="none" stroke="var(--arrival)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" opacity="0.55"></path>
         </svg>
-        <div id="metric-rate-detail" style="font-size:0.68rem; color:var(--arrival); margin-top:0.3rem; opacity:0.8;">0/0 enrolled</div>
+        <div style="position:relative;">
+          <div style="font-size:0.7rem; color:var(--arrival); font-weight:600; margin-bottom:0.35rem;">Attendance Rate</div>
+          <svg width="72" height="72" viewBox="0 0 80 80" style="display:block; margin:0 auto;">
+            <circle cx="40" cy="40" r="32" fill="none" stroke="rgba(3,105,161,0.15)" stroke-width="8"/>
+            <circle id="rate-ring" cx="40" cy="40" r="32" fill="none" stroke="var(--arrival)" stroke-width="8"
+                    stroke-linecap="round" stroke-dasharray="201.06" stroke-dashoffset="201.06"
+                    transform="rotate(-90 40 40)" style="transition: stroke-dashoffset 0.6s var(--motion-spring-soft), stroke 0.3s ease;"/>
+            <text id="metric-rate" x="40" y="45" text-anchor="middle" font-size="16" font-weight="800" fill="var(--arrival)">0%</text>
+          </svg>
+          <div id="metric-rate-detail" style="font-size:0.68rem; color:var(--arrival); margin-top:0.3rem; opacity:0.8;">0/0 enrolled</div>
+          <div style="font-size:0.6rem; color:var(--arrival); opacity:0.55; margin-top:0.15rem;">7-day trend</div>
+        </div>
       </div>
       <div style="background:var(--danger-bg); border:1px solid var(--danger-border); border-radius:var(--radius); padding:1rem; text-align:center;">
         <div style="font-size:0.7rem; color:var(--danger); font-weight:600; margin-bottom:0.25rem;">Total Absences</div>
         <div id="metric-absent" style="font-size:2rem; font-weight:800; color:var(--danger); line-height:1;">0</div>
         <div id="metric-absent-detail" style="font-size:0.68rem; color:var(--danger); margin-top:0.2rem; opacity:0.8;">student-days missed</div>
       </div>
-      <div style="background:#fff7ed; border:1px solid #fdba74; border-radius:var(--radius); padding:1rem; text-align:center;">
-        <div style="font-size:0.7rem; color:#c2410c; font-weight:600; margin-bottom:0.25rem;">Late Arrivals</div>
-        <div id="metric-late" style="font-size:2rem; font-weight:800; color:#c2410c; line-height:1;">0</div>
-        <div style="height:5px; background:#fed7aa; border-radius:3px; margin-top:0.55rem; overflow:hidden;">
-          <div id="late-bar" style="height:100%; width:0%; background:#c2410c; border-radius:3px; transition:width 0.6s ease;"></div>
+      <div style="background:var(--warning-bg); border:1px solid var(--warning-border); border-radius:var(--radius); padding:1rem; text-align:center;">
+        <div style="font-size:0.7rem; color:var(--warning); font-weight:600; margin-bottom:0.25rem;">Late Arrivals</div>
+        <div id="metric-late" style="font-size:2rem; font-weight:800; color:var(--warning); line-height:1;">0</div>
+        <div style="height:5px; background:rgba(0,0,0,0.08); border-radius:3px; margin-top:0.55rem; overflow:hidden;">
+          <div id="late-bar" style="height:100%; width:0%; background:var(--warning); border-radius:3px; transition:width 0.6s var(--motion-spring-soft);"></div>
         </div>
-        <div id="metric-late-detail" style="font-size:0.68rem; color:#c2410c; margin-top:0.3rem; opacity:0.8;">instances</div>
+        <div id="metric-late-detail" style="font-size:0.68rem; color:var(--warning); margin-top:0.3rem; opacity:0.8;">instances</div>
       </div>
       <div style="background:var(--primary-bg); border:1px solid #bfdbfe; border-radius:var(--radius); padding:1rem; text-align:center;">
         <div style="font-size:0.7rem; color:var(--primary); font-weight:600; margin-bottom:0.25rem;">School Days</div>
@@ -2650,7 +2711,7 @@ function flashViewfinder(kind) {
   const cls = kind === 'ok' ? 'flash-ok' : 'flash-err';
   corners.classList.remove('flash-ok', 'flash-err');
   flash.classList.remove('flash-ok', 'flash-err');
-  void flash.offsetWidth; // restart animation
+  void flash.offsetWidth; void corners.offsetWidth; // restart animations
   corners.classList.add(cls);
   flash.classList.add(cls);
   clearTimeout(flashViewfinder._t);
