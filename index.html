@@ -42,18 +42,30 @@
       --text: #0f172a;
       --text-muted: #64748b;
       --border: #e2e8f0;
-      --radius: 10px;
+
+      /* ── Roundness tokens (ROUND_FOUR scale) ── */
+      --radius-sm: 8px;
+      --radius: 14px;
+      --radius-lg: 20px;
+      --radius-pill: 999px;
+
+      /* ── Elevation tokens ── */
+      --shadow-xs: 0 1px 2px rgba(15,23,42,0.05);
+      --shadow-sm: 0 1px 3px rgba(15,23,42,0.04), 0 4px 12px rgba(15,23,42,0.06);
+      --shadow-md: 0 4px 10px rgba(15,23,42,0.05), 0 10px 28px rgba(15,23,42,0.09);
+      --shadow-lg: 0 12px 32px rgba(15,23,42,0.14);
+      --nav-height: 66px;
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
 
     body { background: var(--bg); color: var(--text); display: flex; flex-direction: column; min-height: 100vh; }
 
-    header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0.85rem 1rem; text-align: center; }
+    header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0.85rem 1rem; text-align: center; position: relative; z-index: 20; }
     header h1 { font-size: 1.2rem; font-weight: 700; color: var(--primary); letter-spacing: -0.02em; }
     header p { font-size: 0.78rem; color: var(--text-muted); margin-top: 2px; }
 
-    nav { display: flex; background: var(--surface); border-bottom: 1px solid var(--border); overflow-x: auto; position: sticky; top: 0; z-index: 10; }
+    nav.top-nav { display: flex; background: var(--surface); border-bottom: 1px solid var(--border); overflow-x: auto; position: sticky; top: 0; z-index: 10; }
     .nav-btn { flex: 1; padding: 0.85rem 0.5rem; border: none; background: none; font-weight: 600; font-size: 0.78rem; color: var(--text-muted); cursor: pointer; text-align: center; white-space: nowrap; border-bottom: 3px solid transparent; transition: all 0.2s; }
     .nav-btn.active { color: var(--primary); border-bottom-color: var(--primary); }
 
@@ -64,7 +76,59 @@
 
     h2 { margin-bottom: 1rem; font-size: 1.3rem; font-weight: 700; }
 
-    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.25rem; margin-bottom: 1rem; }
+    /* Interactive/primary surfaces get elevation + soft rounding so the eye
+       can immediately tell them apart from flat, static info blocks. */
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.25rem; margin-bottom: 1rem; box-shadow: var(--shadow-sm); }
+    .card.elevated { box-shadow: var(--shadow-md); border-color: transparent; }
+    .card.flat { box-shadow: none; }
+
+    /* ── BOTTOM NAVIGATION (mobile) ── */
+    .bottom-nav {
+      display: none; position: fixed; left: 0; right: 0; bottom: 0; z-index: 50;
+      background: var(--surface); border-top: 1px solid var(--border);
+      box-shadow: 0 -6px 20px rgba(15,23,42,0.08);
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+    .bottom-nav-inner { display: flex; max-width: 800px; margin: 0 auto; }
+    .bnav-btn {
+      flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 3px; padding: 0.5rem 0.25rem 0.55rem;
+      background: none; border: none; color: var(--text-muted); font-size: 0.64rem; font-weight: 700;
+      cursor: pointer; position: relative; -webkit-tap-highlight-color: transparent;
+    }
+    .bnav-btn svg { width: 22px; height: 22px; transition: transform 0.15s; }
+    .bnav-btn.active { color: var(--primary); }
+    .bnav-btn.active svg { transform: translateY(-1px); }
+    .bnav-btn:active svg { transform: scale(0.9); }
+    .bnav-dot { position: absolute; top: 4px; right: calc(50% - 16px); width: 6px; height: 6px; border-radius: 50%; background: var(--danger); display: none; }
+    .bnav-dot.show { display: block; }
+
+    /* ── "MORE" BOTTOM SHEET (secondary utilities) ── */
+    #more-sheet-backdrop { display: none; position: fixed; inset: 0; background: rgba(15,23,42,0.42); z-index: 60; }
+    #more-sheet-backdrop.show { display: block; }
+    #more-sheet {
+      position: fixed; left: 0; right: 0; bottom: 0; z-index: 61;
+      background: var(--surface); border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+      box-shadow: var(--shadow-lg); padding: 0 0.6rem calc(1rem + env(safe-area-inset-bottom));
+      transform: translateY(100%); transition: transform 0.28s cubic-bezier(.32,.72,0,1); max-width: 800px; margin: 0 auto;
+    }
+    #more-sheet.show { transform: translateY(0); }
+    #more-sheet .sheet-handle { width: 36px; height: 4px; border-radius: 2px; background: var(--border); margin: 0.65rem auto 0.75rem; }
+    #more-sheet .sheet-title { font-size: 0.74rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; padding: 0.2rem 0.75rem 0.5rem; }
+    #more-sheet button {
+      width: 100%; display: flex; align-items: center; gap: 12px; padding: 0.8rem 0.75rem;
+      border: none; background: none; border-radius: var(--radius-sm); font-size: 0.94rem; font-weight: 600;
+      color: var(--text); cursor: pointer; text-align: left; -webkit-tap-highlight-color: transparent;
+    }
+    #more-sheet button:active { background: var(--bg); }
+    #more-sheet button.active { color: var(--primary); background: var(--primary-bg); }
+    #more-sheet button svg { opacity: 0.65; flex-shrink: 0; width: 20px; height: 20px; }
+
+    @media (max-width: 640px) {
+      nav.top-nav { display: none; }
+      .bottom-nav { display: block; }
+      main { padding-bottom: calc(var(--nav-height) + 1rem + env(safe-area-inset-bottom)); }
+    }
 
     .form-group { margin-bottom: 0.9rem; }
     label { display: block; margin-bottom: 0.4rem; font-weight: 600; font-size: 0.83rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
@@ -152,6 +216,21 @@
     .scan-corners::after  { top:0; right:0; border-width:3px 3px 0 0; border-radius:0 4px 0 0; }
     .sc-br::before { bottom:0; left:0; border-width:0 0 3px 3px; border-radius:0 0 0 4px; }
     .sc-br::after  { bottom:0; right:0; border-width:0 3px 3px 0; border-radius:0 0 4px 0; }
+    .scan-corners.flash-ok::before,  .scan-corners.flash-ok::after,
+    .scan-corners.flash-ok .sc-br::before, .scan-corners.flash-ok .sc-br::after  { border-color: #4ade80; }
+    .scan-corners.flash-err::before, .scan-corners.flash-err::after,
+    .scan-corners.flash-err .sc-br::before, .scan-corners.flash-err .sc-br::after { border-color: #f87171; }
+
+    /* Dimmed periphery — darkens everything outside the capture window so
+       the eye locks onto the framed area during high-speed scanning. */
+    .scan-window { position: absolute; inset: 12px; border-radius: 12px; z-index: 1; display: none; pointer-events: none; box-shadow: 0 0 0 2000px rgba(0,0,0,0.4); }
+    .scan-window.active { display: block; }
+
+    /* Full-viewport success/error flash for peripheral confirmation */
+    .scan-flash { position: absolute; inset: 0; z-index: 4; pointer-events: none; opacity: 0; }
+    .scan-flash.flash-ok  { background: rgba(74,222,128,0.28); animation: flashPulse 0.5s ease; }
+    .scan-flash.flash-err { background: rgba(248,113,113,0.28); animation: flashPulse 0.5s ease; }
+    @keyframes flashPulse { 0% { opacity: 1; } 100% { opacity: 0; } }
 
     table { width: 100%; border-collapse: collapse; margin-top: 0.5rem; }
     th, td { padding: 0.6rem 0.65rem; text-align: left; border-bottom: 1px solid var(--border); font-size: 0.86rem; }
@@ -1182,7 +1261,7 @@
 </div>
 </header>
 
-<nav>
+<nav class="top-nav">
   <button class="nav-btn active" id="nav-scanner"  onclick="showPage('scanner')">Scanner</button>
   <button class="nav-btn"        id="nav-classes"  onclick="showPage('classes')">Classes</button>
   <button class="nav-btn"        id="nav-students" onclick="showPage('students')">Students</button>
@@ -1192,6 +1271,55 @@
   <button class="nav-btn"        id="nav-sync"     onclick="showPage('sync')">Sync</button>
   <button class="nav-btn"        id="nav-download" onclick="showPage('download')">Download</button>
 </nav>
+
+<!-- MOBILE BOTTOM NAVIGATION — 4 primary tasks + More -->
+<nav class="bottom-nav" aria-label="Primary">
+  <div class="bottom-nav-inner">
+    <button class="bnav-btn active" id="bnav-scanner" onclick="showPage('scanner')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3m0 0h4m-4 0v4m0-4v-1"/></svg>
+      Scanner
+    </button>
+    <button class="bnav-btn" id="bnav-summary" onclick="showPage('summary')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><rect x="7" y="12" width="3" height="6" rx="0.5"/><rect x="13" y="8" width="3" height="10" rx="0.5"/><rect x="19" y="5" width="0" height="0"/><rect x="17.5" y="5" width="3" height="13" rx="0.5"/></svg>
+      Summary
+    </button>
+    <button class="bnav-btn" id="bnav-students" onclick="showPage('students')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      Students
+    </button>
+    <button class="bnav-btn" id="bnav-classes" onclick="showPage('classes')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+      Classes
+    </button>
+    <button class="bnav-btn" id="bnav-more" onclick="toggleMoreSheet()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg>
+      More
+    </button>
+  </div>
+</nav>
+
+<!-- "More" bottom sheet — secondary utilities kept off the main viewport -->
+<div id="more-sheet-backdrop" onclick="closeMoreSheet()"></div>
+<div id="more-sheet" role="dialog" aria-label="More tools">
+  <div class="sheet-handle"></div>
+  <div class="sheet-title">Tools</div>
+  <button data-page="log" onclick="showPage('log')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+    Logs
+  </button>
+  <button data-page="terms" onclick="showPage('terms')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+    Terms
+  </button>
+  <button data-page="sync" onclick="showPage('sync')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6M3 22v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L21 8M3 16l2.64 2.36A9 9 0 0 0 20.49 15"/></svg>
+    Sync
+  </button>
+  <button data-page="download" onclick="showPage('download')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5M12 15V3"/></svg>
+    Download
+  </button>
+</div>
 
 <main>
 
@@ -1206,7 +1334,7 @@
       <button class="ib-action" id="ib-action-btn"></button>
     </div>
 
-    <div class="card">
+    <div class="card elevated">
       <div class="form-group" style="margin-bottom:0.75rem;">
         <label for="scanner-class-select">Active class session</label>
         <select id="scanner-class-select" onchange="onClassChange()">
@@ -1217,9 +1345,11 @@
       <div class="scan-area" id="scan-area" onclick="handleScanAreaClick()">
         <video id="scan-video" autoplay playsinline></video>
         <canvas id="qr-canvas"></canvas>
+        <div class="scan-window" id="scan-window"></div>
         <div class="scan-mode-overlay" id="scan-mode-overlay">📷 Scanning</div>
         <div class="scan-line" id="scan-line"></div>
         <div class="scan-corners" id="scan-corners"><div class="sc-br"></div></div>
+        <div class="scan-flash" id="scan-flash"></div>
         <div id="cam-idle">
           <svg width="44" height="44" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" style="opacity:0.4;">
             <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
@@ -1468,22 +1598,31 @@
 
     <!-- 2. DYNAMIC METRIC CARDS (Premium: Attendance Rate + Context) -->
     <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:0.75rem; margin-bottom:1.5rem;">
-      <div style="background:var(--arrival-bg); border:1px solid var(--arrival-border); border-radius:10px; padding:1rem; text-align:center;">
-        <div style="font-size:0.7rem; color:var(--arrival); font-weight:600; margin-bottom:0.25rem;">Attendance Rate</div>
-        <div id="metric-rate" style="font-size:2rem; font-weight:800; color:var(--arrival); line-height:1;">0%</div>
-        <div id="metric-rate-detail" style="font-size:0.68rem; color:var(--arrival); margin-top:0.2rem; opacity:0.8;">0/0 enrolled</div>
+      <div id="rate-card" style="background:var(--arrival-bg); border:1px solid var(--arrival-border); border-radius:var(--radius); padding:0.9rem 1rem; text-align:center;">
+        <div style="font-size:0.7rem; color:var(--arrival); font-weight:600; margin-bottom:0.35rem;">Attendance Rate</div>
+        <svg width="72" height="72" viewBox="0 0 80 80" style="display:block; margin:0 auto;">
+          <circle cx="40" cy="40" r="32" fill="none" stroke="rgba(3,105,161,0.15)" stroke-width="8"/>
+          <circle id="rate-ring" cx="40" cy="40" r="32" fill="none" stroke="var(--arrival)" stroke-width="8"
+                  stroke-linecap="round" stroke-dasharray="201.06" stroke-dashoffset="201.06"
+                  transform="rotate(-90 40 40)" style="transition: stroke-dashoffset 0.6s ease, stroke 0.3s ease;"/>
+          <text id="metric-rate" x="40" y="45" text-anchor="middle" font-size="16" font-weight="800" fill="var(--arrival)">0%</text>
+        </svg>
+        <div id="metric-rate-detail" style="font-size:0.68rem; color:var(--arrival); margin-top:0.3rem; opacity:0.8;">0/0 enrolled</div>
       </div>
-      <div style="background:var(--danger-bg); border:1px solid var(--danger-border); border-radius:10px; padding:1rem; text-align:center;">
+      <div style="background:var(--danger-bg); border:1px solid var(--danger-border); border-radius:var(--radius); padding:1rem; text-align:center;">
         <div style="font-size:0.7rem; color:var(--danger); font-weight:600; margin-bottom:0.25rem;">Total Absences</div>
         <div id="metric-absent" style="font-size:2rem; font-weight:800; color:var(--danger); line-height:1;">0</div>
         <div id="metric-absent-detail" style="font-size:0.68rem; color:var(--danger); margin-top:0.2rem; opacity:0.8;">student-days missed</div>
       </div>
-      <div style="background:#fff7ed; border:1px solid #fdba74; border-radius:10px; padding:1rem; text-align:center;">
+      <div style="background:#fff7ed; border:1px solid #fdba74; border-radius:var(--radius); padding:1rem; text-align:center;">
         <div style="font-size:0.7rem; color:#c2410c; font-weight:600; margin-bottom:0.25rem;">Late Arrivals</div>
         <div id="metric-late" style="font-size:2rem; font-weight:800; color:#c2410c; line-height:1;">0</div>
-        <div id="metric-late-detail" style="font-size:0.68rem; color:#c2410c; margin-top:0.2rem; opacity:0.8;">instances</div>
+        <div style="height:5px; background:#fed7aa; border-radius:3px; margin-top:0.55rem; overflow:hidden;">
+          <div id="late-bar" style="height:100%; width:0%; background:#c2410c; border-radius:3px; transition:width 0.6s ease;"></div>
+        </div>
+        <div id="metric-late-detail" style="font-size:0.68rem; color:#c2410c; margin-top:0.3rem; opacity:0.8;">instances</div>
       </div>
-      <div style="background:var(--primary-bg); border:1px solid #bfdbfe; border-radius:10px; padding:1rem; text-align:center;">
+      <div style="background:var(--primary-bg); border:1px solid #bfdbfe; border-radius:var(--radius); padding:1rem; text-align:center;">
         <div style="font-size:0.7rem; color:var(--primary); font-weight:600; margin-bottom:0.25rem;">School Days</div>
         <div id="metric-days" style="font-size:2rem; font-weight:800; color:var(--primary); line-height:1;">0</div>
         <div id="metric-days-detail" style="font-size:0.68rem; color:var(--primary); margin-top:0.2rem; opacity:0.8;">days with records</div>
@@ -2093,6 +2232,22 @@ function showPage(page) {
   document.getElementById('page-' + page).classList.add('active');
   document.getElementById('nav-' + page).classList.add('active');
 
+  // Keep the mobile bottom nav + "More" sheet in sync with whichever page
+  // is now active, whether it was opened from the bottom bar or the sheet.
+  const PRIMARY_BNAV_PAGES = new Set(['scanner', 'summary', 'students', 'classes']);
+  document.querySelectorAll('.bnav-btn').forEach(b => b.classList.remove('active'));
+  const moreBtn = document.getElementById('bnav-more');
+  if (PRIMARY_BNAV_PAGES.has(page)) {
+    const bnav = document.getElementById('bnav-' + page);
+    if (bnav) bnav.classList.add('active');
+  } else if (moreBtn) {
+    moreBtn.classList.add('active');
+  }
+  document.querySelectorAll('#more-sheet button[data-page]').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.page === page);
+  });
+  closeMoreSheet();
+
   if (page !== 'scanner') stopCamera();
 
   if (page === 'students') renderStudents();
@@ -2102,6 +2257,20 @@ function showPage(page) {
   if (page === 'log')      renderLog();
   if (page === 'summary') { initSummaryPeriod(); renderSummary(); }
   if (page === 'sync')     renderSyncPage();
+}
+
+// ── MORE SHEET (mobile secondary utilities) ─────────────────────────────
+function openMoreSheet() {
+  document.getElementById('more-sheet-backdrop').classList.add('show');
+  document.getElementById('more-sheet').classList.add('show');
+}
+function closeMoreSheet() {
+  document.getElementById('more-sheet-backdrop').classList.remove('show');
+  document.getElementById('more-sheet').classList.remove('show');
+}
+function toggleMoreSheet() {
+  const isOpen = document.getElementById('more-sheet').classList.contains('show');
+  if (isOpen) { closeMoreSheet(); } else { openMoreSheet(); }
 }
 
 function onClassChange() {
@@ -2143,6 +2312,7 @@ async function startCamera() {
     idle.style.display = 'none';
     document.getElementById('scan-line').classList.add('active');
     document.getElementById('scan-corners').classList.add('active');
+    document.getElementById('scan-window').classList.add('active');
     overlay.classList.add('active');
     overlay.textContent = '📷 Scanning';
     stopBtn.classList.add('visible');
@@ -2163,6 +2333,7 @@ function stopCamera() {
   document.getElementById('cam-idle').style.display = 'flex';
   document.getElementById('scan-line').classList.remove('active');
   document.getElementById('scan-corners').classList.remove('active');
+  document.getElementById('scan-window').classList.remove('active');
   overlay.classList.remove('active');
   if (stopBtn) stopBtn.classList.remove('visible');
 }
@@ -2451,6 +2622,24 @@ async function handleQRScan(rawData) {
 function showFeedback(type, title, body) {
   document.getElementById('scan-result-box').innerHTML =
     `<div class="scan-feedback ${type}"><strong>${title}</strong><span style="font-size:0.85rem;">${body}</span></div>`;
+  flashViewfinder(type === 'ok' || type === 'ok-dep' ? 'ok' : 'err');
+}
+
+// Brief peripheral confirmation on the camera viewfinder itself, so a
+// teacher scanning quickly doesn't have to look down at the result card
+// under the video to know a scan landed.
+function flashViewfinder(kind) {
+  const corners = document.getElementById('scan-corners');
+  const flash   = document.getElementById('scan-flash');
+  if (!corners || !flash) return;
+  const cls = kind === 'ok' ? 'flash-ok' : 'flash-err';
+  corners.classList.remove('flash-ok', 'flash-err');
+  flash.classList.remove('flash-ok', 'flash-err');
+  void flash.offsetWidth; // restart animation
+  corners.classList.add(cls);
+  flash.classList.add(cls);
+  clearTimeout(flashViewfinder._t);
+  flashViewfinder._t = setTimeout(() => corners.classList.remove('flash-ok', 'flash-err'), 550);
 }
 
 // ── TODAY LIST ────────────────────────────────────────────────────────────
@@ -3755,17 +3944,39 @@ function renderPremiumCharts(range, logsInRange) {
   document.getElementById('metric-days').textContent = schoolDays;
   document.getElementById('metric-days-detail').textContent = isDaily ? 'today' : 'days with records';
 
-  // Color the rate card based on performance
-  const rateEl = document.getElementById('metric-rate').parentElement;
+  // Color the rate card + ring based on performance
+  const rateEl = document.getElementById('rate-card');
+  const ringEl = document.getElementById('rate-ring');
+  const rateTextEl = document.getElementById('metric-rate');
+  const RATE_R = 32, RATE_CIRC = 2 * Math.PI * RATE_R;
+  if (ringEl) {
+    const offset = RATE_CIRC - (RATE_CIRC * Math.min(100, Math.max(0, attendanceRate)) / 100);
+    ringEl.style.strokeDashoffset = offset;
+  }
+  let rateColor = 'var(--arrival)';
   if (attendanceRate >= 90) {
     rateEl.style.background = 'var(--arrival-bg)';
     rateEl.style.borderColor = 'var(--arrival-border)';
+    rateColor = 'var(--arrival)';
   } else if (attendanceRate >= 75) {
     rateEl.style.background = '#fffbeb';
     rateEl.style.borderColor = '#fcd34d';
+    rateColor = '#c2410c';
   } else {
     rateEl.style.background = 'var(--danger-bg)';
     rateEl.style.borderColor = 'var(--danger-border)';
+    rateColor = 'var(--danger)';
+  }
+  if (ringEl) ringEl.style.stroke = rateColor;
+  if (rateTextEl) rateTextEl.style.fill = rateColor;
+  document.getElementById('metric-rate-detail').style.color = rateColor;
+
+  // Late-arrivals mini bar — proportion of today's arrivals that were late,
+  // so the count is legible at a glance before scrolling to the list.
+  const lateBar = document.getElementById('late-bar');
+  if (lateBar) {
+    const lateRatio = uniquePresent > 0 ? Math.min(100, Math.round((lateCount / uniquePresent) * 100)) : 0;
+    lateBar.style.width = lateRatio + '%';
   }
 
   // Render Bar Chart (Attendance Rate per Class)
