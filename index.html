@@ -278,6 +278,9 @@
     .scan-flash.flash-ok  { background: rgba(74,222,128,0.28); animation: flashPulse 0.5s ease; }
     .scan-flash.flash-err { background: rgba(248,113,113,0.28); animation: flashPulse 0.5s ease; }
     @keyframes flashPulse { 0% { opacity: 1; } 100% { opacity: 0; } }
+    @keyframes idleBeamPulse { 0%, 100% { opacity: 0.25; } 50% { opacity: 0.75; } }
+    @keyframes idleCardFloat { 0%, 100% { transform: translateY(0) rotate(-6deg); } 50% { transform: translateY(-3px) rotate(-6deg); } }
+    @keyframes idleDotBlink { 0%, 100% { opacity: 0.25; } 50% { opacity: 1; } }
 
     table { width: 100%; border-collapse: collapse; margin-top: 0.5rem; }
     th, td { padding: 0.6rem 0.65rem; text-align: left; border-bottom: 1px solid var(--border); font-size: 0.86rem; }
@@ -1407,29 +1410,67 @@
         <div class="scan-corners" id="scan-corners"><div class="sc-br"></div></div>
         <div class="scan-flash" id="scan-flash"></div>
         <div id="cam-idle">
-          <svg width="128" height="108" viewBox="0 0 128 108" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-            <!-- ID card -->
-            <rect x="6" y="34" width="62" height="42" rx="7" fill="#0038a8" opacity="0.14"/>
-            <rect x="6" y="34" width="62" height="42" rx="7" stroke="#0038a8" stroke-width="1.6" opacity="0.55"/>
-            <circle cx="22" cy="49" r="6" fill="#0038a8" opacity="0.5"/>
-            <rect x="32" y="45" width="28" height="3" rx="1.5" fill="#0038a8" opacity="0.45"/>
-            <rect x="32" y="52" width="20" height="3" rx="1.5" fill="#0038a8" opacity="0.3"/>
-            <rect x="14" y="62" width="12" height="12" rx="1.5" fill="#0038a8" opacity="0.35"/>
-            <rect x="28" y="62" width="4" height="4" fill="#0038a8" opacity="0.35"/>
-            <rect x="34" y="62" width="4" height="4" fill="#0038a8" opacity="0.35"/>
-            <rect x="28" y="68" width="4" height="4" fill="#0038a8" opacity="0.35"/>
-            <!-- Phone -->
-            <rect x="60" y="14" width="46" height="80" rx="10" fill="#191c1e" opacity="0.06"/>
-            <rect x="60" y="14" width="46" height="80" rx="10" stroke="#191c1e" stroke-width="2" opacity="0.7"/>
-            <rect x="66" y="22" width="34" height="52" rx="3" fill="#fcd400" opacity="0.18"/>
-            <rect x="66" y="22" width="34" height="52" rx="3" stroke="#fcd400" stroke-width="1.6"/>
-            <path d="M66 40h34" stroke="#fcd400" stroke-width="2" stroke-linecap="round"/>
-            <rect x="76" y="82" width="14" height="3" rx="1.5" fill="#191c1e" opacity="0.3"/>
-            <!-- scan corner brackets on phone viewport -->
-            <path d="M68 26v-2a2 2 0 0 1 2-2h2" stroke="#0038a8" stroke-width="2" stroke-linecap="round"/>
-            <path d="M98 22h2a2 2 0 0 1 2 2v2" stroke="#0038a8" stroke-width="2" stroke-linecap="round"/>
-            <path d="M68 70v2a2 2 0 0 0 2 2h2" stroke="#0038a8" stroke-width="2" stroke-linecap="round"/>
-            <path d="M98 74h2a2 2 0 0 0 2-2v-2" stroke="#0038a8" stroke-width="2" stroke-linecap="round"/>
+          <svg width="140" height="112" viewBox="0 0 140 112" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <defs>
+              <linearGradient id="idlePhoneBody" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="#0038a8"/>
+                <stop offset="100%" stop-color="#031b52"/>
+              </linearGradient>
+              <linearGradient id="idlePhoneScreen" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#dce7ff"/>
+                <stop offset="100%" stop-color="#aebdf5"/>
+              </linearGradient>
+              <linearGradient id="idleCardBody" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="#ffffff"/>
+                <stop offset="100%" stop-color="#eef1fb"/>
+              </linearGradient>
+            </defs>
+
+            <!-- ground shadow (perspective anchor) -->
+            <ellipse cx="70" cy="100" rx="46" ry="6" fill="#0038a8" opacity="0.08"/>
+
+            <!-- ID card, tilted for perspective, gently floating -->
+            <g style="animation: idleCardFloat 3.4s ease-in-out infinite; transform-origin: 34px 66px;">
+              <rect x="4" y="42" width="66" height="46" rx="8" transform="rotate(-6 37 65)" fill="url(#idleCardBody)" stroke="#0038a8" stroke-width="1.4" opacity="0.95"/>
+              <!-- lanyard notch -->
+              <rect x="28" y="36" width="14" height="5" rx="2.5" transform="rotate(-6 35 38)" fill="#0038a8" opacity="0.3"/>
+              <!-- headshot -->
+              <circle cx="20" cy="60" r="8" transform="rotate(-6 20 60)" fill="#fcd400" opacity="0.85"/>
+              <circle cx="20" cy="60" r="8" transform="rotate(-6 20 60)" fill="none" stroke="#0038a8" stroke-width="1.2" opacity="0.4"/>
+              <!-- name lines -->
+              <rect x="33" y="53" width="28" height="3" rx="1.5" transform="rotate(-6 47 54)" fill="#0038a8" opacity="0.55"/>
+              <rect x="32" y="59" width="20" height="2.4" rx="1.2" transform="rotate(-6 42 60)" fill="#0038a8" opacity="0.3"/>
+              <!-- QR chip on card -->
+              <g transform="rotate(-6 24 78)" opacity="0.9">
+                <rect x="12" y="70" width="24" height="16" rx="2" fill="#0038a8" opacity="0.08"/>
+                <rect x="14" y="72" width="4" height="4" fill="#0038a8"/>
+                <rect x="20" y="72" width="4" height="4" fill="#0038a8" opacity="0.5"/>
+                <rect x="26" y="72" width="4" height="4" fill="#0038a8"/>
+                <rect x="14" y="78" width="4" height="4" fill="#0038a8" opacity="0.5"/>
+                <rect x="20" y="78" width="4" height="4" fill="#0038a8"/>
+                <rect x="26" y="78" width="4" height="4" fill="#0038a8" opacity="0.5"/>
+              </g>
+            </g>
+
+            <!-- phone, tilted the opposite way to suggest it's being held up to scan -->
+            <g transform="rotate(7 96 54)">
+              <rect x="72" y="10" width="50" height="88" rx="11" fill="url(#idlePhoneBody)"/>
+              <rect x="72" y="10" width="50" height="88" rx="11" fill="none" stroke="#191c1e" stroke-width="1" opacity="0.25"/>
+              <rect x="78" y="19" width="38" height="58" rx="4" fill="url(#idlePhoneScreen)"/>
+              <!-- viewfinder corner brackets -->
+              <path d="M81 25v-2.5a2 2 0 0 1 2-2h2.5" stroke="#fcd400" stroke-width="2.2" stroke-linecap="round"/>
+              <path d="M110 20.5h2.5a2 2 0 0 1 2 2V25" stroke="#fcd400" stroke-width="2.2" stroke-linecap="round"/>
+              <path d="M81 71v2.5a2 2 0 0 0 2 2h2.5" stroke="#fcd400" stroke-width="2.2" stroke-linecap="round"/>
+              <path d="M110 75.5h2.5a2 2 0 0 0 2-2V71" stroke="#fcd400" stroke-width="2.2" stroke-linecap="round"/>
+              <!-- home indicator -->
+              <rect x="90" y="86" width="14" height="2.6" rx="1.3" fill="#191c1e" opacity="0.35"/>
+              <!-- camera lens -->
+              <circle cx="97" cy="15" r="2" fill="#191c1e" opacity="0.5"/>
+            </g>
+
+            <!-- scan beam linking phone viewfinder to the card -->
+            <path d="M78 55 Q52 58 34 62" stroke="#0038a8" stroke-width="1.6" stroke-dasharray="3 4" stroke-linecap="round" fill="none" style="animation: idleBeamPulse 2.2s ease-in-out infinite;"/>
+            <circle cx="34" cy="62" r="2.4" fill="#fcd400" style="animation: idleDotBlink 2.2s ease-in-out infinite;"/>
           </svg>
           <p id="idle-notice-text" style="font-size:0.85rem; line-height:1.4; margin-top:0.65rem;">Select a class to start scanning</p>
         </div>
@@ -2639,7 +2680,7 @@ async function handleQRScan(rawData) {
         '⏱ Already recorded',
         `${escapeHTML(student.name)} was already scanned for this class today at ${time}.`
       );
-      if (navigator.vibrate) navigator.vibrate([30]);
+      if (navigator.vibrate) navigator.vibrate([160]); // Already Scanned: single longer pulse
       return;
     }
 
@@ -2681,7 +2722,7 @@ async function handleQRScan(rawData) {
     logEntry.id = newId;
     logs.unshift(logEntry);
 
-    if (navigator.vibrate) navigator.vibrate([80, 40, 80]);
+    if (navigator.vibrate) navigator.vibrate([35, 30, 35]); // Success: short double-pulse
     scheduleAutoSync();
     checkAutoExport('scan');
 
@@ -3971,6 +4012,85 @@ function destroyCharts() {
 }
 
 // Render optimized, accurate charts
+// ── PEAK UI: number count-up micro-animation ────────────────────────────
+// Animates a metric element's displayed number from its last shown value
+// up (or down) to the new target so dashboard loads feel "live" rather
+// than static text swaps. Works on both HTML and SVG text elements.
+function animateCountUp(el, target, opts) {
+  if (!el) return;
+  opts = opts || {};
+  const suffix  = opts.suffix || '';
+  const duration = opts.duration || 600;
+  const start = parseFloat(el.dataset.countVal || '0') || 0;
+  target = Number(target) || 0;
+  if (el._countRAF) cancelAnimationFrame(el._countRAF);
+  if (start === target) {
+    el.textContent = target + suffix;
+    el.dataset.countVal = target;
+    return;
+  }
+  const t0 = performance.now();
+  function tick(now) {
+    const p = Math.min(1, (now - t0) / duration);
+    const eased = 1 - Math.pow(1 - p, 3); // easeOutCubic
+    const val = Math.round(start + (target - start) * eased);
+    el.textContent = val + suffix;
+    if (p < 1) {
+      el._countRAF = requestAnimationFrame(tick);
+    } else {
+      el.textContent = target + suffix;
+      el.dataset.countVal = target;
+    }
+  }
+  el._countRAF = requestAnimationFrame(tick);
+}
+
+// ── PEAK UI: 7-day attendance sparkline ─────────────────────────────────
+// Returns the last n calendar dates (YYYY-MM-DD, Asia/Manila) ending today.
+function getLastNDates(n) {
+  const t = todayStr();
+  const [y, m, d] = t.split('-').map(Number);
+  const base = new Date(y, m - 1, d);
+  const out = [];
+  for (let i = n - 1; i >= 0; i--) {
+    const dt = new Date(base);
+    dt.setDate(dt.getDate() - i);
+    out.push(dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0'));
+  }
+  return out;
+}
+// School-wide daily attendance rate for each of the last 7 days, independent
+// of the currently selected summary period/range.
+function computeWeeklyRateTrend() {
+  return getLastNDates(7).map(dateStr => {
+    const enrolledCount = studentsEnrolledAsOf(null, dateStr).length;
+    if (enrolledCount === 0) return 0;
+    const present = new Set(
+      logs.filter(l => l.type === 'arrival' && getLogDate(l) === dateStr).map(l => l.studentId)
+    ).size;
+    return Math.round((present / enrolledCount) * 100);
+  });
+}
+// Draws the trend into the #rate-spark-line / #rate-spark-area paths that
+// already sit behind the Attendance Rate card.
+function drawRateSparkline(rates) {
+  const lineEl = document.getElementById('rate-spark-line');
+  const areaEl = document.getElementById('rate-spark-area');
+  if (!lineEl || !areaEl) return;
+  const w = 100, h = 30;
+  const n = rates.length;
+  if (n < 2) { lineEl.setAttribute('d', ''); areaEl.setAttribute('d', ''); return; }
+  const pts = rates.map((r, i) => {
+    const x = (i / (n - 1)) * w;
+    const y = h - (Math.max(0, Math.min(100, r)) / 100) * h;
+    return [x, y];
+  });
+  const lineD = pts.map((p, i) => (i === 0 ? 'M' : 'L') + p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ');
+  const areaD = lineD + ` L${w},${h} L0,${h} Z`;
+  lineEl.setAttribute('d', lineD);
+  areaEl.setAttribute('d', areaD);
+}
+
 function renderPremiumCharts(range, logsInRange) {
   if (!document.getElementById('chart-class')) return;
 
@@ -4016,15 +4136,18 @@ function renderPremiumCharts(range, logsInRange) {
     totalAbsences = schoolDays > 0 ? Math.max(0, (totalEnrolled * schoolDays) - arrivalLogs.length) : 0;
   }
 
-  // Update Metric Cards
-  document.getElementById('metric-rate').textContent = attendanceRate + '%';
+  // Update Metric Cards (count-up micro-animation instead of a flat swap)
+  animateCountUp(document.getElementById('metric-rate'), attendanceRate, { suffix: '%' });
   document.getElementById('metric-rate-detail').textContent = isDaily ? `${uniquePresent}/${studentsEnrolledAsOf(null, range.from).length} enrolled` : `avg across ${schoolDays} days`;
-  document.getElementById('metric-absent').textContent = totalAbsences;
+  animateCountUp(document.getElementById('metric-absent'), totalAbsences);
   document.getElementById('metric-absent-detail').textContent = isDaily ? 'students absent today' : 'student-days missed';
-  document.getElementById('metric-late').textContent = lateCount;
+  animateCountUp(document.getElementById('metric-late'), lateCount);
   document.getElementById('metric-late-detail').textContent = isDaily ? 'late today' : 'total late instances';
-  document.getElementById('metric-days').textContent = schoolDays;
+  animateCountUp(document.getElementById('metric-days'), schoolDays);
   document.getElementById('metric-days-detail').textContent = isDaily ? 'today' : 'days with records';
+
+  // 7-day school-wide attendance trend behind the Attendance Rate card
+  drawRateSparkline(computeWeeklyRateTrend());
 
   // Color the rate card + ring based on performance
   const rateEl = document.getElementById('rate-card');
