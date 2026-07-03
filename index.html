@@ -4046,9 +4046,12 @@ function animateCountUp(el, target, opts) {
 }
 
 // ── PEAK UI: 7-day attendance sparkline ─────────────────────────────────
-// Returns the last n calendar dates (YYYY-MM-DD, Asia/Manila) ending today.
-function getLastNDates(n) {
-  const t = todayStr();
+// Returns the last n calendar dates (YYYY-MM-DD, Asia/Manila) ending at
+// endDateStr (defaults to today), so the trend can follow whatever
+// day/week/month the person has navigated to instead of always showing
+// "today."
+function getLastNDates(n, endDateStr) {
+  const t = endDateStr || todayStr();
   const [y, m, d] = t.split('-').map(Number);
   const base = new Date(y, m - 1, d);
   const out = [];
@@ -4059,34 +4062,52 @@ function getLastNDates(n) {
   }
   return out;
 }
-// School-wide daily attendance rate for each of the last 7 days, independent
-// of the currently selected summary period/range.
-function computeWeeklyRateTrend() {
-  return getLastNDates(7).map(dateStr => {
+// School-wide daily attendance rate for each of the 7 days ending at
+// endDateStr. hasData=false means no students were enrolled yet as of that
+// date (pre-launch/pre-enrollment) — distinct from a genuine 0% day where
+// students existed but nobody was marked present.
+function computeWeeklyRateTrend(endDateStr) {
+  return getLastNDates(7, endDateStr).map(dateStr => {
     const enrolledCount = studentsEnrolledAsOf(null, dateStr).length;
-    if (enrolledCount === 0) return 0;
+    if (enrolledCount === 0) return { rate: 0, hasData: false };
     const present = new Set(
       logs.filter(l => l.type === 'arrival' && getLogDate(l) === dateStr).map(l => l.studentId)
     ).size;
-    return Math.round((present / enrolledCount) * 100);
+    return { rate: Math.round((present / enrolledCount) * 100), hasData: true };
   });
 }
 // Draws the trend into the #rate-spark-line / #rate-spark-area paths that
-// already sit behind the Attendance Rate card.
-function drawRateSparkline(rates) {
+// already sit behind the Attendance Rate card. Breaks the line across
+// no-data gaps instead of faking a flatline at 0, and hides both paths
+// entirely if the whole 7-day window has no data.
+function drawRateSparkline(points) {
   const lineEl = document.getElementById('rate-spark-line');
   const areaEl = document.getElementById('rate-spark-area');
   if (!lineEl || !areaEl) return;
   const w = 100, h = 30;
-  const n = rates.length;
-  if (n < 2) { lineEl.setAttribute('d', ''); areaEl.setAttribute('d', ''); return; }
-  const pts = rates.map((r, i) => {
-    const x = (i / (n - 1)) * w;
-    const y = h - (Math.max(0, Math.min(100, r)) / 100) * h;
-    return [x, y];
+  const n = points.length;
+  if (n < 2 || !points.some(p => p.hasData)) {
+    lineEl.setAttribute('d', '');
+    areaEl.setAttribute('d', '');
+    return;
+  }
+  const coords = points.map((p, i) => ({
+    x: (i / (n - 1)) * w,
+    y: h - (Math.max(0, Math.min(100, p.rate)) / 100) * h,
+    hasData: p.hasData
+  }));
+  let lineD = '', areaD = '', seg = [];
+  const flushSeg = () => {
+    if (seg.length < 2) { seg = []; return; }
+    lineD += (lineD ? ' ' : '') + seg.map((c, i) => (i === 0 ? 'M' : 'L') + c.x.toFixed(1) + ',' + c.y.toFixed(1)).join(' ');
+    areaD += (areaD ? ' ' : '') + seg.map((c, i) => (i === 0 ? 'M' : 'L') + c.x.toFixed(1) + ',' + c.y.toFixed(1)).join(' ')
+      + ` L${seg[seg.length - 1].x.toFixed(1)},${h} L${seg[0].x.toFixed(1)},${h} Z`;
+    seg = [];
+  };
+  coords.forEach(c => {
+    if (c.hasData) seg.push(c); else flushSeg();
   });
-  const lineD = pts.map((p, i) => (i === 0 ? 'M' : 'L') + p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ');
-  const areaD = lineD + ` L${w},${h} L0,${h} Z`;
+  flushSeg();
   lineEl.setAttribute('d', lineD);
   areaEl.setAttribute('d', areaD);
 }
@@ -4147,7 +4168,7 @@ function renderPremiumCharts(range, logsInRange) {
   document.getElementById('metric-days-detail').textContent = isDaily ? 'today' : 'days with records';
 
   // 7-day school-wide attendance trend behind the Attendance Rate card
-  drawRateSparkline(computeWeeklyRateTrend());
+  drawRateSparkline(computeWeeklyRateTrend(range.to || range.from));
 
   // Color the rate card + ring based on performance
   const rateEl = document.getElementById('rate-card');
