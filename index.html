@@ -4090,11 +4090,12 @@ function computeWeeklyRateTrend(endDateStr) {
 // already sit behind the Attendance Rate card. Breaks the line across
 // no-data gaps instead of faking a flatline at 0, and hides both paths
 // entirely if the whole 7-day window has no data.
-// ── PEAK UI: sparkline draw-in animation ────────────────────────────────
-// Mirrors animateCountUp's feel (600ms, easeOutCubic): the line "draws"
-// left-to-right via stroke-dashoffset, area fades/grows in alongside it,
-// so the trend behind the metric arrives with the same live motion as
-// the number itself instead of popping in as a static shape.
+// ── PEAK UI: sparkline exit + draw-in animation ─────────────────────────
+// Mirrors animateCountUp's "old value -> new value" feel instead of a
+// hard reset: if a previous shape is already on screen, it first plays
+// a short exit (fade + shrink toward the baseline, 200ms) and only then
+// draws the new trend in (600ms, easeOutCubic, same clock as the
+// count-up numbers). First render / no-data cases skip the exit.
 function drawRateSparkline(points) {
   const lineEl = document.getElementById('rate-spark-line');
   const areaEl = document.getElementById('rate-spark-area');
@@ -4102,59 +4103,100 @@ function drawRateSparkline(points) {
   const w = 100, h = 30;
   const n = points.length;
   if (lineEl._sparkRAF) cancelAnimationFrame(lineEl._sparkRAF);
-  if (n < 2 || !points.some(p => p.hasData)) {
+
+  const hasNewData = n >= 2 && points.some(p => p.hasData);
+  const hadOldShape = !!lineEl.getAttribute('d');
+
+  const clearShape = () => {
     lineEl.setAttribute('d', '');
     areaEl.setAttribute('d', '');
     lineEl.style.strokeDasharray = '';
     lineEl.style.strokeDashoffset = '';
+  };
+
+  const buildAndEnter = () => {
+    const coords = points.map((p, i) => ({
+      x: (i / (n - 1)) * w,
+      y: h - (Math.max(0, Math.min(100, p.rate)) / 100) * h,
+      hasData: p.hasData
+    }));
+    let lineD = '', areaD = '', seg = [];
+    const flushSeg = () => {
+      if (seg.length < 2) { seg = []; return; }
+      lineD += (lineD ? ' ' : '') + seg.map((c, i) => (i === 0 ? 'M' : 'L') + c.x.toFixed(1) + ',' + c.y.toFixed(1)).join(' ');
+      areaD += (areaD ? ' ' : '') + seg.map((c, i) => (i === 0 ? 'M' : 'L') + c.x.toFixed(1) + ',' + c.y.toFixed(1)).join(' ')
+        + ` L${seg[seg.length - 1].x.toFixed(1)},${h} L${seg[0].x.toFixed(1)},${h} Z`;
+      seg = [];
+    };
+    coords.forEach(c => { if (c.hasData) seg.push(c); else flushSeg(); });
+    flushSeg();
+    lineEl.setAttribute('d', lineD);
+    areaEl.setAttribute('d', areaD);
+
+    const areaBaseOpacity = 0.16;
+    let len = 0;
+    try { len = lineEl.getTotalLength(); } catch (e) { len = 200; }
+    lineEl.style.strokeDasharray = len;
+    lineEl.style.strokeDashoffset = len;
+    areaEl.style.opacity = 0;
+    areaEl.style.transform = 'scaleY(0.6)';
+    areaEl.style.transformOrigin = `${w / 2}px ${h}px`;
+
+    const duration = 600;
+    const t0 = performance.now();
+    function tick(now) {
+      const p = Math.min(1, (now - t0) / duration);
+      const eased = 1 - Math.pow(1 - p, 3); // easeOutCubic
+      lineEl.style.strokeDashoffset = len * (1 - eased);
+      areaEl.style.opacity = areaBaseOpacity * eased;
+      areaEl.style.transform = `scaleY(${0.6 + 0.4 * eased})`;
+      if (p < 1) {
+        lineEl._sparkRAF = requestAnimationFrame(tick);
+      } else {
+        lineEl.style.strokeDashoffset = 0;
+        areaEl.style.opacity = areaBaseOpacity;
+        areaEl.style.transform = 'scaleY(1)';
+      }
+    }
+    lineEl._sparkRAF = requestAnimationFrame(tick);
+  };
+
+  if (!hasNewData) {
+    if (hadOldShape) {
+      // Exit only, nothing new to draw in after.
+      playExit(lineEl, areaEl, w, h, clearShape);
+    } else {
+      clearShape();
+    }
     return;
   }
-  const coords = points.map((p, i) => ({
-    x: (i / (n - 1)) * w,
-    y: h - (Math.max(0, Math.min(100, p.rate)) / 100) * h,
-    hasData: p.hasData
-  }));
-  let lineD = '', areaD = '', seg = [];
-  const flushSeg = () => {
-    if (seg.length < 2) { seg = []; return; }
-    lineD += (lineD ? ' ' : '') + seg.map((c, i) => (i === 0 ? 'M' : 'L') + c.x.toFixed(1) + ',' + c.y.toFixed(1)).join(' ');
-    areaD += (areaD ? ' ' : '') + seg.map((c, i) => (i === 0 ? 'M' : 'L') + c.x.toFixed(1) + ',' + c.y.toFixed(1)).join(' ')
-      + ` L${seg[seg.length - 1].x.toFixed(1)},${h} L${seg[0].x.toFixed(1)},${h} Z`;
-    seg = [];
-  };
-  coords.forEach(c => {
-    if (c.hasData) seg.push(c); else flushSeg();
-  });
-  flushSeg();
-  lineEl.setAttribute('d', lineD);
-  areaEl.setAttribute('d', areaD);
 
-  // Draw-in: measure the real path length, start fully hidden via dash
-  // offset, animate offset -> 0. Area starts transparent/flat and eases
-  // to its normal opacity/height on the same clock as the line.
-  const areaBaseOpacity = 0.16;
-  let len = 0;
-  try { len = lineEl.getTotalLength(); } catch (e) { len = 200; }
-  lineEl.style.strokeDasharray = len;
-  lineEl.style.strokeDashoffset = len;
-  areaEl.style.opacity = 0;
-  areaEl.style.transform = 'scaleY(0.6)';
-  areaEl.style.transformOrigin = `${w / 2}px ${h}px`;
+  if (hadOldShape) {
+    playExit(lineEl, areaEl, w, h, buildAndEnter);
+  } else {
+    buildAndEnter();
+  }
+}
 
-  const duration = 600;
+// Shrinks current line/area toward the baseline and fades them out over
+// 200ms (easeInCubic — quick departure vs. the slower 600ms arrival),
+// then hands off to onDone to build/draw the next shape.
+function playExit(lineEl, areaEl, w, h, onDone) {
+  const duration = 200;
   const t0 = performance.now();
+  const startAreaOpacity = parseFloat(areaEl.style.opacity || '0.16') || 0.16;
+  areaEl.style.transformOrigin = `${w / 2}px ${h}px`;
   function tick(now) {
     const p = Math.min(1, (now - t0) / duration);
-    const eased = 1 - Math.pow(1 - p, 3); // easeOutCubic
-    lineEl.style.strokeDashoffset = len * (1 - eased);
-    areaEl.style.opacity = areaBaseOpacity * eased;
-    areaEl.style.transform = `scaleY(${0.6 + 0.4 * eased})`;
+    const eased = p * p * p; // easeInCubic
+    lineEl.style.opacity = 1 - eased;
+    areaEl.style.opacity = startAreaOpacity * (1 - eased);
+    areaEl.style.transform = `scaleY(${1 - 0.4 * eased})`;
     if (p < 1) {
       lineEl._sparkRAF = requestAnimationFrame(tick);
     } else {
-      lineEl.style.strokeDashoffset = 0;
-      areaEl.style.opacity = areaBaseOpacity;
-      areaEl.style.transform = 'scaleY(1)';
+      lineEl.style.opacity = '';
+      onDone();
     }
   }
   lineEl._sparkRAF = requestAnimationFrame(tick);
