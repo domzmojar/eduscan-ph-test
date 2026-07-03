@@ -5878,7 +5878,11 @@ function renderTermsModalBody() {
     const arrivedDays = new Set(arrivals.map(l => getLogDate(l)));
     const absences = [...schoolDays].filter(d => !arrivedDays.has(d)).length;
 
-    const allLogDates = [...new Set(termLogs.map(l => getLogDate(l)))].sort((a, b) => b.localeCompare(a));
+    // Merge in school days that have zero logs (absences) so absent
+    // dates actually show up in the Daily attendance list below —
+    // previously this set only included dates with an arrival/departure
+    // log, so an absent day (no log at all) never got a row/date.
+    const allLogDates = [...new Set([...termLogs.map(l => getLogDate(l)), ...schoolDays])].sort((a, b) => b.localeCompare(a));
 
     // Count cutting-class days: either an early departure scan, or an
     // arrival with no matching departure at all for that day (per the
@@ -5913,6 +5917,8 @@ function renderTermsModalBody() {
             const dayCode = computeSF2Code(cls, arr[0] || null, dep[0] || null);
             const cutDayTag = (dayCode === 'cutPM' || dayCode === 'both')
                 ? `<span class="badge badge-cut" style="font-size:0.65rem;">✂️ Cutting</span>` : '';
+            const absentDayTag = arr.length === 0
+                ? `<span class="badge absent-card" style="font-size:0.65rem;">🚫 Absent</span>` : '';
             const dateLabel = new Date(dateStr + 'T00:00:00').toLocaleDateString([], { month: 'short', day: 'numeric', weekday: 'short' });
             html += `
             <div class="term-day-row">
@@ -5924,6 +5930,7 @@ function renderTermsModalBody() {
                     }).join('')}
                     ${dep.map(l => `<span class="badge badge-departure">🌇 ${new Date(l.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>`).join('')}
                     ${cutDayTag}
+                    ${absentDayTag}
                 </div>
             </div>`;
         });
