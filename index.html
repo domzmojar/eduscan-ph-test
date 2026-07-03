@@ -82,12 +82,14 @@
 
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: var(--font-sans); }
 
+    html { overflow-x: hidden; }
     body {
       background:
         radial-gradient(circle at 8% -10%, rgba(0,56,168,0.08), transparent 45%),
         radial-gradient(circle at 100% 10%, rgba(252,212,0,0.10), transparent 40%),
         var(--bg);
       color: var(--text); display: flex; flex-direction: column; min-height: 100vh;
+      overflow-x: hidden; width: 100%;
     }
 
     header { background: var(--glass-bg-strong); backdrop-filter: blur(var(--card-blur)) saturate(180%); -webkit-backdrop-filter: blur(var(--card-blur)) saturate(180%); border-bottom: 1px solid var(--glass-border); padding: 0.85rem 1rem; text-align: center; position: relative; z-index: 20; }
@@ -301,15 +303,19 @@
       display: grid;
       grid-template-columns: repeat(3, 1fr);
       gap: 0.6rem;
+      min-width: 0;
     }
-    @media (max-width: 420px) {
+    @media (max-width: 480px) {
       #students-qr-container { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 340px) {
+      #students-qr-container { grid-template-columns: 1fr; }
     }
 
     .qr-card {
       display: flex; flex-direction: column; align-items: center;
       border: 1px solid var(--border); padding: 0.7rem 0.5rem; border-radius: 10px;
-      background: var(--surface);
+      background: var(--surface); min-width: 0; overflow: hidden;
     }
     .qr-card .qr-class { font-size: 0.62rem; font-weight: 700; color: var(--primary); text-transform: uppercase; letter-spacing: 0.04em; text-align: center; }
     .qr-card .qr-name  { font-size: 0.8rem; font-weight: 700; margin: 0.2rem 0 0.15rem; text-align: center; line-height: 1.3; }
@@ -1462,22 +1468,22 @@
       </div>
       <div class="form-group">
         <label>Schedule</label>
-        <div style="display:flex; align-items:center; gap:0; border:1px solid var(--border); border-radius:8px; overflow:hidden; background:var(--surface);">
-          <div style="display:flex; align-items:center; gap:8px; padding:0.6rem 0.75rem; flex:1; border-right:1px solid var(--border);">
+        <div style="display:flex; flex-wrap:wrap; align-items:stretch; gap:0; border:1px solid var(--border); border-radius:8px; overflow:hidden; background:var(--surface);">
+          <div style="display:flex; align-items:center; gap:8px; padding:0.6rem 0.75rem; flex:1 1 130px; min-width:130px; border-right:1px solid var(--border); border-bottom:1px solid var(--border);">
             <span style="font-size:1rem; line-height:1;">🕐</span>
             <div style="flex:1; min-width:0;">
               <div style="font-size:0.7rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:2px;">Start time</div>
               <input type="time" id="class-start-time" value="07:30" style="border:none; outline:none; background:transparent; font-size:0.95rem; font-weight:600; color:var(--text); width:100%; padding:0;">
             </div>
           </div>
-          <div style="display:flex; align-items:center; gap:8px; padding:0.6rem 0.75rem; flex:1; border-right:1px solid var(--border);">
+          <div style="display:flex; align-items:center; gap:8px; padding:0.6rem 0.75rem; flex:1 1 130px; min-width:130px; border-right:1px solid var(--border); border-bottom:1px solid var(--border);">
             <span style="font-size:1rem; line-height:1;">🕔</span>
             <div style="flex:1; min-width:0;">
               <div style="font-size:0.7rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:2px;">Dismissal time</div>
               <input type="time" id="class-dismiss-time" value="08:30" style="border:none; outline:none; background:transparent; font-size:0.95rem; font-weight:600; color:var(--text); width:100%; padding:0;">
             </div>
           </div>
-          <div style="display:flex; align-items:center; gap:8px; padding:0.6rem 0.75rem; width:130px; flex-shrink:0;">
+          <div style="display:flex; align-items:center; gap:8px; padding:0.6rem 0.75rem; flex:1 1 110px; min-width:110px; border-bottom:1px solid var(--border);">
             <span style="font-size:1rem; line-height:1;">⏳</span>
             <div style="flex:1; min-width:0;">
               <div style="font-size:0.7rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:2px;">Grace</div>
@@ -1942,22 +1948,22 @@
       </div>
       <div class="form-group">
         <label>Schedule</label>
-        <div style="display:flex; align-items:center; gap:0; border:1px solid var(--border); border-radius:8px; overflow:hidden; background:var(--surface);">
-          <div style="display:flex; align-items:center; gap:8px; padding:0.6rem 0.75rem; flex:1; border-right:1px solid var(--border);">
+        <div style="display:flex; flex-wrap:wrap; align-items:stretch; gap:0; border:1px solid var(--border); border-radius:8px; overflow:hidden; background:var(--surface);">
+          <div style="display:flex; align-items:center; gap:8px; padding:0.6rem 0.75rem; flex:1 1 130px; min-width:130px; border-right:1px solid var(--border); border-bottom:1px solid var(--border);">
             <span style="font-size:1rem; line-height:1;">🕐</span>
             <div style="flex:1; min-width:0;">
               <div style="font-size:0.7rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:2px;">Start time</div>
               <input type="time" id="edit-class-start-time" style="border:none; outline:none; background:transparent; font-size:0.95rem; font-weight:600; color:var(--text); width:100%; padding:0;">
             </div>
           </div>
-          <div style="display:flex; align-items:center; gap:8px; padding:0.6rem 0.75rem; flex:1; border-right:1px solid var(--border);">
+          <div style="display:flex; align-items:center; gap:8px; padding:0.6rem 0.75rem; flex:1 1 130px; min-width:130px; border-right:1px solid var(--border); border-bottom:1px solid var(--border);">
             <span style="font-size:1rem; line-height:1;">🕔</span>
             <div style="flex:1; min-width:0;">
               <div style="font-size:0.7rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:2px;">Dismissal time</div>
               <input type="time" id="edit-class-dismiss-time" style="border:none; outline:none; background:transparent; font-size:0.95rem; font-weight:600; color:var(--text); width:100%; padding:0;">
             </div>
           </div>
-          <div style="display:flex; align-items:center; gap:8px; padding:0.6rem 0.75rem; width:130px; flex-shrink:0;">
+          <div style="display:flex; align-items:center; gap:8px; padding:0.6rem 0.75rem; flex:1 1 110px; min-width:110px; border-bottom:1px solid var(--border);">
             <span style="font-size:1rem; line-height:1;">⏳</span>
             <div style="flex:1; min-width:0;">
               <div style="font-size:0.7rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:2px;">Grace</div>
@@ -4608,10 +4614,17 @@ function getRosterPayload() {
 
 // ── SF2 NAME HELPER ───────────────────────────────────────────────────────
 // Official SF2 format: LASTNAME, Firstname Middlename
+// toTitleCase capitalizes each word so names display consistently no
+// matter how the teacher typed them in (e.g. "juan dela cruz" -> "Juan Dela Cruz").
+function toTitleCase(str) {
+  return (str || '').trim().replace(/\s+/g, ' ').split(' ')
+    .map(w => w ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : w)
+    .join(' ');
+}
 function buildStudentName(lastName, firstName, middleName) {
   const ln = (lastName || '').trim().toUpperCase();
-  const fn = (firstName || '').trim();
-  const mn = (middleName || '').trim();
+  const fn = toTitleCase(firstName);
+  const mn = toTitleCase(middleName);
   let n = ln;
   if (fn) n += (ln ? ', ' : '') + fn;
   if (mn) n += ' ' + mn;
@@ -5639,9 +5652,8 @@ function renderTermsModalBody() {
         ${schoolDays.size ? `<span style="font-size:0.72rem; color:var(--text-muted); margin-left:8px;">${schoolDays.size} school day${schoolDays.size !== 1 ? 's' : ''} on record</span>` : ''}
         ${enrolledDate ? `<span style="font-size:0.72rem; color:var(--text-muted); margin-left:8px;">· enrolled ${fmtShort(enrolledDate)}</span>` : ''}
     </div>
-    <div class="term-stat-grid" style="grid-template-columns: repeat(5, 1fr);">
+    <div class="term-stat-grid" style="grid-template-columns: repeat(4, 1fr);">
         <div class="term-stat-card arrival-card"><div class="ts-val">${arrivals.length}</div><div class="ts-lbl">Arrivals</div></div>
-        <div class="term-stat-card departure-card"><div class="ts-val">${departures.length}</div><div class="ts-lbl">Departures</div></div>
         <div class="term-stat-card" style="background:#fff7ed; border-color:#fdba74; color:#c2410c;"><div class="ts-val">${lateCount}</div><div class="ts-lbl">Late</div></div>
         <div class="term-stat-card" style="background:#fdf2f8; border-color:#f9a8d4; color:#9d174d;"><div class="ts-val">${cutCount}</div><div class="ts-lbl">Cutting</div></div>
         <div class="term-stat-card absent-card"><div class="ts-val">${absences}</div><div class="ts-lbl">Absences</div></div>
@@ -5755,6 +5767,18 @@ function showStudentRecord(studentId) {
   const presentDays = new Set(arrivals.map(l => l.localDate || getLogDate(l)));
   const absences = schoolDays.filter(d => !presentDays.has(d)).length;
 
+  // Cutting-class days: same logic as the Terms tab — pair this student's
+  // own AM/PM logs on each day they had at least one scan and run it
+  // through computeSF2Code.
+  const studentLogDates = [...new Set(studentLogs.map(l => l.localDate || getLogDate(l)))];
+  let cutCount = 0;
+  studentLogDates.forEach(dateStr => {
+    const dayArr = studentLogs.find(l => (l.localDate || getLogDate(l)) === dateStr && l.type === 'arrival') || null;
+    const dayDep = studentLogs.find(l => (l.localDate || getLogDate(l)) === dateStr && l.type === 'departure') || null;
+    const code = computeSF2Code(cls, dayArr, dayDep);
+    if (code === 'cutPM' || code === 'both') cutCount++;
+  });
+
   document.getElementById('modal-title').textContent = '📋 Attendance Record';
   
   let bodyHTML = `
@@ -5777,8 +5801,8 @@ function showStudentRecord(studentId) {
     <!-- Uses the exact same CSS classes as the Terms tab! -->
     <div class="term-stat-grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom:1.5rem;">
       <div class="term-stat-card arrival-card"><div class="ts-val">${arrivals.length}</div><div class="ts-lbl">Arrivals</div></div>
-      <div class="term-stat-card departure-card"><div class="ts-val">${departures.length}</div><div class="ts-lbl">Dismissals</div></div>
       <div class="term-stat-card" style="background:#fff7ed; border-color:#fdba74; color:#c2410c;"><div class="ts-val">${lateCount}</div><div class="ts-lbl">Late</div></div>
+      <div class="term-stat-card" style="background:#fdf2f8; border-color:#f9a8d4; color:#9d174d;"><div class="ts-val">${cutCount}</div><div class="ts-lbl">Cutting</div></div>
       <div class="term-stat-card absent-card"><div class="ts-val">${absences}</div><div class="ts-lbl">Absences</div></div>
     </div>
 
@@ -5790,6 +5814,9 @@ function showStudentRecord(studentId) {
       const dayLogs = studentLogs.filter(l => (l.localDate || getLogDate(l)) === dateStr);
       const arr = dayLogs.filter(l => l.type === 'arrival');
       const dep = dayLogs.filter(l => l.type === 'departure');
+      const dayCode = computeSF2Code(cls, arr[0] || null, dep[0] || null);
+      const cutDayTag = (dayCode === 'cutPM' || dayCode === 'both')
+        ? `<span class="badge badge-cut" style="font-size:0.65rem;">✂️ Cutting</span>` : '';
       const dateLabel = new Date(dateStr + 'T00:00:00').toLocaleDateString([], { month: 'short', day: 'numeric', weekday: 'short' });
       
       let badgesHTML = '';
@@ -5803,6 +5830,7 @@ function showStudentRecord(studentId) {
       if (dep.length > 0) {
         badgesHTML += `<span class="badge badge-departure">🌇 ${new Date(dep[0].timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>`;
       }
+      badgesHTML += cutDayTag;
 
       bodyHTML += `
         <div class="term-day-row">
