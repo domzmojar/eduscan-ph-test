@@ -4090,15 +4090,23 @@ function computeWeeklyRateTrend(endDateStr) {
 // already sit behind the Attendance Rate card. Breaks the line across
 // no-data gaps instead of faking a flatline at 0, and hides both paths
 // entirely if the whole 7-day window has no data.
+// ── PEAK UI: sparkline draw-in animation ────────────────────────────────
+// Mirrors animateCountUp's feel (600ms, easeOutCubic): the line "draws"
+// left-to-right via stroke-dashoffset, area fades/grows in alongside it,
+// so the trend behind the metric arrives with the same live motion as
+// the number itself instead of popping in as a static shape.
 function drawRateSparkline(points) {
   const lineEl = document.getElementById('rate-spark-line');
   const areaEl = document.getElementById('rate-spark-area');
   if (!lineEl || !areaEl) return;
   const w = 100, h = 30;
   const n = points.length;
+  if (lineEl._sparkRAF) cancelAnimationFrame(lineEl._sparkRAF);
   if (n < 2 || !points.some(p => p.hasData)) {
     lineEl.setAttribute('d', '');
     areaEl.setAttribute('d', '');
+    lineEl.style.strokeDasharray = '';
+    lineEl.style.strokeDashoffset = '';
     return;
   }
   const coords = points.map((p, i) => ({
@@ -4120,6 +4128,36 @@ function drawRateSparkline(points) {
   flushSeg();
   lineEl.setAttribute('d', lineD);
   areaEl.setAttribute('d', areaD);
+
+  // Draw-in: measure the real path length, start fully hidden via dash
+  // offset, animate offset -> 0. Area starts transparent/flat and eases
+  // to its normal opacity/height on the same clock as the line.
+  const areaBaseOpacity = 0.16;
+  let len = 0;
+  try { len = lineEl.getTotalLength(); } catch (e) { len = 200; }
+  lineEl.style.strokeDasharray = len;
+  lineEl.style.strokeDashoffset = len;
+  areaEl.style.opacity = 0;
+  areaEl.style.transform = 'scaleY(0.6)';
+  areaEl.style.transformOrigin = `${w / 2}px ${h}px`;
+
+  const duration = 600;
+  const t0 = performance.now();
+  function tick(now) {
+    const p = Math.min(1, (now - t0) / duration);
+    const eased = 1 - Math.pow(1 - p, 3); // easeOutCubic
+    lineEl.style.strokeDashoffset = len * (1 - eased);
+    areaEl.style.opacity = areaBaseOpacity * eased;
+    areaEl.style.transform = `scaleY(${0.6 + 0.4 * eased})`;
+    if (p < 1) {
+      lineEl._sparkRAF = requestAnimationFrame(tick);
+    } else {
+      lineEl.style.strokeDashoffset = 0;
+      areaEl.style.opacity = areaBaseOpacity;
+      areaEl.style.transform = 'scaleY(1)';
+    }
+  }
+  lineEl._sparkRAF = requestAnimationFrame(tick);
 }
 
 function renderPremiumCharts(range, logsInRange) {
