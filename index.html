@@ -4767,8 +4767,8 @@ function toTitleCase(str) {
 }
 function buildStudentName(lastName, firstName, middleName) {
   const ln = (lastName || '').trim().toUpperCase();
-  const fn = toTitleCase(firstName);
-  const mn = toTitleCase(middleName);
+  const fn = (firstName || '').trim().toUpperCase();
+  const mn = (middleName || '').trim().toUpperCase();
   let n = ln;
   if (fn) n += (ln ? ', ' : '') + fn;
   if (mn) n += ' ' + mn;
