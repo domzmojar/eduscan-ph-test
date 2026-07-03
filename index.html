@@ -2653,11 +2653,12 @@ function isOutsideClassSchedule(cls, isoTimestamp) {
 async function handleQRScan(rawData) {
   try {
     const payload = JSON.parse(rawData);
-    if (!payload.eduscan) return showToast('Unknown QR — not an EduScan ID.', 'err');
-    if (!currentClassId)  return showToast('No class selected.', 'warn');
+    if (!payload.eduscan) { vibrateError(); return showToast('Unknown QR — not an EduScan ID.', 'err'); }
+    if (!currentClassId)  { vibrateError(); return showToast('No class selected.', 'warn'); }
 
     const student = students.find(s => s.id === payload.id && s.classId === currentClassId);
     if (!student) {
+      vibrateError();
       showFeedback('err', '⚠️ Student not found in this class.', 'This QR belongs to a different class or was removed.');
       return;
     }
@@ -2738,8 +2739,17 @@ async function handleQRScan(rawData) {
     renderTodayList();
 
   } catch(err) {
+    vibrateError();
     showToast('Could not read QR code.', 'err');
   }
+}
+
+// Haptic patterns — 3 distinct feels so eyes-free scanning still tells
+// success / already-recorded / hard-error apart:
+//   success = short double-pulse, already-scanned = single long pulse,
+//   error   = three short sharp buzzes (most "wrong" feeling of the three)
+function vibrateError() {
+  if (navigator.vibrate) navigator.vibrate([40, 60, 40, 60, 40]);
 }
 
 function showFeedback(type, title, body) {
