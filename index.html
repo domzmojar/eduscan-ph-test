@@ -1603,6 +1603,7 @@
           <option value="">All classes</option>
         </select>
       </div>
+      <p id="students-total-count" style="font-size:0.8rem; color:var(--text-muted); margin:0 0 0.6rem;"></p>
       <button class="btn outline full" id="download-all-qr-btn" onclick="downloadAllQR()" style="margin-bottom:0.85rem;">⬇ Download all QR codes</button>
       <div id="students-qr-container"></div>
     </div>
@@ -3092,6 +3093,16 @@ async function renderStudents() {
   const container = document.getElementById('students-qr-container');
   const filterVal = document.getElementById('filter-class-select').value;
   const list      = filterVal ? students.filter(s => s.classId === filterVal) : students;
+
+  const totalEl = document.getElementById('students-total-count');
+  if (totalEl) {
+    if (filterVal) {
+      const clsName = (classes.find(c => c.id === filterVal) || {}).name || 'Section';
+      totalEl.textContent = `${clsName}: ${list.length} student${list.length === 1 ? '' : 's'}`;
+    } else {
+      totalEl.textContent = `All students: ${list.length}`;
+    }
+  }
 
   if (!list.length) {
     container.innerHTML = `<p class="empty" style="grid-column:1/-1;">No students registered yet.</p>`;
