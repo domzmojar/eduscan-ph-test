@@ -2342,12 +2342,12 @@ function showToast(msg, type = 'info') {
 }
 
 // ── NAVIGATION ────────────────────────────────────────────────────────────
-const TRIAL_FREE_PAGES = new Set(['sync', 'download']); // pages allowed even when trial expired
+const TRIAL_FREE_PAGES = new Set(['summary', 'terms', 'sync', 'download']); // pages allowed even when trial expired
 
 function showPage(page) {
   // If trial expired and this page is not in the free list, show the lock instead
   if (_lastKnownAccess && _lastKnownAccess.tier === 'expired' && !TRIAL_FREE_PAGES.has(page)) {
-    showAccessLock(false);
+    showAccessLock(true); // dismissible — lets teacher back out to an allowed tab (Summary/Terms/Sync/Download)
     return;
   }
 
@@ -6401,7 +6401,18 @@ function renderAccessUI(access) {
     } else if (access.tier === 'expired') {
         badge.classList.add('tier-expired');
         badgeText.textContent = 'Trial Expired';
-        showAccessLock(false); // not dismissible — block usage
+        // Data-access pages (Summary/Terms/Sync/Download) stay usable so the
+        // teacher can still back up or push data — only block scanning/roster
+        // pages. If they're currently on a blocked page, bounce to Summary
+        // instead of slapping a full-screen lock over an allowed page.
+        const activePageEl = document.querySelector('.page.active');
+        const currentPage = activePageEl ? activePageEl.id.replace('page-', '') : '';
+        if (TRIAL_FREE_PAGES.has(currentPage)) {
+            lockOverlay.classList.add('hidden');
+        } else {
+            showPage('summary');
+            lockOverlay.classList.add('hidden');
+        }
     } else {
         badge.classList.add('tier-trial');
         badgeText.textContent = access.daysLeft === 1 ? '1 day left' : `${access.daysLeft} days left`;
