@@ -7464,6 +7464,9 @@ function pushBackGuardState() {
 // Closes whichever popup/modal is currently open, if any. Returns true if
 // something was closed (so the back press should be "swallowed").
 function closeTopOverlay() {
+  const headerMenu = document.getElementById('header-menu-dropdown');
+  if (headerMenu && !headerMenu.classList.contains('hidden')) { closeHeaderMenu(); return true; }
+
   const wizard = document.getElementById('wizard-modal-backdrop');
   if (wizard && wizard.classList.contains('open')) { closeSetupWizardDirect(); return true; }
 
