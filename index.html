@@ -427,6 +427,22 @@
     .modal-student-lrn { font-size: 0.75rem; color: var(--text-muted); font-family: monospace; }
     .modal-student-time { font-size: 0.75rem; color: var(--text-muted); white-space: nowrap; }
 
+    /* ── Setup Wizard ── */
+    .wizard-dots { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 0.85rem 1.25rem 0; }
+    .wizard-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border-strong); opacity: 0.4; transition: all 0.2s; }
+    .wizard-dot.active { opacity: 1; background: var(--primary); width: 22px; border-radius: 4px; }
+    .wizard-dot.done { opacity: 1; background: var(--success); }
+    .wizard-step { display: none; }
+    .wizard-step.active { display: block; }
+    .wizard-video-frame { position: relative; width: 100%; padding-top: 56.25%; border-radius: 12px; overflow: hidden; background: #000; margin-bottom: 0.9rem; }
+    .wizard-video-frame iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+    .wizard-step-label { font-size: 0.72rem; font-weight: 700; color: var(--primary); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.35rem; }
+    .wizard-step-title { font-size: 1.05rem; font-weight: 800; margin-bottom: 0.5rem; }
+    .wizard-step-desc { font-size: 0.85rem; color: var(--text-muted); line-height: 1.55; margin-bottom: 1rem; }
+    .wizard-nav { display: flex; gap: 0.5rem; padding: 1rem 1.25rem; border-top: 1px solid var(--border); }
+    .wizard-reopen-btn { background: none; border: 1px solid var(--border-strong); color: var(--text-muted); font-size: 0.78rem; padding: 0.5rem 0.85rem; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; margin-top: 0.6rem; }
+    .wizard-reopen-btn:hover { background: var(--bg); }
+
     /* Custom confirm dialog — replaces browser confirm() so it matches app styling */
     .confirm-modal-backdrop {
       display: none; position: fixed; inset: 0; background: rgba(25,28,30,0.4);
@@ -1788,6 +1804,7 @@
     <p style="font-size:0.85rem; color:var(--text-muted); line-height:1.5; margin:0 0 0.6rem;">
         If your private Google Sheet was already configured during onboarding, paste your unique <strong>Sync URL</strong> below to connect this app to your data.
     </p>
+    <button class="wizard-reopen-btn" onclick="openSetupWizard()">▶️ Watch tutorial &amp; get your template</button>
     <details>
       <summary>Don't have a Sync URL yet? Set one up yourself →</summary>
       <ol style="margin-top:0.6rem;">
@@ -2194,6 +2211,64 @@
       <button class="term-tab"        id="ttab-3" onclick="switchTermTab(3)">Term 3<br><span style="font-size:0.65rem;font-weight:400;" id="ttab-3-range">Jan–Mar</span></button>
     </div>
     <div class="modal-body" id="terms-modal-body"></div>
+  </div>
+</div>
+
+<!-- SETUP WIZARD MODAL -->
+<div class="modal-backdrop" id="wizard-modal-backdrop" onclick="closeSetupWizard(event)">
+  <div class="modal-sheet" style="max-height:90vh;">
+    <div class="modal-header">
+      <span class="modal-title">Sync Setup Guide</span>
+      <button class="modal-close" onclick="closeSetupWizardDirect()">✕</button>
+    </div>
+    <div class="wizard-dots" id="wizard-dots">
+      <span class="wizard-dot" data-dot="1"></span>
+      <span class="wizard-dot" data-dot="2"></span>
+      <span class="wizard-dot" data-dot="3"></span>
+    </div>
+    <div class="modal-body">
+
+      <!-- STEP 1: Watch tutorial -->
+      <div class="wizard-step" id="wizard-step-1">
+        <div class="wizard-step-label">Step 1 of 3</div>
+        <div class="wizard-step-title">Watch the tutorial</div>
+        <div class="wizard-step-desc">This 5-minute video walks through the whole setup — copying your template and connecting your Sync URL.</div>
+        <div class="wizard-video-frame">
+          <iframe src="https://www.youtube.com/embed/hx0tEvM_eCs" title="EduScan PH Setup Tutorial" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+        </div>
+      </div>
+
+      <!-- STEP 2: Copy template -->
+      <div class="wizard-step" id="wizard-step-2">
+        <div class="wizard-step-label">Step 2 of 3</div>
+        <div class="wizard-step-title">Get your Google Sheets template</div>
+        <div class="wizard-step-desc">Tap below — Google will prompt you to <strong>make your own copy</strong>. This becomes your private attendance sheet. Don't request edit access to anyone else's copy; each teacher needs their own.</div>
+        <button class="btn full" onclick="window.open('https://docs.google.com/spreadsheets/d/1Weqp8AmPDbhTDAo7jrNNUypcsVAiaVqOhAhbaj9IJDs/copy','_blank')">📄 Make a copy of the template</button>
+      </div>
+
+      <!-- STEP 3: Deploy script + paste Sync URL -->
+      <div class="wizard-step" id="wizard-step-3">
+        <div class="wizard-step-label">Step 3 of 3</div>
+        <div class="wizard-step-title">Connect your Sync URL</div>
+        <div class="wizard-step-desc">In your copied Sheet:</div>
+        <ol style="font-size:0.85rem; color:var(--text-muted); line-height:1.6; margin:0 0 1rem 1.1rem;">
+          <li>Go to <strong>Extensions → Apps Script</strong> (the sync script is already inside your copy).</li>
+          <li>Click <strong>Deploy → New deployment</strong>, type <strong>Web app</strong>, "Who has access" → <strong>Anyone</strong>, then Deploy.</li>
+          <li>Copy the generated <code>.../exec</code> URL and paste it below.</li>
+        </ol>
+        <div class="form-group" style="margin-bottom:0.75rem;">
+          <label>Your Unique Sync URL</label>
+          <input type="url" id="wizard-sync-url-input" placeholder="https://script.google.com/macros/s/.../exec">
+        </div>
+        <div id="wizard-sync-status-msg"></div>
+      </div>
+
+    </div>
+    <div class="wizard-nav">
+      <button class="btn outline full" id="wizard-back-btn" onclick="wizardGoStep(wizardCurrentStep - 1)" style="display:none;">← Back</button>
+      <button class="btn full" id="wizard-next-btn" onclick="wizardGoStep(wizardCurrentStep + 1)">Next →</button>
+      <button class="btn full success" id="wizard-finish-btn" onclick="wizardFinish()" style="display:none;">✅ Save &amp; Finish</button>
+    </div>
   </div>
 </div>
 
@@ -5071,6 +5146,75 @@ async function renderSyncPage() {
     
     autoSyncEnabled = !!autoSync;
     updateAutoSyncBar();
+
+    // Auto-open Setup Wizard on first visit to Sync page if no Sync URL saved yet
+    const wizardSeen = await dbGetSetting('wizard_seen');
+    if (!savedUrl && !wizardSeen) {
+        openSetupWizard();
+    }
+}
+
+// ── SETUP WIZARD ─────────────────────────────────────────────────────────────
+let wizardCurrentStep = 1;
+const WIZARD_TOTAL_STEPS = 3;
+
+function openSetupWizard() {
+    wizardCurrentStep = 1;
+    document.getElementById('wizard-modal-backdrop').classList.add('open');
+    wizardRenderStep();
+    dbSetSetting('wizard_seen', true);
+}
+
+function closeSetupWizard(e) {
+    if (e.target.id === 'wizard-modal-backdrop') closeSetupWizardDirect();
+}
+
+function closeSetupWizardDirect() {
+    document.getElementById('wizard-modal-backdrop').classList.remove('open');
+}
+
+function wizardGoStep(n) {
+    if (n < 1 || n > WIZARD_TOTAL_STEPS) return;
+    wizardCurrentStep = n;
+    wizardRenderStep();
+}
+
+function wizardRenderStep() {
+    for (let i = 1; i <= WIZARD_TOTAL_STEPS; i++) {
+        document.getElementById(`wizard-step-${i}`).classList.toggle('active', i === wizardCurrentStep);
+    }
+    document.querySelectorAll('#wizard-dots .wizard-dot').forEach(dot => {
+        const n = parseInt(dot.dataset.dot, 10);
+        dot.classList.toggle('active', n === wizardCurrentStep);
+        dot.classList.toggle('done', n < wizardCurrentStep);
+    });
+
+    document.getElementById('wizard-back-btn').style.display = wizardCurrentStep > 1 ? 'block' : 'none';
+    document.getElementById('wizard-next-btn').style.display = wizardCurrentStep < WIZARD_TOTAL_STEPS ? 'block' : 'none';
+    document.getElementById('wizard-finish-btn').style.display = wizardCurrentStep === WIZARD_TOTAL_STEPS ? 'block' : 'none';
+
+    // Prefill the wizard's Sync URL field with anything already saved/typed on the main Sync page
+    if (wizardCurrentStep === 3) {
+        const mainInput = document.getElementById('sync-url-input');
+        const wizInput  = document.getElementById('wizard-sync-url-input');
+        if (mainInput && wizInput && !wizInput.value) wizInput.value = mainInput.value;
+    }
+}
+
+async function wizardFinish() {
+    const url = document.getElementById('wizard-sync-url-input').value.trim();
+    const msg = document.getElementById('wizard-sync-status-msg');
+
+    if (!url) { msg.innerHTML = `<div class="sync-status err">Paste your Sync URL first.</div>`; return; }
+    if (!url.includes('script.google.com')) {
+        msg.innerHTML = `<div class="sync-status err">Invalid URL. It must be your unique EduScan PH sync link.</div>`;
+        return;
+    }
+
+    // Push the URL into the main Sync page field, then reuse the existing save/connect flow
+    document.getElementById('sync-url-input').value = url;
+    await saveSyncUrl();
+    closeSetupWizardDirect();
 }
 
 function updateAutoSyncBar() {
