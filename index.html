@@ -443,6 +443,9 @@
     .wizard-reopen-btn { background: none; border: 1px solid var(--border-strong); color: var(--text-muted); font-size: 0.78rem; padding: 0.5rem 0.85rem; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; margin-top: 0.6rem; }
     .wizard-reopen-btn:hover { background: var(--bg); }
 
+    .install-video-tab { flex: 1; padding: 0.55rem 0.5rem; border-radius: 8px; border: 1px solid var(--border-strong); background: var(--bg); color: var(--text-muted); font-size: 0.82rem; font-weight: 600; cursor: pointer; }
+    .install-video-tab.active { background: var(--primary); border-color: var(--primary); color: #fff; }
+
     /* Custom confirm dialog — replaces browser confirm() so it matches app styling */
     .confirm-modal-backdrop {
       display: none; position: fixed; inset: 0; background: rgba(25,28,30,0.4);
@@ -1318,6 +1321,15 @@
       <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
     </button>
     <div id="header-menu-dropdown" class="hidden">
+      <button onclick="openSetupWizard(); closeHeaderMenu()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><polygon points="5 3 19 12 5 21 5 3" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+        Sync Setup Guide
+      </button>
+      <button onclick="showPage('download'); closeHeaderMenu()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="5" y="2" width="14" height="20" rx="2" stroke="currentColor" stroke-width="2"/><line x1="12" y1="18" x2="12.01" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        Install App Guide
+      </button>
+      <div class="menu-divider"></div>
       <button onclick="showFeedbackModal(); closeHeaderMenu()">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
         Send Feedback
@@ -1915,6 +1927,19 @@
       </div>
     </div>
 
+    <!-- Install Video Tutorials -->
+    <div class="card" id="install-video-card">
+      <h2 style="margin-bottom:0.25rem;">🎥 Installation video</h2>
+      <p style="font-size:0.82rem; color:var(--text-muted); margin-bottom:0.85rem;">Prefer to watch instead of read? Pick your device below.</p>
+      <div style="display:flex; gap:0.5rem; margin-bottom:0.85rem;">
+        <button class="install-video-tab active" id="install-video-tab-android" onclick="switchInstallVideoTab('android')">🤖 Android</button>
+        <button class="install-video-tab" id="install-video-tab-ios" onclick="switchInstallVideoTab('ios')">🍎 iPhone / iPad</button>
+      </div>
+      <div class="wizard-video-frame" style="margin-bottom:0;">
+        <iframe id="install-video-iframe" src="https://www.youtube.com/embed/INSTALL_TUTORIAL_ANDROID_ID" title="Install tutorial" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+      </div>
+    </div>
+
     <!-- Manual export -->
     <div class="card">
       <h2 style="margin-bottom:0.25rem;">📦 Export Data</h2>
@@ -2234,7 +2259,7 @@
         <div class="wizard-step-title">Watch the tutorial</div>
         <div class="wizard-step-desc">This 5-minute video walks through the whole setup — copying your template and connecting your Sync URL.</div>
         <div class="wizard-video-frame">
-          <iframe src="https://www.youtube.com/embed/hx0tEvM_eCs" title="EduScan PH Setup Tutorial" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+          <iframe src="https://www.youtube.com/embed/SETUP_TUTORIAL_YOUTUBE_ID" title="EduScan PH Setup Tutorial" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
         </div>
       </div>
 
@@ -2243,7 +2268,7 @@
         <div class="wizard-step-label">Step 2 of 3</div>
         <div class="wizard-step-title">Get your Google Sheets template</div>
         <div class="wizard-step-desc">Tap below — Google will prompt you to <strong>make your own copy</strong>. This becomes your private attendance sheet. Don't request edit access to anyone else's copy; each teacher needs their own.</div>
-        <button class="btn full" onclick="window.open('https://docs.google.com/spreadsheets/d/1Weqp8AmPDbhTDAo7jrNNUypcsVAiaVqOhAhbaj9IJDs/copy','_blank')">📄 Make a copy of the template</button>
+        <button class="btn full" onclick="window.open('https://docs.google.com/spreadsheets/d/SETUP_TEMPLATE_SHEET_ID/copy','_blank')">📄 Make a copy of the template</button>
       </div>
 
       <!-- STEP 3: Deploy script + paste Sync URL -->
@@ -5888,6 +5913,17 @@ async function dismissInstallBanner() {
 }
 
 // ── DOWNLOAD PAGE: updatePWAInstallUI ─────────────────────────────────────
+const INSTALL_VIDEO_IDS = {
+  android: 'DJjqvifLIrU',
+  ios:     'GgAiuJHO6HY'
+};
+
+function switchInstallVideoTab(platform) {
+  document.getElementById('install-video-tab-android').classList.toggle('active', platform === 'android');
+  document.getElementById('install-video-tab-ios').classList.toggle('active', platform === 'ios');
+  document.getElementById('install-video-iframe').src = `https://www.youtube.com/embed/${INSTALL_VIDEO_IDS[platform]}`;
+}
+
 function updatePWAInstallUI() {
   const installBtn   = document.getElementById('pwa-install-btn');
   const installedMsg = document.getElementById('pwa-installed-msg');
@@ -5895,15 +5931,23 @@ function updatePWAInstallUI() {
   const wrongBrowser = document.getElementById('ios-wrong-browser-warning');
   const stepsEl      = document.getElementById('install-steps');
   const guideTitle   = document.getElementById('install-guide-title');
+  const videoCard    = document.getElementById('install-video-card');
 
   if (isStandalone()) {
     installedMsg.style.display = 'block';
     installBtn.style.display   = 'none';
     guide.style.display        = 'none';
+    if (videoCard) videoCard.style.display = 'none';
     return;
   }
 
   const iosEnv = detectIOSEnv();
+
+  // Default the video tab to whatever platform was detected
+  if (videoCard) {
+    videoCard.style.display = 'block';
+    switchInstallVideoTab((iosEnv === 'ios-safari' || iosEnv === 'ios-other') ? 'ios' : 'android');
+  }
 
   if (pwaInstallPrompt) {
     // Android / Desktop Chrome
