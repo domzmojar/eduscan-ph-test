@@ -3046,7 +3046,10 @@ function renderClasses() {
     return;
   }
   tbody.innerHTML = classes.map(c => {
-    const count     = students.filter(s => s.classId === c.id).length;
+    const classStudents = students.filter(s => s.classId === c.id);
+    const count     = classStudents.length;
+    const maleCount   = classStudents.filter(s => s.gender === 'M').length;
+    const femaleCount = classStudents.filter(s => s.gender === 'F').length;
     const startTime = c.amTime || c.startTime || '—';
     const dismissTime = c.pmTime || c.dismissTime || '—';
     const grace     = c.graceMins != null ? `${c.graceMins}m grace` : '';
@@ -3055,7 +3058,7 @@ function renderClasses() {
       <td>
         <strong style="color:var(--primary);">${escapeHTML(c.name)}</strong><br>
         <span style="font-size:0.75rem;color:var(--text-muted);">
-          ${count} student${count !== 1 ? 's' : ''} · Start ${startTime} · Dismiss ${dismissTime}${grace ? ' · ' + grace : ''} · tap to view roster
+          ${count} student${count !== 1 ? 's' : ''} (♂ ${maleCount} · ♀ ${femaleCount}) · Start ${startTime} · Dismiss ${dismissTime}${grace ? ' · ' + grace : ''} · tap to view roster
         </span>
       </td>
       <td style="text-align:right; white-space:nowrap;" onclick="event.stopPropagation()">
@@ -3075,8 +3078,10 @@ function openClassRosterModal(classId) {
   if (!enrolled.length) {
     document.getElementById('modal-body').innerHTML = `<p class="empty">No students enrolled yet.</p>`;
   } else {
+    const maleCount   = enrolled.filter(s => s.gender === 'M').length;
+    const femaleCount = enrolled.filter(s => s.gender === 'F').length;
     document.getElementById('modal-body').innerHTML = `
-      <p style="font-size:0.78rem;color:var(--text-muted);margin-bottom:0.75rem;">${enrolled.length} student${enrolled.length !== 1 ? 's' : ''} enrolled</p>
+      <p style="font-size:0.78rem;color:var(--text-muted);margin-bottom:0.75rem;">${enrolled.length} student${enrolled.length !== 1 ? 's' : ''} enrolled (♂ ${maleCount} · ♀ ${femaleCount})</p>
       ${enrolled.map((s, i) => {
         const initials = escapeHTML(s.name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase());
         return `
@@ -3276,11 +3281,14 @@ async function renderStudents() {
 
   const totalEl = document.getElementById('students-total-count');
   if (totalEl) {
+    const maleCount   = list.filter(s => s.gender === 'M').length;
+    const femaleCount = list.filter(s => s.gender === 'F').length;
+    const breakdown   = ` (♂ ${maleCount} · ♀ ${femaleCount})`;
     if (filterVal) {
       const clsName = (classes.find(c => c.id === filterVal) || {}).name || 'Section';
-      totalEl.textContent = `${clsName}: ${list.length} student${list.length === 1 ? '' : 's'}`;
+      totalEl.textContent = `${clsName}: ${list.length} student${list.length === 1 ? '' : 's'}${breakdown}`;
     } else {
-      totalEl.textContent = `All students: ${list.length}`;
+      totalEl.textContent = `All students: ${list.length}${breakdown}`;
     }
   }
 
