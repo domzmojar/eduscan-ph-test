@@ -1614,7 +1614,10 @@
     <div class="card">
       <div class="row-flex">
         <h2 style="margin:0;">Attendance log</h2>
-        <button class="btn danger sm" onclick="clearLogs()">Clear all</button>
+        <div style="display:flex; gap:0.4rem;">
+          <button class="btn sm" onclick="openAddLogModal()">+ Add Log</button>
+          <button class="btn danger sm" onclick="clearLogs()">Clear all</button>
+        </div>
       </div>
       <!-- Search bar -->
       <div style="position:relative; margin-top:0.75rem;">
@@ -2115,6 +2118,49 @@
       </div>
       <button class="btn full" onclick="saveEditLog()">Save changes</button>
       <button class="btn full danger" style="margin-top:0.5rem;" onclick="deleteLogEntry()">Delete this record</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADD LOG MODAL (manual entry, no QR scan) -->
+<div class="modal-backdrop" id="add-log-modal" onclick="closeAddLogModal(event)">
+  <div class="modal-sheet">
+    <div class="modal-header">
+      <span class="modal-title">Add Attendance Record</span>
+      <button class="modal-close" onclick="closeAddLogModalDirect()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label for="add-log-class-select">Class</label>
+        <select id="add-log-class-select" onchange="onAddLogClassChange()"></select>
+      </div>
+      <div class="form-group">
+        <label for="add-log-student-select">Student</label>
+        <select id="add-log-student-select"></select>
+      </div>
+      <div class="form-group">
+        <label for="add-log-time">Time</label>
+        <input type="time" id="add-log-time" onchange="recomputeAddLogLateStatus()">
+      </div>
+      <div class="form-group">
+        <label for="add-log-date">Date</label>
+        <input type="date" id="add-log-date" onchange="recomputeAddLogLateStatus()">
+      </div>
+      <div class="form-group" id="add-log-late-row" style="margin-bottom:1rem;">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <input type="checkbox" id="add-log-is-late" style="width:18px;height:18px;cursor:pointer;">
+          <label for="add-log-is-late" style="text-transform:none; font-size:0.9rem; font-weight:600; color:var(--text); cursor:pointer; margin:0;">⏰ Mark as Late</label>
+        </div>
+        <p id="add-log-late-auto-note" style="font-size:0.73rem; color:var(--text-muted); margin-top:0.3rem; margin-left:28px;"></p>
+      </div>
+      <div class="form-group" id="add-log-cut-row" style="margin-bottom:1rem;">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <input type="checkbox" id="add-log-is-cut" style="width:18px;height:18px;cursor:pointer;">
+          <label for="add-log-is-cut" style="text-transform:none; font-size:0.9rem; font-weight:600; color:var(--text); cursor:pointer; margin:0;">✂️ Mark as Cutting Class</label>
+        </div>
+        <p style="font-size:0.73rem; color:var(--text-muted); margin-top:0.3rem; margin-left:28px;">Student was present, but was noticed missing during the lesson.</p>
+      </div>
+      <button class="btn full" onclick="saveAddLog()">Add record</button>
     </div>
   </div>
 </div>
@@ -4700,6 +4746,130 @@ async function deleteLogEntry() {
 
 function closeEditLogModal(e)      { if (e.target === document.getElementById('edit-log-modal')) closeEditLogModalDirect(); }
 function closeEditLogModalDirect() { document.getElementById('edit-log-modal').classList.remove('open'); document.body.style.overflow = ''; }
+
+// ── ADD LOG MODAL (manual entry — no QR scan required) ──────────────────
+function openAddLogModal() {
+  const classSelect = document.getElementById('add-log-class-select');
+  classSelect.innerHTML = `<option value="">— Choose a class —</option>` +
+    classes.map(c => `<option value="${escapeAttr(c.id)}">${escapeHTML(c.name)}</option>`).join('');
+  classSelect.value = currentClassId || '';
+
+  const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+  document.getElementById('add-log-date').value = todayStr();
+  document.getElementById('add-log-time').value =
+    String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+  document.getElementById('add-log-is-cut').checked = false;
+
+  onAddLogClassChange();
+  document.getElementById('add-log-modal').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function onAddLogClassChange() {
+  const classId = document.getElementById('add-log-class-select').value;
+  const studentSelect = document.getElementById('add-log-student-select');
+  const classStudents = students
+    .filter(s => s.classId === classId)
+    .slice()
+    .sort((a, b) => (a.lastName || a.name || '').toLowerCase().localeCompare((b.lastName || b.name || '').toLowerCase()));
+
+  studentSelect.innerHTML = classId
+    ? (classStudents.length
+        ? classStudents.map(s => `<option value="${escapeAttr(s.id)}">${escapeHTML(s.name)}${s.lrn ? ' · LRN ' + escapeHTML(s.lrn) : ''}</option>`).join('')
+        : `<option value="">No students in this class</option>`)
+    : `<option value="">— Choose a class first —</option>`;
+
+  recomputeAddLogLateStatus();
+}
+
+function recomputeAddLogLateStatus() {
+  const note = document.getElementById('add-log-late-auto-note');
+  const dateVal = document.getElementById('add-log-date').value;
+  const timeVal = document.getElementById('add-log-time').value;
+  const classId = document.getElementById('add-log-class-select').value;
+  if (!dateVal || !timeVal || !classId) { note.textContent = ''; return; }
+
+  const cls = classes.find(c => c.id === classId);
+  const [y, mo, d] = dateVal.split('-').map(Number);
+  const [h, mi]    = timeVal.split(':').map(Number);
+  const isoTs      = phLocalToISOString(y, mo, d, h, mi);
+
+  const computedLate = computeArrivalLateFlag(cls, isoTs);
+  document.getElementById('add-log-is-late').checked = computedLate;
+
+  const amTime = cls && (cls.amTime || cls.startTime);
+  if (amTime) {
+    const grace = cls.graceMins != null ? cls.graceMins : 5;
+    note.textContent = computedLate
+      ? `Auto-detected: Late (cutoff is ${amTime} + ${grace}m grace). Untick above to override.`
+      : `Auto-detected: On time (cutoff is ${amTime} + ${grace}m grace).`;
+  } else {
+    note.textContent = 'No start time set for this class — defaulting to On time.';
+  }
+}
+
+async function saveAddLog() {
+  const classId    = document.getElementById('add-log-class-select').value;
+  const studentId  = document.getElementById('add-log-student-select').value;
+  const dateVal    = document.getElementById('add-log-date').value;
+  const timeVal    = document.getElementById('add-log-time').value;
+  const isLate     = document.getElementById('add-log-is-late').checked;
+  const isCut      = document.getElementById('add-log-is-cut').checked;
+
+  if (!classId)   return showToast('Select a class.', 'warn');
+  if (!studentId) return showToast('Select a student.', 'warn');
+  if (!dateVal || !timeVal) return showToast('Date and time are required.', 'warn');
+
+  const cls     = classes.find(c => c.id === classId);
+  const student = students.find(s => s.id === studentId);
+  if (!student) return showToast('Student not found.', 'err');
+
+  const [y, mo, d] = dateVal.split('-').map(Number);
+  const [h, mi]    = timeVal.split(':').map(Number);
+  const isoTs      = phLocalToISOString(y, mo, d, h, mi);
+
+  const dup = logs.find(l => l.studentId === studentId && l.classId === classId && getLogDate(l) === dateVal);
+  if (dup) {
+    const proceed = await showConfirmDialog({
+      title: '⏱ Already recorded',
+      message: `${student.name} already has a record for this class on ${dateVal}.\n\nAdd another record anyway?`,
+      confirmLabel: 'Add anyway',
+      cancelLabel: 'Cancel',
+      danger: true
+    });
+    if (!proceed) return;
+  }
+
+  const logEntry = {
+    timestamp:   isoTs,
+    localDate:   dateVal,
+    classId:     classId,
+    className:   (cls || {}).name || '',
+    studentId:   student.id,
+    studentName: student.name,
+    studentLrn:  student.lrn || '',
+    type:        'arrival',
+    isLate:      isLate,
+    isCut:       isCut,
+    updatedAt:   nowIso()
+  };
+
+  const newId = await dbAdd('logs', logEntry);
+  logEntry.id = newId;
+  logs.unshift(logEntry);
+
+  closeAddLogModalDirect();
+  renderLog(false); renderTodayList();
+  if (document.getElementById('page-summary').classList.contains('active')) renderSummary();
+  if (document.getElementById('terms-modal-backdrop').classList.contains('open')) renderTermsModalBody();
+
+  scheduleAutoSync();
+  checkAutoExport('manual');
+  showToast('Record added.', 'ok');
+}
+
+function closeAddLogModal(e)      { if (e.target === document.getElementById('add-log-modal')) closeAddLogModalDirect(); }
+function closeAddLogModalDirect() { document.getElementById('add-log-modal').classList.remove('open'); document.body.style.overflow = ''; }
 
 // ── DROPDOWNS ─────────────────────────────────────────────────────────────
 function populateDropdowns() {
