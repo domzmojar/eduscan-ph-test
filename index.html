@@ -4751,7 +4751,12 @@ function closeEditLogModalDirect() { document.getElementById('edit-log-modal').c
 function openAddLogModal() {
   const classSelect = document.getElementById('add-log-class-select');
   classSelect.innerHTML = `<option value="">— Choose a class —</option>` +
-    classes.map(c => `<option value="${escapeAttr(c.id)}">${escapeHTML(c.name)}</option>`).join('');
+    classes.map(c => {
+      const start = c.startTime || c.amTime;
+      const end   = c.dismissTime || c.pmTime;
+      const sched = start ? ` (${start}${end ? '–' + end : ''})` : '';
+      return `<option value="${escapeAttr(c.id)}">${escapeHTML(c.name)}${escapeHTML(sched)}</option>`;
+    }).join('');
   classSelect.value = currentClassId || '';
 
   const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
