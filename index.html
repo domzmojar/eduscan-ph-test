@@ -2142,9 +2142,20 @@
         <label for="add-log-time">Time</label>
         <input type="time" id="add-log-time" onchange="recomputeAddLogLateStatus()">
       </div>
-      <div class="form-group">
+      <div class="form-group" style="display:flex; align-items:center; gap:10px;">
+        <input type="checkbox" id="add-log-bulk-toggle" onchange="onAddLogBulkToggle()" style="width:18px;height:18px;cursor:pointer;">
+        <label for="add-log-bulk-toggle" style="text-transform:none; font-size:0.9rem; font-weight:600; color:var(--text); cursor:pointer; margin:0;">📅 Bulk add across date range</label>
+      </div>
+      <div class="form-group" id="add-log-single-date-group">
         <label for="add-log-date">Date</label>
         <input type="date" id="add-log-date" onchange="recomputeAddLogLateStatus()">
+      </div>
+      <div class="form-group" id="add-log-range-date-group" style="display:none;">
+        <label for="add-log-bulk-start">From</label>
+        <input type="date" id="add-log-bulk-start">
+        <label for="add-log-bulk-end" style="margin-top:0.5rem;">To</label>
+        <input type="date" id="add-log-bulk-end">
+        <p style="font-size:0.73rem; color:var(--text-muted); margin-top:0.3rem;">Weekends (Sat/Sun) are skipped automatically. One record per weekday for this student, at the time above. Late status is auto-detected per day from the class schedule. Days that already have a record for this student are skipped.</p>
       </div>
       <div class="form-group" id="add-log-late-row" style="margin-bottom:1rem;">
         <div style="display:flex; align-items:center; gap:10px;">
@@ -4761,13 +4772,25 @@ function openAddLogModal() {
 
   const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
   document.getElementById('add-log-date').value = todayStr();
+  document.getElementById('add-log-bulk-start').value = todayStr();
+  document.getElementById('add-log-bulk-end').value   = todayStr();
   document.getElementById('add-log-time').value =
     String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
   document.getElementById('add-log-is-cut').checked = false;
+  document.getElementById('add-log-bulk-toggle').checked = false;
+  onAddLogBulkToggle();
 
   onAddLogClassChange();
   document.getElementById('add-log-modal').classList.add('open');
   document.body.style.overflow = 'hidden';
+}
+
+function onAddLogBulkToggle() {
+  const bulk = document.getElementById('add-log-bulk-toggle').checked;
+  document.getElementById('add-log-single-date-group').style.display = bulk ? 'none' : 'block';
+  document.getElementById('add-log-range-date-group').style.display  = bulk ? 'block' : 'none';
+  document.getElementById('add-log-late-row').style.display = bulk ? 'none' : 'block';
+  document.getElementById('add-log-cut-row').style.display  = bulk ? 'none' : 'block';
 }
 
 function onAddLogClassChange() {
@@ -4816,21 +4839,82 @@ function recomputeAddLogLateStatus() {
 async function saveAddLog() {
   const classId    = document.getElementById('add-log-class-select').value;
   const studentId  = document.getElementById('add-log-student-select').value;
-  const dateVal    = document.getElementById('add-log-date').value;
   const timeVal    = document.getElementById('add-log-time').value;
-  const isLate     = document.getElementById('add-log-is-late').checked;
-  const isCut      = document.getElementById('add-log-is-cut').checked;
+  const isBulk     = document.getElementById('add-log-bulk-toggle').checked;
 
   if (!classId)   return showToast('Select a class.', 'warn');
   if (!studentId) return showToast('Select a student.', 'warn');
-  if (!dateVal || !timeVal) return showToast('Date and time are required.', 'warn');
+  if (!timeVal)   return showToast('Time is required.', 'warn');
 
   const cls     = classes.find(c => c.id === classId);
   const student = students.find(s => s.id === studentId);
   if (!student) return showToast('Student not found.', 'err');
 
+  const [h, mi] = timeVal.split(':').map(Number);
+
+  if (isBulk) {
+    const startVal = document.getElementById('add-log-bulk-start').value;
+    const endVal   = document.getElementById('add-log-bulk-end').value;
+    if (!startVal || !endVal) return showToast('From and To dates are required.', 'warn');
+    if (startVal > endVal)    return showToast('"From" date must be before "To" date.', 'warn');
+
+    const dateList = [];
+    let cursor = new Date(startVal + 'T00:00:00');
+    const endD = new Date(endVal + 'T00:00:00');
+    while (cursor <= endD) {
+      const dow = cursor.getDay(); // 0=Sun, 6=Sat
+      if (dow !== 0 && dow !== 6) {
+        const y = cursor.getFullYear(), mo = cursor.getMonth() + 1, d = cursor.getDate();
+        dateList.push({ y, mo, d, dateStr: `${y}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}` });
+      }
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    if (!dateList.length) return showToast('No weekdays in that range.', 'warn');
+
+    let added = 0, skipped = 0;
+    const newLogs = [];
+    for (const dt of dateList) {
+      const dup = logs.find(l => l.studentId === studentId && l.classId === classId && getLogDate(l) === dt.dateStr);
+      if (dup) { skipped++; continue; }
+      const isoTs = phLocalToISOString(dt.y, dt.mo, dt.d, h, mi);
+      const logEntry = {
+        timestamp:   isoTs,
+        localDate:   dt.dateStr,
+        classId:     classId,
+        className:   (cls || {}).name || '',
+        studentId:   student.id,
+        studentName: student.name,
+        studentLrn:  student.lrn || '',
+        type:        'arrival',
+        isLate:      computeArrivalLateFlag(cls, isoTs),
+        isCut:       false,
+        updatedAt:   nowIso()
+      };
+      const newId = await dbAdd('logs', logEntry);
+      logEntry.id = newId;
+      newLogs.push(logEntry);
+      added++;
+    }
+    logs = newLogs.concat(logs);
+    logs.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+
+    closeAddLogModalDirect();
+    renderLog(true); renderTodayList();
+    if (document.getElementById('page-summary').classList.contains('active')) renderSummary();
+    if (document.getElementById('terms-modal-backdrop').classList.contains('open')) renderTermsModalBody();
+
+    scheduleAutoSync();
+    checkAutoExport('manual');
+    showToast(`${added} record(s) added${skipped ? `, ${skipped} skipped (already recorded)` : ''}.`, 'ok');
+    return;
+  }
+
+  const dateVal = document.getElementById('add-log-date').value;
+  const isLate  = document.getElementById('add-log-is-late').checked;
+  const isCut   = document.getElementById('add-log-is-cut').checked;
+  if (!dateVal) return showToast('Date is required.', 'warn');
+
   const [y, mo, d] = dateVal.split('-').map(Number);
-  const [h, mi]    = timeVal.split(':').map(Number);
   const isoTs      = phLocalToISOString(y, mo, d, h, mi);
 
   const dup = logs.find(l => l.studentId === studentId && l.classId === classId && getLogDate(l) === dateVal);
