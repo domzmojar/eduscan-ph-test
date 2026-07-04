@@ -2258,6 +2258,10 @@
       <div class="wizard-step" id="wizard-step-1">
         <div class="wizard-step-label">Step 1 of 3</div>
         <div class="wizard-step-title">Watch the tutorial</div>
+        <div style="display:flex; align-items:center; gap:8px; background:var(--warning-bg); border:1px solid var(--warning-border); border-radius:8px; padding:0.6rem 0.75rem; margin-bottom:0.85rem;">
+          <span style="font-size:1.1rem; line-height:1;">⚠️</span>
+          <span style="font-size:0.82rem; font-weight:700; color:var(--warning);">Use a laptop or computer for this step</span>
+        </div>
         <div class="wizard-step-desc">This 7-minute video walks through the whole setup — copying your template and connecting your Sync URL.</div>
         <div class="wizard-video-frame">
           <iframe id="wizard-video-iframe" src="https://www.youtube.com/embed/hx0tEvM_eCs?enablejsapi=1" title="EduScan PH Setup Tutorial" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
@@ -2276,10 +2280,6 @@
       <div class="wizard-step" id="wizard-step-3">
         <div class="wizard-step-label">Step 3 of 3</div>
         <div class="wizard-step-title">Connect your Sync URL</div>
-        <div style="background:var(--warning-bg); border:1px solid var(--warning-border); border-radius:10px; padding:0.85rem; margin-bottom:1rem;">
-          <p style="font-size:0.85rem; font-weight:700; color:var(--warning); margin-bottom:0.35rem;">💻 Use a laptop or computer for this step</p>
-          <p style="font-size:0.8rem; color:var(--warning); line-height:1.5; margin:0;">Apps Script deployment isn't available on the phone — the Google Sheets mobile app and mobile browsers don't have <strong>Extensions → Apps Script</strong>. Open your copied Sheet on a laptop/desktop browser to complete this step, then come back to your phone to paste the Sync URL below.</p>
-        </div>
         <div class="wizard-step-desc">In your copied Sheet:</div>
         <ol style="font-size:0.85rem; color:var(--text-muted); line-height:1.6; margin:0 0 1rem 1.1rem;">
           <li>Go to <strong>Extensions → Apps Script</strong> (the sync script is already inside your copy).</li>
@@ -2303,6 +2303,18 @@
 </div>
 
 <script>
+// ── SCROLL LOCK (popups/modals) ──────────────────────────────────────────────
+// Locking body.style.overflow alone isn't enough on some mobile browsers,
+// since the scrolling container is actually <html>, not <body>. Lock both.
+function lockBodyScroll() {
+  document.documentElement.style.overflow = 'hidden';
+  document.body.style.overflow = 'hidden';
+}
+function unlockBodyScroll() {
+  document.documentElement.style.overflow = '';
+  document.body.style.overflow = '';
+}
+
 // ── INDEXEDDB ──────────────────────────────────────────────────────────────
 const DB_NAME    = 'EduScanPH';
 const DB_VERSION = 1;
@@ -2552,10 +2564,13 @@ function showPage(page) {
 function openMoreSheet() {
   document.getElementById('more-sheet-backdrop').classList.add('show');
   document.getElementById('more-sheet').classList.add('show');
+  lockBodyScroll();
 }
 function closeMoreSheet() {
+  const wasOpen = document.getElementById('more-sheet').classList.contains('show');
   document.getElementById('more-sheet-backdrop').classList.remove('show');
   document.getElementById('more-sheet').classList.remove('show');
+  if (wasOpen) unlockBodyScroll();
 }
 function toggleMoreSheet() {
   const isOpen = document.getElementById('more-sheet').classList.contains('show');
@@ -3078,7 +3093,7 @@ function openClassRosterModal(classId) {
   }
 
   document.getElementById('modal-backdrop').classList.add('open');
-  document.body.style.overflow = 'hidden';
+  lockBodyScroll();
 }
 
 // ── STUDENTS ──────────────────────────────────────────────────────────────
@@ -4564,7 +4579,7 @@ function openModalRange(type, classId, fromDate, toDate, encodedClassName) {
   }
 
   document.getElementById('modal-backdrop').classList.add('open');
-  document.body.style.overflow = 'hidden';
+  lockBodyScroll();
 }
 
 function openModal(type, classId, dateStr, encodedClassName) {
@@ -4620,11 +4635,11 @@ function openModal(type, classId, dateStr, encodedClassName) {
   }
 
   document.getElementById('modal-backdrop').classList.add('open');
-  document.body.style.overflow = 'hidden';
+  lockBodyScroll();
 }
 
 function closeModal(e)       { if (e.target === document.getElementById('modal-backdrop')) closeModalDirect(); }
-function closeModalDirect()  { document.getElementById('modal-backdrop').classList.remove('open'); document.body.style.overflow = ''; }
+function closeModalDirect()  { document.getElementById('modal-backdrop').classList.remove('open'); unlockBodyScroll(); }
 
 // ── CUSTOM CONFIRM DIALOG ────────────────────────────────────────────────
 // Promise-based replacement for the browser's blocking confirm(), styled to
@@ -4645,7 +4660,7 @@ function showConfirmDialog({ title = 'Confirm', message = '', confirmLabel = 'Co
 
     const cleanup = (result) => {
       backdrop.classList.remove('open');
-      document.body.style.overflow = '';
+      unlockBodyScroll();
       okBtn.removeEventListener('click', onOk);
       cancelBtn.removeEventListener('click', onCancel);
       backdrop.removeEventListener('click', onBackdrop);
@@ -4660,7 +4675,7 @@ function showConfirmDialog({ title = 'Confirm', message = '', confirmLabel = 'Co
     backdrop.addEventListener('click', onBackdrop);
 
     backdrop.classList.add('open');
-    document.body.style.overflow = 'hidden';
+    lockBodyScroll();
   });
 }
 
@@ -4682,7 +4697,7 @@ function openEditClassModal(classId) {
   document.getElementById('edit-class-dismiss-time').value  = cls.pmTime || cls.dismissTime || '08:30';
   document.getElementById('edit-class-grace-mins').value    = cls.graceMins != null ? cls.graceMins : 5;
   document.getElementById('edit-class-modal').classList.add('open');
-  document.body.style.overflow = 'hidden';
+  lockBodyScroll();
 }
 
 async function saveEditClass() {
@@ -4706,7 +4721,7 @@ async function saveEditClass() {
 }
 
 function closeEditClassModal(e)      { if (e.target === document.getElementById('edit-class-modal')) closeEditClassModalDirect(); }
-function closeEditClassModalDirect() { document.getElementById('edit-class-modal').classList.remove('open'); document.body.style.overflow = ''; }
+function closeEditClassModalDirect() { document.getElementById('edit-class-modal').classList.remove('open'); unlockBodyScroll(); }
 
 // ── EDIT LOG MODAL ────────────────────────────────────────────────────────
 function onEditLogTypeChange() {
@@ -4795,7 +4810,7 @@ function openEditLogModal(logId) {
     
     onEditLogTypeChange(); // also triggers the initial auto-recompute for arrivals
     document.getElementById('edit-log-modal').classList.add('open');
-    document.body.style.overflow = 'hidden';
+    lockBodyScroll();
 }
 
 // Converts a PH-local "wall clock" date+time into the equivalent UTC ISO
@@ -4864,7 +4879,7 @@ async function deleteLogEntry() {
 }
 
 function closeEditLogModal(e)      { if (e.target === document.getElementById('edit-log-modal')) closeEditLogModalDirect(); }
-function closeEditLogModalDirect() { document.getElementById('edit-log-modal').classList.remove('open'); document.body.style.overflow = ''; }
+function closeEditLogModalDirect() { document.getElementById('edit-log-modal').classList.remove('open'); unlockBodyScroll(); }
 
 // ── ADD LOG MODAL (manual entry — no QR scan required) ──────────────────
 function openAddLogModal() {
@@ -4892,7 +4907,7 @@ function openAddLogModal() {
 
   onAddLogClassChange();
   document.getElementById('add-log-modal').classList.add('open');
-  document.body.style.overflow = 'hidden';
+  lockBodyScroll();
 }
 
 function onAddLogBulkToggle() {
@@ -5131,7 +5146,7 @@ async function saveAddLog() {
 }
 
 function closeAddLogModal(e)      { if (e.target === document.getElementById('add-log-modal')) closeAddLogModalDirect(); }
-function closeAddLogModalDirect() { document.getElementById('add-log-modal').classList.remove('open'); document.body.style.overflow = ''; }
+function closeAddLogModalDirect() { document.getElementById('add-log-modal').classList.remove('open'); unlockBodyScroll(); }
 
 // ── DROPDOWNS ─────────────────────────────────────────────────────────────
 function populateDropdowns() {
@@ -5214,6 +5229,7 @@ function openSetupWizard() {
     wizardRenderStep();
     dbSetSetting('wizard_seen', true);
     pauseInstallVideo();
+    lockBodyScroll();
 }
 
 function closeSetupWizard(e) {
@@ -5223,6 +5239,7 @@ function closeSetupWizard(e) {
 function closeSetupWizardDirect() {
     document.getElementById('wizard-modal-backdrop').classList.remove('open');
     pauseWizardVideo();
+    unlockBodyScroll();
 }
 
 function wizardGoStep(n) {
@@ -6396,7 +6413,7 @@ function openTermsModal(studentId, classId) {
     document.getElementById('terms-modal-meta').textContent = student && student.lrn ? `LRN: ${student.lrn}` : '';
     switchTermTab(1);
     document.getElementById('terms-modal-backdrop').classList.add('open');
-    document.body.style.overflow = 'hidden';
+    lockBodyScroll();
 }
 
 function switchTermTab(num) {
@@ -6484,7 +6501,7 @@ function renderTermsModalBody() {
 }
 
 function closeTermsModal(e) { if (e.target === document.getElementById('terms-modal-backdrop')) closeTermsModalDirect(); }
-function closeTermsModalDirect() { document.getElementById('terms-modal-backdrop').classList.remove('open'); document.body.style.overflow = ''; }
+function closeTermsModalDirect() { document.getElementById('terms-modal-backdrop').classList.remove('open'); unlockBodyScroll(); }
 
 // ── PREMIUM MODAL ACTIONS ───────────────────────────────────────────────
 
@@ -6525,7 +6542,7 @@ function showParentContact(studentId, dateStr, isToday) {
   
   document.getElementById('modal-body').innerHTML = bodyHTML;
   document.getElementById('modal-backdrop').classList.add('open');
-  document.body.style.overflow = 'hidden';
+  lockBodyScroll();
 }
 
 // 2. "View Record" Modal (Matches Terms Tab UI/UX)
@@ -6639,7 +6656,7 @@ function showStudentRecord(studentId) {
 
   document.getElementById('modal-body').innerHTML = bodyHTML;
   document.getElementById('modal-backdrop').classList.add('open');
-  document.body.style.overflow = 'hidden';
+  lockBodyScroll();
 }
 
 // ── EDIT STUDENT ─────────────────────────────────────────────────────────
@@ -6663,7 +6680,7 @@ function openEditStudentModal(id) {
   document.getElementById('edit-student-class-select').value = student.classId;
   
   document.getElementById('edit-student-modal').classList.add('open');
-  document.body.style.overflow = 'hidden';
+  lockBodyScroll();
 }
 
 async function saveEditStudent() {
@@ -6729,7 +6746,7 @@ async function saveEditStudent() {
 }
 
 function closeEditStudentModal(e) { if (e.target === document.getElementById('edit-student-modal')) closeEditStudentModalDirect(); }
-function closeEditStudentModalDirect() { document.getElementById('edit-student-modal').classList.remove('open'); document.body.style.overflow = ''; }
+function closeEditStudentModalDirect() { document.getElementById('edit-student-modal').classList.remove('open'); unlockBodyScroll(); }
 
 // ── AUTH SCREEN DATE DISPLAY (runs independently of Supabase) ─────────────
 function setAuthCurrentDate() {
@@ -6922,10 +6939,12 @@ function showAccessInfoPopup(access) {
     }
 
     popup.classList.remove('hidden');
+    lockBodyScroll();
 }
 
 function closeAccessInfoPopup() {
     document.getElementById('access-info-popup').classList.add('hidden');
+    unlockBodyScroll();
 }
 
 function renderAccessUI(access) {
@@ -7331,11 +7350,13 @@ function showFeedbackModal() {
     const modal = document.getElementById('feedback-modal');
     modal.style.display = 'flex';
     modal.classList.remove('hidden');
+    lockBodyScroll();
     setTimeout(() => document.getElementById('feedback-text').focus(), 100);
 }
 
 function closeFeedbackModal() {
     document.getElementById('feedback-modal').classList.add('hidden');
+    unlockBodyScroll();
 }
 
 async function submitFeedback() {
@@ -7382,12 +7403,14 @@ function showIntroSlider(forceReopen) {
     introCurrentSlide = 0;
     updateIntroSlidePosition(false);
     document.getElementById('intro-slider-overlay').classList.remove('hidden');
+    lockBodyScroll();
     return true;
 }
 
 function closeIntroSlider() {
     localStorage.setItem(INTRO_SEEN_KEY, '1');
     document.getElementById('intro-slider-overlay').classList.add('hidden');
+    unlockBodyScroll();
 }
 
 function goToIntroSlide(index) {
