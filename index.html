@@ -7447,6 +7447,101 @@ function updateIntroSlidePosition(animate) {
     nextBtn.textContent = introCurrentSlide === INTRO_SLIDE_COUNT - 1 ? 'Get Started' : 'Next';
 }
 
+// ── BACK BUTTON / GESTURE GUARD (installed PWA) ────────────────────────────
+// Without this, Android's back gesture/button closes the whole installed app
+// the moment the user presses back — even if they're just on a sub-page or
+// have a popup open. We keep a 1-entry history "buffer" and intercept every
+// back press: first close any open popup, then navigate to the home page,
+// and only actually let the app exit on a second consecutive back press.
+let _backExitArmed = false;
+let _backExitTimer = null;
+const BACK_HOME_PAGE = 'scanner';
+
+function pushBackGuardState() {
+  history.pushState({ _backGuard: true }, '', location.href);
+}
+
+// Closes whichever popup/modal is currently open, if any. Returns true if
+// something was closed (so the back press should be "swallowed").
+function closeTopOverlay() {
+  const wizard = document.getElementById('wizard-modal-backdrop');
+  if (wizard && wizard.classList.contains('open')) { closeSetupWizardDirect(); return true; }
+
+  const editStudent = document.getElementById('edit-student-modal');
+  if (editStudent && editStudent.classList.contains('open')) { closeEditStudentModalDirect(); return true; }
+
+  const editClass = document.getElementById('edit-class-modal');
+  if (editClass && editClass.classList.contains('open')) { closeEditClassModalDirect(); return true; }
+
+  const editLog = document.getElementById('edit-log-modal');
+  if (editLog && editLog.classList.contains('open')) { closeEditLogModalDirect(); return true; }
+
+  const addLog = document.getElementById('add-log-modal');
+  if (addLog && addLog.classList.contains('open')) { closeAddLogModalDirect(); return true; }
+
+  const terms = document.getElementById('terms-modal-backdrop');
+  if (terms && terms.classList.contains('open')) { closeTermsModalDirect(); return true; }
+
+  const generic = document.getElementById('modal-backdrop');
+  if (generic && generic.classList.contains('open')) { closeModalDirect(); return true; }
+
+  const confirmDialog = document.getElementById('confirm-modal-backdrop');
+  if (confirmDialog && confirmDialog.classList.contains('open')) {
+    document.getElementById('confirm-modal-cancel')?.click();
+    return true;
+  }
+
+  const moreSheet = document.getElementById('more-sheet');
+  if (moreSheet && moreSheet.classList.contains('show')) { closeMoreSheet(); return true; }
+
+  const feedback = document.getElementById('feedback-modal');
+  if (feedback && !feedback.classList.contains('hidden')) { closeFeedbackModal(); return true; }
+
+  const intro = document.getElementById('intro-slider-overlay');
+  if (intro && !intro.classList.contains('hidden')) { closeIntroSlider(); return true; }
+
+  const accessInfo = document.getElementById('access-info-popup');
+  if (accessInfo && !accessInfo.classList.contains('hidden')) { closeAccessInfoPopup(); return true; }
+
+  return false;
+}
+
+function initBackButtonGuard() {
+  // Only needed when actually installed/standalone — a normal browser tab's
+  // back button should behave normally.
+  if (!isStandalone()) return;
+
+  pushBackGuardState();
+
+  window.addEventListener('popstate', () => {
+    // 1) A popup/modal was open — close it and re-arm the guard.
+    if (closeTopOverlay()) {
+      pushBackGuardState();
+      return;
+    }
+
+    // 2) Not on the home page — go home instead of exiting.
+    const activePageEl = document.querySelector('.page.active');
+    const currentPage = activePageEl ? activePageEl.id.replace('page-', '') : '';
+    if (currentPage && currentPage !== BACK_HOME_PAGE) {
+      showPage(BACK_HOME_PAGE);
+      pushBackGuardState();
+      return;
+    }
+
+    // 3) Already home, nothing open — require a second back press to exit.
+    if (!_backExitArmed) {
+      _backExitArmed = true;
+      showToast('Press back again to exit', 'info');
+      pushBackGuardState();
+      clearTimeout(_backExitTimer);
+      _backExitTimer = setTimeout(() => { _backExitArmed = false; }, 2000);
+      return;
+    }
+    // Second press within the window — don't re-arm, let it actually exit.
+  });
+}
+
 // ── BOOT ──────────────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', async () => {
     // ── FIRST-OPEN INTRO SLIDER (must run before anything else is visible) ──
@@ -7553,6 +7648,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   loadSF2Profile();
   checkAutoExport('boot');
   updatePWAInstallUI();
+  initBackButtonGuard();
 
   // Show install banner after a short delay so it doesn't flash on load
   setTimeout(initInstallBanner, 1200);
