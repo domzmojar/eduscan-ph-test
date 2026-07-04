@@ -2155,7 +2155,9 @@
         <input type="date" id="add-log-bulk-start">
         <label for="add-log-bulk-end" style="margin-top:0.5rem;">To</label>
         <input type="date" id="add-log-bulk-end">
-        <p style="font-size:0.73rem; color:var(--text-muted); margin-top:0.3rem;">Weekends (Sat/Sun) are skipped automatically. One record per weekday for this student, at the time above. Late status is auto-detected per day from the class schedule. Days that already have a record for this student are skipped.</p>
+        <p style="font-size:0.73rem; color:var(--text-muted); margin-top:0.3rem;">Weekends (Sat/Sun) skipped automatically. Generate the day list below, then set each day's status, time, and cut flag individually.</p>
+        <button type="button" class="btn outline sm full" style="margin-top:0.5rem;" onclick="generateAddLogBulkDays()">Generate days</button>
+        <div id="add-log-bulk-days-container" style="display:none; max-height:280px; overflow-y:auto; border:1px solid var(--border); border-radius:8px; margin-top:0.6rem;"></div>
       </div>
       <div class="form-group" id="add-log-late-row" style="margin-bottom:1rem;">
         <div style="display:flex; align-items:center; gap:10px;">
@@ -4778,6 +4780,8 @@ function openAddLogModal() {
     String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
   document.getElementById('add-log-is-cut').checked = false;
   document.getElementById('add-log-bulk-toggle').checked = false;
+  document.getElementById('add-log-bulk-days-container').style.display = 'none';
+  document.getElementById('add-log-bulk-days-container').innerHTML = '';
   onAddLogBulkToggle();
 
   onAddLogClassChange();
@@ -4791,6 +4795,78 @@ function onAddLogBulkToggle() {
   document.getElementById('add-log-range-date-group').style.display  = bulk ? 'block' : 'none';
   document.getElementById('add-log-late-row').style.display = bulk ? 'none' : 'block';
   document.getElementById('add-log-cut-row').style.display  = bulk ? 'none' : 'block';
+  if (!bulk) {
+    document.getElementById('add-log-bulk-days-container').style.display = 'none';
+    document.getElementById('add-log-bulk-days-container').innerHTML = '';
+  }
+}
+
+// Builds one editable row per weekday in [start, end]. Each row lets the
+// teacher set that specific day's status (Present/Absent), arrival time,
+// and cutting-class flag independently — so June 8 can be Late and June 9
+// On time, or June 10 Absent, without forcing the same mark on every day.
+function generateAddLogBulkDays() {
+  const classId   = document.getElementById('add-log-class-select').value;
+  const studentId = document.getElementById('add-log-student-select').value;
+  const defTime   = document.getElementById('add-log-time').value;
+  const startVal  = document.getElementById('add-log-bulk-start').value;
+  const endVal    = document.getElementById('add-log-bulk-end').value;
+
+  if (!classId)   return showToast('Select a class.', 'warn');
+  if (!studentId) return showToast('Select a student.', 'warn');
+  if (!defTime)   return showToast('Set a default time first.', 'warn');
+  if (!startVal || !endVal) return showToast('From and To dates are required.', 'warn');
+  if (startVal > endVal)    return showToast('"From" date must be before "To" date.', 'warn');
+
+  const dateList = [];
+  let cursor = new Date(startVal + 'T00:00:00');
+  const endD = new Date(endVal + 'T00:00:00');
+  while (cursor <= endD) {
+    const dow = cursor.getDay(); // 0=Sun, 6=Sat
+    if (dow !== 0 && dow !== 6) {
+      const y = cursor.getFullYear(), mo = cursor.getMonth() + 1, d = cursor.getDate();
+      dateList.push(`${y}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`);
+    }
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  if (!dateList.length) return showToast('No weekdays in that range.', 'warn');
+
+  const container = document.getElementById('add-log-bulk-days-container');
+  container.innerHTML = dateList.map(dateStr => {
+    const label = new Date(dateStr + 'T00:00:00').toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+    const dup = logs.find(l => l.studentId === studentId && l.classId === classId && getLogDate(l) === dateStr);
+    if (dup) {
+      return `
+        <div class="bulk-day-row" data-date="${dateStr}" data-existing="1" style="display:flex; align-items:center; gap:0.5rem; padding:0.5rem 0.6rem; border-bottom:1px solid var(--border); opacity:0.55;">
+          <span style="flex:0 0 92px; font-size:0.8rem; font-weight:600;">${label}</span>
+          <span style="font-size:0.75rem; color:var(--text-muted);">Already has a record — skipped</span>
+        </div>`;
+    }
+    return `
+      <div class="bulk-day-row" data-date="${dateStr}" style="display:flex; align-items:center; gap:0.4rem; padding:0.5rem 0.6rem; border-bottom:1px solid var(--border); flex-wrap:wrap;">
+        <span style="flex:0 0 92px; font-size:0.8rem; font-weight:600;">${label}</span>
+        <select class="bulk-day-status" style="flex:0 0 92px; padding:0.3rem; border:1px solid var(--border); border-radius:6px; font-size:0.78rem;" onchange="onBulkDayStatusChange(this)">
+          <option value="present">Present</option>
+          <option value="absent">Absent</option>
+        </select>
+        <input type="time" class="bulk-day-time" value="${defTime}" style="flex:0 0 100px; padding:0.3rem; border:1px solid var(--border); border-radius:6px; font-size:0.78rem;">
+        <label style="display:flex; align-items:center; gap:4px; font-size:0.74rem; cursor:pointer;">
+          <input type="checkbox" class="bulk-day-cut" style="width:16px;height:16px;cursor:pointer;">✂️ Cut
+        </label>
+      </div>`;
+  }).join('');
+  container.style.display = 'block';
+  showToast(`${dateList.length} weekday(s) listed — edit each day, then Add records.`, 'ok');
+}
+
+// Absent days need no time or cut flag — grey them out instead of just
+// leaving stale controls the teacher might assume still apply.
+function onBulkDayStatusChange(sel) {
+  const row = sel.closest('.bulk-day-row');
+  const isAbsent = sel.value === 'absent';
+  row.querySelector('.bulk-day-time').disabled = isAbsent;
+  row.querySelector('.bulk-day-cut').disabled  = isAbsent;
+  row.style.opacity = isAbsent ? '0.55' : '1';
 }
 
 function onAddLogClassChange() {
@@ -4853,33 +4929,24 @@ async function saveAddLog() {
   const [h, mi] = timeVal.split(':').map(Number);
 
   if (isBulk) {
-    const startVal = document.getElementById('add-log-bulk-start').value;
-    const endVal   = document.getElementById('add-log-bulk-end').value;
-    if (!startVal || !endVal) return showToast('From and To dates are required.', 'warn');
-    if (startVal > endVal)    return showToast('"From" date must be before "To" date.', 'warn');
+    const rows = document.querySelectorAll('#add-log-bulk-days-container .bulk-day-row:not([data-existing])');
+    if (!rows.length) return showToast('Generate the day list first.', 'warn');
 
-    const dateList = [];
-    let cursor = new Date(startVal + 'T00:00:00');
-    const endD = new Date(endVal + 'T00:00:00');
-    while (cursor <= endD) {
-      const dow = cursor.getDay(); // 0=Sun, 6=Sat
-      if (dow !== 0 && dow !== 6) {
-        const y = cursor.getFullYear(), mo = cursor.getMonth() + 1, d = cursor.getDate();
-        dateList.push({ y, mo, d, dateStr: `${y}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}` });
-      }
-      cursor.setDate(cursor.getDate() + 1);
-    }
-    if (!dateList.length) return showToast('No weekdays in that range.', 'warn');
-
-    let added = 0, skipped = 0;
+    let added = 0, absent = 0;
     const newLogs = [];
-    for (const dt of dateList) {
-      const dup = logs.find(l => l.studentId === studentId && l.classId === classId && getLogDate(l) === dt.dateStr);
-      if (dup) { skipped++; continue; }
-      const isoTs = phLocalToISOString(dt.y, dt.mo, dt.d, h, mi);
+    for (const row of rows) {
+      const dateStr = row.dataset.date;
+      const status  = row.querySelector('.bulk-day-status').value;
+      if (status === 'absent') { absent++; continue; } // no record = absent
+      const rowTime = row.querySelector('.bulk-day-time').value;
+      const rowCut  = row.querySelector('.bulk-day-cut').checked;
+      if (!rowTime) continue;
+      const [ry, rmo, rd] = dateStr.split('-').map(Number);
+      const [rh, rmi]     = rowTime.split(':').map(Number);
+      const isoTs = phLocalToISOString(ry, rmo, rd, rh, rmi);
       const logEntry = {
         timestamp:   isoTs,
-        localDate:   dt.dateStr,
+        localDate:   dateStr,
         classId:     classId,
         className:   (cls || {}).name || '',
         studentId:   student.id,
@@ -4887,7 +4954,7 @@ async function saveAddLog() {
         studentLrn:  student.lrn || '',
         type:        'arrival',
         isLate:      computeArrivalLateFlag(cls, isoTs),
-        isCut:       false,
+        isCut:       rowCut,
         updatedAt:   nowIso()
       };
       const newId = await dbAdd('logs', logEntry);
@@ -4905,7 +4972,7 @@ async function saveAddLog() {
 
     scheduleAutoSync();
     checkAutoExport('manual');
-    showToast(`${added} record(s) added${skipped ? `, ${skipped} skipped (already recorded)` : ''}.`, 'ok');
+    showToast(`${added} record(s) added${absent ? `, ${absent} marked absent (no record)` : ''}.`, 'ok');
     return;
   }
 
