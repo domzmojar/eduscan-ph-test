@@ -1819,7 +1819,8 @@
     <button class="wizard-reopen-btn" onclick="openSetupWizard()">▶️ Watch tutorial &amp; get your template</button>
     <details>
       <summary>Don't have a Sync URL yet? Set one up yourself →</summary>
-      <ol style="margin-top:0.6rem;">
+      <p style="font-size:0.78rem; color:var(--warning); font-weight:700; margin:0.6rem 0 0.3rem;">💻 Do this on a laptop/computer — Apps Script isn't accessible from a phone.</p>
+      <ol style="margin-top:0.3rem;">
         <li>Create a new Google Sheet, then go to <strong>Extensions → Apps Script</strong>.</li>
         <li>Paste in the EduScan PH sync script (ask your administrator or check the EduScan PH documentation for the latest script code).</li>
         <li>Click <strong>Deploy → New deployment</strong>, choose type <strong>Web app</strong>, set "Who has access" to <strong>Anyone</strong>, then deploy.</li>
@@ -2257,7 +2258,7 @@
       <div class="wizard-step" id="wizard-step-1">
         <div class="wizard-step-label">Step 1 of 3</div>
         <div class="wizard-step-title">Watch the tutorial</div>
-        <div class="wizard-step-desc">This 5-minute video walks through the whole setup — copying your template and connecting your Sync URL.</div>
+        <div class="wizard-step-desc">This 7-minute video walks through the whole setup — copying your template and connecting your Sync URL.</div>
         <div class="wizard-video-frame">
           <iframe id="wizard-video-iframe" src="https://www.youtube.com/embed/hx0tEvM_eCs?enablejsapi=1" title="EduScan PH Setup Tutorial" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
         </div>
@@ -2275,6 +2276,10 @@
       <div class="wizard-step" id="wizard-step-3">
         <div class="wizard-step-label">Step 3 of 3</div>
         <div class="wizard-step-title">Connect your Sync URL</div>
+        <div style="background:var(--warning-bg); border:1px solid var(--warning-border); border-radius:10px; padding:0.85rem; margin-bottom:1rem;">
+          <p style="font-size:0.85rem; font-weight:700; color:var(--warning); margin-bottom:0.35rem;">💻 Use a laptop or computer for this step</p>
+          <p style="font-size:0.8rem; color:var(--warning); line-height:1.5; margin:0;">Apps Script deployment isn't available on the phone — the Google Sheets mobile app and mobile browsers don't have <strong>Extensions → Apps Script</strong>. Open your copied Sheet on a laptop/desktop browser to complete this step, then come back to your phone to paste the Sync URL below.</p>
+        </div>
         <div class="wizard-step-desc">In your copied Sheet:</div>
         <ol style="font-size:0.85rem; color:var(--text-muted); line-height:1.6; margin:0 0 1rem 1.1rem;">
           <li>Go to <strong>Extensions → Apps Script</strong> (the sync script is already inside your copy).</li>
