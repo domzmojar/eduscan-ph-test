@@ -1936,7 +1936,7 @@
         <button class="install-video-tab" id="install-video-tab-ios" onclick="switchInstallVideoTab('ios')">🍎 iPhone / iPad</button>
       </div>
       <div class="wizard-video-frame" style="margin-bottom:0;">
-        <iframe id="install-video-iframe" src="https://www.youtube.com/embed/DJjqvifLIrU" title="Install tutorial" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+        <iframe id="install-video-iframe" src="https://www.youtube.com/embed/DJjqvifLIrU?enablejsapi=1" title="Install tutorial" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
       </div>
     </div>
 
@@ -2259,7 +2259,7 @@
         <div class="wizard-step-title">Watch the tutorial</div>
         <div class="wizard-step-desc">This 5-minute video walks through the whole setup — copying your template and connecting your Sync URL.</div>
         <div class="wizard-video-frame">
-          <iframe src="https://www.youtube.com/embed/hx0tEvM_eCs" title="EduScan PH Setup Tutorial" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+          <iframe id="wizard-video-iframe" src="https://www.youtube.com/embed/hx0tEvM_eCs?enablejsapi=1" title="EduScan PH Setup Tutorial" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
         </div>
       </div>
 
@@ -2532,6 +2532,7 @@ function showPage(page) {
   closeMoreSheet();
 
   if (page !== 'scanner') stopCamera();
+  if (page !== 'download') pauseInstallVideo();
 
   if (page === 'students') renderStudents();
   if (page === 'classes')  renderClasses();
@@ -5179,6 +5180,25 @@ async function renderSyncPage() {
     }
 }
 
+// ── YOUTUBE PAUSE HELPERS ────────────────────────────────────────────────────
+// Sends a postMessage command to a YouTube embed (requires enablejsapi=1 on
+// its src) so tutorial videos stop playing in the background once a popup
+// closes or the user navigates to a different tab/step.
+function pauseYouTubeIframe(iframe) {
+    if (!iframe || !iframe.contentWindow) return;
+    try {
+        iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'pauseVideo', args: [] }), '*');
+    } catch (e) { /* iframe not ready yet — safe to ignore */ }
+}
+
+function pauseWizardVideo() {
+    pauseYouTubeIframe(document.getElementById('wizard-video-iframe'));
+}
+
+function pauseInstallVideo() {
+    pauseYouTubeIframe(document.getElementById('install-video-iframe'));
+}
+
 // ── SETUP WIZARD ─────────────────────────────────────────────────────────────
 let wizardCurrentStep = 1;
 const WIZARD_TOTAL_STEPS = 3;
@@ -5188,6 +5208,7 @@ function openSetupWizard() {
     document.getElementById('wizard-modal-backdrop').classList.add('open');
     wizardRenderStep();
     dbSetSetting('wizard_seen', true);
+    pauseInstallVideo();
 }
 
 function closeSetupWizard(e) {
@@ -5196,10 +5217,12 @@ function closeSetupWizard(e) {
 
 function closeSetupWizardDirect() {
     document.getElementById('wizard-modal-backdrop').classList.remove('open');
+    pauseWizardVideo();
 }
 
 function wizardGoStep(n) {
     if (n < 1 || n > WIZARD_TOTAL_STEPS) return;
+    if (wizardCurrentStep === 1 && n !== 1) pauseWizardVideo();
     wizardCurrentStep = n;
     wizardRenderStep();
 }
@@ -5921,7 +5944,7 @@ const INSTALL_VIDEO_IDS = {
 function switchInstallVideoTab(platform) {
   document.getElementById('install-video-tab-android').classList.toggle('active', platform === 'android');
   document.getElementById('install-video-tab-ios').classList.toggle('active', platform === 'ios');
-  document.getElementById('install-video-iframe').src = `https://www.youtube.com/embed/${INSTALL_VIDEO_IDS[platform]}`;
+  document.getElementById('install-video-iframe').src = `https://www.youtube.com/embed/${INSTALL_VIDEO_IDS[platform]}?enablejsapi=1`;
 }
 
 function updatePWAInstallUI() {
