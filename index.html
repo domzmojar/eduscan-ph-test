@@ -6974,6 +6974,28 @@ function setCachedPhoneVerified(userId) {
     } catch (e) { /* storage full or disabled — non-fatal */ }
 }
 
+// ── LAST KNOWN SESSION USER ────────────────────────────────────────────────
+// Supabase's own session cache is tied to token expiry: if the access token
+// has expired and the device is offline, the SDK can't refresh it, and
+// getSession()/onAuthStateChange hand back session = null — indistinguishable
+// from a real sign-out. That was forcing a full re-login that needs internet,
+// defeating offline-first. This is a separate record, that never expires, of
+// "who was last signed in here", so we can tell "offline + expired token"
+// apart from "actually logged out" and let a previously-verified teacher
+// straight back into the app with cached data. See updateAuthUI().
+const LAST_SESSION_USER_KEY = 'edu_last_session_user';
+
+function getLastSessionUser() {
+    try { return JSON.parse(localStorage.getItem(LAST_SESSION_USER_KEY)) || null; }
+    catch (e) { return null; }
+}
+
+function setLastSessionUser(user) {
+    try {
+        localStorage.setItem(LAST_SESSION_USER_KEY, JSON.stringify({ id: user.id, email: user.email }));
+    } catch (e) { /* storage full or disabled — non-fatal */ }
+}
+
 // Returns true/false. Requires an RLS SELECT policy on verified_phones
 // scoped to `user_id = auth.uid()` (own row only) — see setup notes.
 async function checkPhoneVerified(userId) {
@@ -7332,36 +7354,70 @@ return;
 
 supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     
-    // Centralized UI updater
+    // Centralized UI updater. Exposed on window so the reconnect handler
+    // (registered outside this function, once online events fire) can call it.
     function updateAuthUI(session) {
         const overlay = document.getElementById('auth-overlay');
         const headerRight = document.getElementById('header-right');
         
         if (session) {
-            // Phone verification gate runs BEFORE anything else is revealed.
-            // Deliberately do NOT hide the login overlay or show header-right
-            // yet — an unverified session should still look logged-out, not
-            // like a popup sitting in front of an already-unlocked app.
-            checkPhoneVerified(session.user.id).then(verified => {
-                if (verified) {
+            setLastSessionUser(session.user); // remember for offline fallback below
+            // Check access tier BEFORE the phone gate. The OTP check exists
+            // solely to stop free-trial abuse — a lifetime account (paid, or
+            // grandfathered in from before OTP existed) has nothing to abuse,
+            // so it should never be blocked behind phone verification.
+            checkAccess(session.user.id).then(access => {
+                if (access.tier === 'lifetime') {
+                    setCachedPhoneVerified(session.user.id); // never ask this device again
                     overlay.classList.add('hidden');
                     headerRight.style.display = 'flex';
-                    checkAccess(session.user.id); // gate on trial/lifetime status
-                } else {
-                    openPhoneVerifyOverlay(session.user.id); // covers auth-overlay; app stays hidden
+                    return;
                 }
+                // Trial (or expired trial): still needs the phone gate.
+                // Deliberately do NOT hide the login overlay or show header-right
+                // yet — an unverified session should still look logged-out, not
+                // like a popup sitting in front of an already-unlocked app.
+                checkPhoneVerified(session.user.id).then(verified => {
+                    if (verified) {
+                        overlay.classList.add('hidden');
+                        headerRight.style.display = 'flex';
+                    } else {
+                        openPhoneVerifyOverlay(session.user.id); // covers auth-overlay; app stays hidden
+                    }
+                });
             });
-        } else {
-            // User is NOT logged in: Show overlay, hide header-right group
-            overlay.classList.remove('hidden');
-            headerRight.style.display = 'none';
+            return;
+        }
+
+        // No live session. Before assuming a real sign-out, check whether
+        // this is just "offline + expired token, can't reach Supabase to
+        // refresh it" — Supabase hands back session = null for both cases,
+        // but only one of them should ever force a re-login. If we recognize
+        // this device and that teacher was already phone-verified, let them
+        // straight back into the app on cached data instead.
+        const lastUser = getLastSessionUser();
+        const cachedAccess = getCachedAccess();
+        const cachedIsLifetime = cachedAccess && cachedAccess.tier === 'lifetime';
+        if (!navigator.onLine && lastUser && (getCachedPhoneVerified(lastUser.id) || cachedIsLifetime)) {
+            overlay.classList.add('hidden');
+            headerRight.style.display = 'flex';
             document.getElementById('access-lock-overlay').classList.add('hidden');
             document.getElementById('phone-verify-overlay').classList.add('hidden');
-            showLogin(); // Ensure the login form is the active view
+            checkAccess(lastUser.id); // resolves from cached tier since we're offline
+            showToast('Offline — using your last saved session. Reconnect to refresh it.', 'info');
+            return;
         }
+
+        // Genuinely logged out (or online and Supabase confirms no session).
+        overlay.classList.remove('hidden');
+        headerRight.style.display = 'none';
+        document.getElementById('access-lock-overlay').classList.add('hidden');
+        document.getElementById('phone-verify-overlay').classList.add('hidden');
+        showLogin(); // Ensure the login form is the active view
     }
 
     // Listen for Auth State Changes
+     window._updateAuthUI = updateAuthUI; // reachable from the online-reconnect listener below
      supabaseClient.auth.onAuthStateChange((event, session) => {
          if (event === 'PASSWORD_RECOVERY') {
              // User clicked the reset link in their email
@@ -8225,6 +8281,15 @@ if ('serviceWorker' in navigator) {
   });
 }
 window.addEventListener('online', () => syncPendingWhenOnline('online'));
+// Reconnected: re-validate the real session with Supabase. Usually this just
+// silently confirms what the offline fallback already assumed; if the
+// refresh token had actually expired or the account was signed out
+// elsewhere, this is what correctly moves the teacher to the login screen.
+window.addEventListener('online', () => {
+    if (supabaseClient && window._updateAuthUI) {
+        supabaseClient.auth.getSession().then(({ data: { session } }) => window._updateAuthUI(session));
+    }
+});
 </script>
 </body>
 </html>
