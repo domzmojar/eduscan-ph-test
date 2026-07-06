@@ -1817,11 +1817,11 @@
       </div>
       <p id="students-total-count" style="font-size:0.8rem; color:var(--text-muted); margin:0 0 0.6rem;"></p>
       <button class="btn outline full" id="download-all-qr-btn" onclick="downloadAllQR()" style="margin-bottom:0.6rem;">⬇ Download all QR codes</button>
-      <button class="btn outline full" id="reprint-toggle-btn" onclick="toggleReprintMode()" style="margin-bottom:0.85rem;">🔁 Reprint specific student(s)</button>
-      <div id="reprint-bar" style="display:none; gap:0.5rem; align-items:center; margin-bottom:0.85rem; background:#eff6ff; border-radius:8px; padding:0.6rem 0.8rem;">
-        <span id="reprint-count-label" style="font-size:0.8rem; color:var(--text-muted); flex:1;">0 selected</span>
-        <button class="btn sm" id="reprint-download-btn" onclick="downloadSelectedQR()">⬇ Download selected (PDF)</button>
-        <button class="btn outline sm" onclick="toggleReprintMode()">Cancel</button>
+      <button class="btn outline full" id="print-toggle-btn" onclick="togglePrintMode()" style="margin-bottom:0.85rem;">🖨️ Print specific student(s)</button>
+      <div id="print-bar" style="display:none; gap:0.5rem; align-items:center; margin-bottom:0.85rem; background:#eff6ff; border-radius:8px; padding:0.6rem 0.8rem;">
+        <span id="print-count-label" style="font-size:0.8rem; color:var(--text-muted); flex:1;">0 selected</span>
+        <button class="btn sm" id="print-selected-btn" onclick="printSelectedQR()">🖨️ Print selected</button>
+        <button class="btn outline sm" onclick="togglePrintMode()">Cancel</button>
       </div>
       <div id="students-qr-container"></div>
     </div>
@@ -3374,10 +3374,10 @@ async function deleteStudent(id) {
 
 // ── QR PDF EXPORT (shared) ──────────────────────────────────────────────
 // Builds one PDF containing a QR code per student, each labeled with name,
-// grade & section, and LRN — enough for a teacher to hand-match a reprinted
+// grade & section, and LRN — enough for a teacher to hand-match a printed
 // sheet back to the right student without needing the app open. Used by
-// both "Download all QR codes" (below) and "Reprint specific student(s)"
-// (see downloadSelectedQR / toggleReprintMode further down), so both stay
+// both "Download all QR codes" (below) and "Print specific student(s)"
+// (see printSelectedQR / togglePrintMode further down), so both stay
 // in sync automatically if the layout ever changes.
 //
 // A single PDF (built with jsPDF, offline, from the dataURL QR codes we
@@ -3387,12 +3387,12 @@ async function deleteStudent(id) {
 // downloads as spam and silently dropping all but the first few.
 let qrDownloadInProgress = false;
 
-async function generateAndDownloadQrPdf(list, { btn, defaultLabel, filenameBase }) {
+async function generateAndDownloadQrPdf(list, { btn, defaultLabel, filenameBase, action = 'download' }) {
   if (qrDownloadInProgress) return;
   if (!list.length) return showToast('No students to download.', 'warn');
 
   qrDownloadInProgress = true;
-  if (btn) { btn.disabled = true; btn.textContent = 'Preparing PDF…'; }
+  if (btn) { btn.disabled = true; btn.textContent = action === 'print' ? 'Preparing…' : 'Preparing PDF…'; }
 
   // Generate any missing QR codes OFFLINE before exporting anything.
   // renderStudents() does this too, but a bulk export must never fall
@@ -3479,15 +3479,29 @@ async function generateAndDownloadQrPdf(list, { btn, defaultLabel, filenameBase 
     }
   });
 
-  const safeBase = filenameBase.replace(/[\\/:*?"<>|]+/g, '').trim() || 'QR_Codes';
-  const blob = doc.output('blob');
-  triggerDownload(blob, `${safeBase}.pdf`);
+  let toastMsg;
+  if (action === 'print') {
+    // autoPrint() flags the PDF to trigger the browser's native print
+    // dialog as soon as it finishes loading in the new tab — no file is
+    // saved to disk, matching how a teacher expects "print" (not
+    // "download") to behave. Entirely offline: it's a local blob: URL,
+    // no network involved.
+    doc.autoPrint();
+    const blobUrl = doc.output('bloburl');
+    window.open(blobUrl, '_blank');
+    toastMsg = `Opening print dialog for ${downloadable.length} QR code${downloadable.length !== 1 ? 's' : ''}…`;
+  } else {
+    const safeBase = filenameBase.replace(/[\\/:*?"<>|]+/g, '').trim() || 'QR_Codes';
+    const blob = doc.output('blob');
+    triggerDownload(blob, `${safeBase}.pdf`);
+    toastMsg = `Downloaded PDF with ${downloadable.length} QR code${downloadable.length !== 1 ? 's' : ''}.`;
+  }
 
   qrDownloadInProgress = false;
   if (btn) { btn.disabled = false; btn.textContent = defaultLabel; }
 
   const skippedMsg = genFailures ? ` (${genFailures} skipped — QR library unavailable)` : '';
-  showToast(`Downloaded PDF with ${downloadable.length} QR code${downloadable.length !== 1 ? 's' : ''}.${skippedMsg}`, genFailures ? 'warn' : 'ok');
+  showToast(`${toastMsg}${skippedMsg}`, genFailures ? 'warn' : 'ok');
 }
 
 // Downloads every student's QR for whichever set is currently visible in
@@ -3506,45 +3520,46 @@ async function downloadAllQR() {
   });
 }
 
-// ── REPRINT SPECIFIC STUDENT(S) ──────────────────────────────────────────
+// ── PRINT SPECIFIC STUDENT(S) ────────────────────────────────────────────
 // Lets a teacher pick individual students — across different sections, one
-// at a time if needed — to reprint just their QR (lost/torn/unreadable
+// at a time if needed — to print just their QR (lost/torn/unreadable
 // code) instead of exporting an entire class. The selection is a plain Set
 // kept outside renderStudents(), so switching the class filter to look at
 // a different section does NOT clear picks already made in another
 // section — exactly the "Student 1 from Section A, Student 2 from Section
 // B" workflow.
-let qrReprintMode = false;
-const qrReprintSelection = new Set();
+let qrPrintMode = false;
+const qrPrintSelection = new Set();
 
-function toggleReprintMode() {
-  qrReprintMode = !qrReprintMode;
-  qrReprintSelection.clear();
-  document.getElementById('reprint-toggle-btn').textContent = qrReprintMode ? '✕ Exit reprint mode' : '🔁 Reprint specific student(s)';
-  document.getElementById('reprint-bar').style.display = qrReprintMode ? 'flex' : 'none';
-  updateReprintCountLabel();
+function togglePrintMode() {
+  qrPrintMode = !qrPrintMode;
+  qrPrintSelection.clear();
+  document.getElementById('print-toggle-btn').textContent = qrPrintMode ? '✕ Exit print mode' : '🖨️ Print specific student(s)';
+  document.getElementById('print-bar').style.display = qrPrintMode ? 'flex' : 'none';
+  updatePrintCountLabel();
   renderStudents();
 }
 
-function toggleQrReprintSelect(studentId, checked) {
-  if (checked) qrReprintSelection.add(studentId);
-  else qrReprintSelection.delete(studentId);
-  updateReprintCountLabel();
+function toggleQrPrintSelect(studentId, checked) {
+  if (checked) qrPrintSelection.add(studentId);
+  else qrPrintSelection.delete(studentId);
+  updatePrintCountLabel();
 }
 
-function updateReprintCountLabel() {
-  const el = document.getElementById('reprint-count-label');
-  if (el) el.textContent = `${qrReprintSelection.size} selected`;
+function updatePrintCountLabel() {
+  const el = document.getElementById('print-count-label');
+  if (el) el.textContent = `${qrPrintSelection.size} selected`;
 }
 
-async function downloadSelectedQR() {
-  if (!qrReprintSelection.size) return showToast('Select at least one student to reprint.', 'warn');
-  const list = students.filter(s => qrReprintSelection.has(s.id));
-  const btn = document.getElementById('reprint-download-btn');
+async function printSelectedQR() {
+  if (!qrPrintSelection.size) return showToast('Select at least one student to print.', 'warn');
+  const list = students.filter(s => qrPrintSelection.has(s.id));
+  const btn = document.getElementById('print-selected-btn');
   await generateAndDownloadQrPdf(list, {
     btn,
-    defaultLabel: '⬇ Download selected (PDF)',
-    filenameBase: 'QR_Reprint_Selected'
+    defaultLabel: '🖨️ Print selected',
+    filenameBase: 'QR_Print_Selected',
+    action: 'print'
   });
 }
 
@@ -3590,10 +3605,10 @@ async function renderStudents() {
     const qrData = encodeURIComponent(JSON.stringify({ eduscan: true, id: s.id }));
     
     const qrUrl = s.qrDataUrl || `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${qrData}`;
-    const checkboxHtml = qrReprintMode ? `
+    const checkboxHtml = qrPrintMode ? `
         <label style="display:flex; align-items:center; gap:6px; width:100%; margin-bottom:0.4rem; cursor:pointer;">
-          <input type="checkbox" ${qrReprintSelection.has(s.id) ? 'checked' : ''} onchange="toggleQrReprintSelect('${s.id}', this.checked)" style="width:16px;height:16px;cursor:pointer;">
-          <span style="font-size:0.75rem; color:var(--text-muted);">Select to reprint</span>
+          <input type="checkbox" ${qrPrintSelection.has(s.id) ? 'checked' : ''} onchange="toggleQrPrintSelect('${s.id}', this.checked)" style="width:16px;height:16px;cursor:pointer;">
+          <span style="font-size:0.75rem; color:var(--text-muted);">Select to print</span>
         </label>` : '';
     
     return `
