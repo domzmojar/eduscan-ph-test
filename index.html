@@ -7114,7 +7114,11 @@ function initPhoneVerifyOverlay() {
         try {
             const res = await fetch(PV_SEND_OTP_URL, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'apikey': SUPABASE_ANON_KEY,
+                    'Authorization': 'Bearer ' + SUPABASE_ANON_KEY
+                },
                 body: JSON.stringify({ phone: digits, turnstileToken: _pvTurnstileToken, userId: _pvCurrentUserId })
             });
             const data = await res.json();
@@ -7175,7 +7179,11 @@ function initPhoneVerifyOverlay() {
         try {
             const res = await fetch(PV_VERIFY_OTP_URL, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'apikey': SUPABASE_ANON_KEY,
+                    'Authorization': 'Bearer ' + SUPABASE_ANON_KEY
+                },
                 body: JSON.stringify({ phone: _pvCurrentPhone, code: code, userId: _pvCurrentUserId })
             });
             const data = await res.json();
@@ -7241,7 +7249,11 @@ function initPhoneVerifyOverlay() {
         try {
             const res = await fetch(PV_SEND_OTP_URL, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'apikey': SUPABASE_ANON_KEY,
+                    'Authorization': 'Bearer ' + SUPABASE_ANON_KEY
+                },
                 body: JSON.stringify({ phone: _pvCurrentPhone, turnstileToken: _pvTurnstileToken, userId: _pvCurrentUserId })
             });
             const data = await res.json();
