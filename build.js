@@ -7,6 +7,8 @@ const path = require('path');
 
 const REQUIRED = [
   'index.html',
+  'app.html',
+  'auth-check.js',
   'manifest.json',
   'sw.js',
   'vercel.json',
