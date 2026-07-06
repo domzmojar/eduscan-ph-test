@@ -14,6 +14,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Phone-verify overlay fonts + Turnstile (bot check for OTP gate) -->
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&display=swap" rel="stylesheet">
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
@@ -930,6 +933,109 @@
 #access-lock-overlay .gcash-value { color: #111827; font-weight: 700; }
 #access-lock-overlay .gcash-hint { font-size: 0.72rem; color: #9ca3af; text-align: center; }
 
+/* ── PHONE VERIFY OVERLAY: one phone = one trial, ever ── */
+/* All selectors scoped under #phone-verify-overlay to avoid colliding with
+   the app's own global .card / .step / etc classes. */
+#phone-verify-overlay {
+    position: fixed; inset: 0; background: rgba(15,23,42,0.6); backdrop-filter: blur(4px);
+    z-index: 9500; display: flex; align-items: center; justify-content: center; padding: 16px;
+    font-family: 'Inter', sans-serif;
+}
+#phone-verify-overlay.hidden { display: none !important; }
+#phone-verify-overlay * { box-sizing: border-box; }
+#phone-verify-overlay .pv-card {
+    width: 100%; max-width: 400px; background: #fff; border: 1px solid #E4E1D8;
+    border-radius: 16px; padding: 32px 28px; box-shadow: 0 20px 50px rgba(0,0,0,0.3);
+}
+#phone-verify-overlay .eyebrow {
+    font-family: 'Manrope', sans-serif; font-weight: 700; font-size: 12px;
+    letter-spacing: 0.08em; text-transform: uppercase; color: #0E6E5D; margin: 0 0 6px;
+}
+#phone-verify-overlay h1 {
+    font-family: 'Manrope', sans-serif; font-weight: 800; font-size: 22px;
+    line-height: 1.25; margin: 0 0 8px; color: #1C2622;
+}
+#phone-verify-overlay .sub { font-size: 14px; color: #5B6862; margin: 0 0 22px; line-height: 1.5; }
+#phone-verify-overlay .sub strong { color: #1C2622; font-weight: 600; }
+#phone-verify-overlay label { display: block; font-size: 13px; font-weight: 600; color: #1C2622; margin-bottom: 8px; }
+#phone-verify-overlay .phone-row {
+    display: flex; align-items: stretch; border: 1.5px solid #E4E1D8; border-radius: 10px;
+    overflow: hidden; transition: border-color 0.15s ease;
+}
+#phone-verify-overlay .phone-row:focus-within { border-color: #0E6E5D; }
+#phone-verify-overlay .prefix {
+    display: flex; align-items: center; padding: 0 14px; background: #F1F0EA;
+    font-weight: 600; font-size: 15px; color: #5B6862; border-right: 1.5px solid #E4E1D8;
+    font-variant-numeric: tabular-nums;
+}
+#phone-verify-overlay input[type="tel"] {
+    flex: 1; border: none; outline: none; padding: 13px 14px; font-size: 15px;
+    font-family: 'Inter', sans-serif; background: transparent; color: #1C2622; min-width: 0;
+}
+#phone-verify-overlay .turnstile-wrap { margin: 18px 0 6px; min-height: 65px; }
+#phone-verify-overlay button.pv-primary {
+    width: 100%; border: none; border-radius: 10px; background: #0E6E5D; color: #fff;
+    font-family: 'Manrope', sans-serif; font-weight: 700; font-size: 15px; padding: 13px 16px;
+    cursor: pointer; transition: background 0.15s ease, transform 0.05s ease; margin-top: 8px;
+}
+#phone-verify-overlay button.pv-primary:hover:not(:disabled) { background: #0A5548; }
+#phone-verify-overlay button.pv-primary:active:not(:disabled) { transform: scale(0.99); }
+#phone-verify-overlay button.pv-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+#phone-verify-overlay .pv-error-banner {
+    display: none; align-items: flex-start; gap: 8px; background: #FBEAE6; border: 1px solid #EFC3B7;
+    color: #C4432B; border-radius: 8px; padding: 11px 13px; font-size: 13px; line-height: 1.45; margin-top: 14px;
+}
+#phone-verify-overlay .pv-error-banner.show { display: flex; }
+#phone-verify-overlay .otp-boxes { display: flex; gap: 8px; justify-content: space-between; margin-bottom: 6px; }
+#phone-verify-overlay .otp-boxes input {
+    width: 44px; height: 52px; text-align: center; font-size: 22px; font-weight: 700;
+    font-family: 'Manrope', sans-serif; border: 1.5px solid #E4E1D8; border-radius: 10px; outline: none;
+    color: #1C2622; transition: border-color 0.15s ease, box-shadow 0.15s ease; -moz-appearance: textfield;
+}
+#phone-verify-overlay .otp-boxes input::-webkit-outer-spin-button,
+#phone-verify-overlay .otp-boxes input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+#phone-verify-overlay .otp-boxes input:focus { border-color: #0E6E5D; box-shadow: 0 0 0 3px rgba(14,110,93,0.12); }
+#phone-verify-overlay .otp-boxes.shake { animation: pv-shake 0.4s ease; }
+#phone-verify-overlay .otp-boxes.shake input { border-color: #C4432B; }
+@keyframes pv-shake {
+    10%, 90% { transform: translateX(-1px); }
+    20%, 80% { transform: translateX(2px); }
+    30%, 50%, 70% { transform: translateX(-4px); }
+    40%, 60% { transform: translateX(4px); }
+}
+#phone-verify-overlay .resend-row {
+    display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 18px;
+    font-size: 13px; color: #5B6862;
+}
+#phone-verify-overlay .resend-link {
+    background: none; border: none; padding: 0; font: inherit; font-weight: 600; color: #0E6E5D; cursor: pointer;
+}
+#phone-verify-overlay .resend-link:disabled { color: #5B6862; cursor: default; }
+#phone-verify-overlay .pv-ring { width: 18px; height: 18px; flex-shrink: 0; }
+#phone-verify-overlay .pv-ring circle { fill: none; stroke-width: 2.5; }
+#phone-verify-overlay .pv-ring .track { stroke: #E4E1D8; }
+#phone-verify-overlay .pv-ring .progress {
+    stroke: #F5A623; stroke-linecap: round; transform: rotate(-90deg); transform-origin: 50% 50%;
+    transition: stroke-dashoffset 1s linear;
+}
+#phone-verify-overlay .pv-back-link {
+    display: block; text-align: center; margin-top: 20px; font-size: 13px; color: #5B6862;
+    text-decoration: none; cursor: pointer; background: none; border: none; font-family: inherit; width: 100%;
+}
+#phone-verify-overlay .pv-back-link:hover { color: #1C2622; }
+#phone-verify-overlay .pv-step { display: none; }
+#phone-verify-overlay .pv-step.active { display: block; }
+#phone-verify-overlay .success-icon {
+    width: 56px; height: 56px; border-radius: 50%; background: rgba(14,110,93,0.1);
+    display: flex; align-items: center; justify-content: center; margin: 0 auto 18px;
+}
+#phone-verify-overlay .success-icon svg { width: 26px; height: 26px; }
+#phone-verify-overlay .success-body { text-align: center; }
+@media (prefers-reduced-motion: reduce) {
+    #phone-verify-overlay .otp-boxes.shake { animation: none; }
+    #phone-verify-overlay .pv-ring .progress { transition: none; }
+}
+
 /* ── INTRO SLIDER: shown once on first-ever app open, before login ── */
 #intro-slider-overlay {
     position: fixed; inset: 0; z-index: 10000;
@@ -1256,6 +1362,81 @@
     <div class="lock-footer">
       Send a screenshot of your GCash payment + the email you signed up with, so I can activate your lifetime access. Already activated? <button onclick="recheckAccess(this)">Tap to refresh</button>.
     </div>
+  </div>
+</div>
+
+<!-- PHONE VERIFY OVERLAY: gates the free trial. One phone number = one
+     trial, ever (enforced by a UNIQUE constraint in verified_phones).
+     Shown after auth succeeds, before checkAccess runs — see updateAuthUI. -->
+<div id="phone-verify-overlay" class="hidden">
+  <div class="pv-card">
+
+    <!-- STEP 1: phone entry -->
+    <div class="pv-step active" id="pv-step-phone">
+      <p class="eyebrow">Free trial</p>
+      <h1>Verify your phone number</h1>
+      <p class="sub">One code, one trial per number. We'll text you a 6-digit code to confirm you're a real teacher, not a bot.</p>
+
+      <label for="pv-phone-input">Mobile number</label>
+      <div class="phone-row">
+        <span class="prefix">+63</span>
+        <input type="tel" id="pv-phone-input" inputmode="numeric" maxlength="10" placeholder="9XXXXXXXXX" autocomplete="tel-national">
+      </div>
+
+      <div class="turnstile-wrap">
+        <div class="cf-turnstile" id="pv-turnstile-widget" data-sitekey="0x4AAAAAADvqdQIzZ6EqqLqk" data-callback="pvOnTurnstileSuccess"></div>
+      </div>
+
+      <button class="pv-primary" id="pv-send-code-btn" disabled>Send code</button>
+
+      <div class="pv-error-banner" id="pv-phone-error"></div>
+    </div>
+
+    <!-- STEP 2: code entry -->
+    <div class="pv-step" id="pv-step-otp">
+      <p class="eyebrow">Check your messages</p>
+      <h1>Enter the code</h1>
+      <p class="sub">We sent a 6-digit code to <strong id="pv-phone-display"></strong>. It expires in 5 minutes.</p>
+
+      <div class="otp-boxes" id="pv-otp-boxes">
+        <input type="text" inputmode="numeric" maxlength="1" data-index="0">
+        <input type="text" inputmode="numeric" maxlength="1" data-index="1">
+        <input type="text" inputmode="numeric" maxlength="1" data-index="2">
+        <input type="text" inputmode="numeric" maxlength="1" data-index="3">
+        <input type="text" inputmode="numeric" maxlength="1" data-index="4">
+        <input type="text" inputmode="numeric" maxlength="1" data-index="5">
+      </div>
+
+      <div class="pv-error-banner" id="pv-otp-error"></div>
+
+      <button class="pv-primary" id="pv-verify-btn" style="margin-top:18px;">Verify code</button>
+
+      <div class="resend-row">
+        <svg class="pv-ring" viewBox="0 0 20 20" id="pv-resend-ring" style="display:none;">
+          <circle class="track" cx="10" cy="10" r="8"></circle>
+          <circle class="progress" cx="10" cy="10" r="8" id="pv-ring-progress"></circle>
+        </svg>
+        <span id="pv-resend-label">Resend code in <span id="pv-countdown">60</span>s</span>
+        <button class="resend-link" id="pv-resend-btn" style="display:none;">Resend code</button>
+      </div>
+
+      <button class="pv-back-link" id="pv-back-btn">Use a different number</button>
+    </div>
+
+    <!-- STEP 3: success -->
+    <div class="pv-step" id="pv-step-success">
+      <div class="success-body">
+        <div class="success-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#0E6E5D" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+        </div>
+        <p class="eyebrow" style="text-align:center;">Verified</p>
+        <h1 style="text-align:center;">You're all set</h1>
+        <p class="sub" style="text-align:center;">Your phone is verified and your 7-day trial has started.</p>
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -6757,6 +6938,332 @@ function closeEditStudentModal(e) { if (e.target === document.getElementById('ed
 function closeEditStudentModalDirect() { document.getElementById('edit-student-modal').classList.remove('open'); unlockBodyScroll(); }
 
 // ── AUTH SCREEN DATE DISPLAY (runs independently of Supabase) ─────────────
+// ── PHONE VERIFICATION GATE ──────────────────────────────────────────────
+// Stops the same person farming repeat 7-day trials via new emails/Google
+// accounts. One phone number = one trial, ever — enforced server-side by a
+// UNIQUE constraint on verified_phones (see verify-otp edge function); this
+// client code just decides whether to show the gate and drives its UI.
+//
+// Endpoints + site key match the deployed Supabase edge functions and
+// Cloudflare Turnstile config — see project notes. Reuses the app's existing
+// global `supabaseClient` and SUPABASE_URL; does NOT create a second client.
+const PV_SEND_OTP_URL = 'https://sbltuuhwcdsooitnbxgo.supabase.co/functions/v1/send-otp';
+const PV_VERIFY_OTP_URL = 'https://sbltuuhwcdsooitnbxgo.supabase.co/functions/v1/verify-otp';
+
+// Verification is permanent once granted, so — unlike the trial/lifetime
+// access cache, which is re-checked live because it changes over time —
+// caching this forever per-user is safe and lets a previously-verified
+// teacher open the app offline without getting stuck behind this overlay.
+const PHONE_VERIFIED_CACHE_KEY = 'edu_phone_verified_cache';
+
+function getCachedPhoneVerified(userId) {
+    try {
+        const cache = JSON.parse(localStorage.getItem(PHONE_VERIFIED_CACHE_KEY)) || {};
+        return !!cache[userId];
+    } catch (e) { return false; }
+}
+
+function setCachedPhoneVerified(userId) {
+    try {
+        const cache = JSON.parse(localStorage.getItem(PHONE_VERIFIED_CACHE_KEY)) || {};
+        cache[userId] = true;
+        localStorage.setItem(PHONE_VERIFIED_CACHE_KEY, JSON.stringify(cache));
+    } catch (e) { /* storage full or disabled — non-fatal */ }
+}
+
+// Returns true/false. Requires an RLS SELECT policy on verified_phones
+// scoped to `user_id = auth.uid()` (own row only) — see setup notes.
+async function checkPhoneVerified(userId) {
+    if (getCachedPhoneVerified(userId)) return true;
+
+    try {
+        const { data, error } = await supabaseClient
+            .from('verified_phones')
+            .select('phone_e164')
+            .eq('user_id', userId)
+            .maybeSingle();
+
+        if (error) throw error;
+        if (data) {
+            setCachedPhoneVerified(userId);
+            return true;
+        }
+        return false;
+    } catch (e) {
+        console.warn('Phone verification check failed, defaulting to unverified:', e.message || e);
+        // Not cached + can't reach Supabase: show the gate rather than let
+        // an unverified account through. Edge case this misses: an already-
+        // verified teacher's very first load on a brand-new device while
+        // offline — rare, and they just verify again (still blocked from a
+        // second trial by the server-side UNIQUE constraint either way).
+        return false;
+    }
+}
+
+let _pvCurrentUserId = null;
+let _pvCurrentPhone = '';
+let _pvTurnstileToken = null;
+let _pvCountdownTimer = null;
+const PV_RESEND_SECONDS = 60;
+const PV_RING_CIRC = 2 * Math.PI * 8;
+
+function openPhoneVerifyOverlay(userId) {
+    _pvCurrentUserId = userId;
+    document.getElementById('phone-verify-overlay').classList.remove('hidden');
+    pvGoToStep('phone');
+}
+
+function pvGoToStep(name) {
+    const stepPhone = document.getElementById('pv-step-phone');
+    const stepOtp = document.getElementById('pv-step-otp');
+    const stepSuccess = document.getElementById('pv-step-success');
+    [stepPhone, stepOtp, stepSuccess].forEach(s => s.classList.remove('active'));
+    if (name === 'phone') stepPhone.classList.add('active');
+    if (name === 'otp') stepOtp.classList.add('active');
+    if (name === 'success') stepSuccess.classList.add('active');
+}
+
+function pvShowError(el, msg) {
+    el.textContent = msg;
+    el.classList.add('show');
+}
+function pvClearError(el) {
+    el.textContent = '';
+    el.classList.remove('show');
+}
+
+// Cloudflare Turnstile calls this by name (data-callback="pvOnTurnstileSuccess")
+window.pvOnTurnstileSuccess = function (token) {
+    _pvTurnstileToken = token;
+    pvValidatePhoneForm();
+};
+
+function pvValidatePhoneForm() {
+    const phoneInput = document.getElementById('pv-phone-input');
+    const sendBtn = document.getElementById('pv-send-code-btn');
+    const digits = phoneInput.value.trim();
+    const valid = /^9\d{9}$/.test(digits) && !!_pvTurnstileToken && !!_pvCurrentUserId;
+    sendBtn.disabled = !valid;
+}
+
+function pvStartResendCountdown() {
+    const resendLabel = document.getElementById('pv-resend-label');
+    const resendBtn = document.getElementById('pv-resend-btn');
+    const countdownEl = document.getElementById('pv-countdown');
+    const ring = document.getElementById('pv-resend-ring');
+    const ringProgress = document.getElementById('pv-ring-progress');
+    ringProgress.style.strokeDasharray = PV_RING_CIRC;
+
+    let remaining = PV_RESEND_SECONDS;
+    countdownEl.textContent = remaining;
+    resendLabel.style.display = 'inline';
+    resendBtn.style.display = 'none';
+    ring.style.display = 'block';
+    ringProgress.style.strokeDashoffset = 0;
+
+    clearInterval(_pvCountdownTimer);
+    _pvCountdownTimer = setInterval(() => {
+        remaining -= 1;
+        countdownEl.textContent = remaining;
+        ringProgress.style.strokeDashoffset = PV_RING_CIRC * (1 - remaining / PV_RESEND_SECONDS);
+        if (remaining <= 0) {
+            clearInterval(_pvCountdownTimer);
+            resendLabel.style.display = 'none';
+            ring.style.display = 'none';
+            resendBtn.style.display = 'inline';
+        }
+    }, 1000);
+}
+
+function initPhoneVerifyOverlay() {
+    const phoneInput = document.getElementById('pv-phone-input');
+    const sendBtn = document.getElementById('pv-send-code-btn');
+    const phoneError = document.getElementById('pv-phone-error');
+    const phoneDisplay = document.getElementById('pv-phone-display');
+
+    const otpBoxesWrap = document.getElementById('pv-otp-boxes');
+    const otpInputs = Array.from(otpBoxesWrap.querySelectorAll('input'));
+    const otpError = document.getElementById('pv-otp-error');
+    const verifyBtn = document.getElementById('pv-verify-btn');
+    const backBtn = document.getElementById('pv-back-btn');
+    const resendBtn = document.getElementById('pv-resend-btn');
+
+    sendBtn.disabled = true;
+
+    phoneInput.addEventListener('input', () => {
+        phoneInput.value = phoneInput.value.replace(/\D/g, '').slice(0, 10);
+        pvClearError(phoneError);
+        pvValidatePhoneForm();
+    });
+
+    sendBtn.addEventListener('click', async () => {
+        const digits = phoneInput.value.trim();
+        if (!/^9\d{9}$/.test(digits)) {
+            pvShowError(phoneError, 'Enter a valid 10-digit mobile number starting with 9.');
+            return;
+        }
+        if (!_pvTurnstileToken) {
+            pvShowError(phoneError, 'Please complete the verification check.');
+            return;
+        }
+
+        pvClearError(phoneError);
+        sendBtn.disabled = true;
+        sendBtn.textContent = 'Sending...';
+
+        try {
+            const res = await fetch(PV_SEND_OTP_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ phone: digits, turnstileToken: _pvTurnstileToken, userId: _pvCurrentUserId })
+            });
+            const data = await res.json();
+
+            if (!res.ok) {
+                pvShowError(phoneError, data.error || 'Something went wrong. Please try again.');
+                sendBtn.disabled = false;
+                sendBtn.textContent = 'Send code';
+                if (window.turnstile) turnstile.reset('#pv-turnstile-widget');
+                _pvTurnstileToken = null;
+                return;
+            }
+
+            _pvCurrentPhone = digits;
+            phoneDisplay.textContent = '+63' + digits;
+            pvGoToStep('otp');
+            pvStartResendCountdown();
+            otpInputs[0].focus();
+        } catch (err) {
+            pvShowError(phoneError, 'Network error. Please check your connection and try again.');
+            sendBtn.disabled = false;
+            sendBtn.textContent = 'Send code';
+        }
+    });
+
+    otpInputs.forEach((input, idx) => {
+        input.addEventListener('input', () => {
+            input.value = input.value.replace(/\D/g, '').slice(0, 1);
+            pvClearError(otpError);
+            otpBoxesWrap.classList.remove('shake');
+            if (input.value && idx < otpInputs.length - 1) otpInputs[idx + 1].focus();
+        });
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Backspace' && !input.value && idx > 0) otpInputs[idx - 1].focus();
+        });
+        input.addEventListener('paste', (e) => {
+            e.preventDefault();
+            const pasted = (e.clipboardData || window.clipboardData).getData('text').replace(/\D/g, '');
+            if (!pasted) return;
+            for (let i = 0; i < otpInputs.length; i++) otpInputs[i].value = pasted[i] || '';
+            const nextEmpty = otpInputs.findIndex(inp => !inp.value);
+            (nextEmpty === -1 ? otpInputs[otpInputs.length - 1] : otpInputs[nextEmpty]).focus();
+        });
+    });
+
+    verifyBtn.addEventListener('click', async () => {
+        const code = otpInputs.map(i => i.value).join('');
+        if (code.length !== 6) {
+            pvShowError(otpError, 'Enter all 6 digits.');
+            otpBoxesWrap.classList.add('shake');
+            return;
+        }
+
+        pvClearError(otpError);
+        verifyBtn.disabled = true;
+        verifyBtn.textContent = 'Verifying...';
+
+        try {
+            const res = await fetch(PV_VERIFY_OTP_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ phone: _pvCurrentPhone, code: code, userId: _pvCurrentUserId })
+            });
+            const data = await res.json();
+
+            if (!res.ok) {
+                pvShowError(otpError, data.error || 'Incorrect code. Please try again.');
+                otpBoxesWrap.classList.add('shake');
+                otpInputs.forEach(i => i.value = '');
+                otpInputs[0].focus();
+                verifyBtn.disabled = false;
+                verifyBtn.textContent = 'Verify code';
+                return;
+            }
+
+            clearInterval(_pvCountdownTimer);
+            setCachedPhoneVerified(_pvCurrentUserId);
+            pvGoToStep('success');
+
+            // Brief pause so the success state is actually seen, then
+            // hide the overlay and resume the normal access-check flow.
+            setTimeout(() => {
+                document.getElementById('phone-verify-overlay').classList.add('hidden');
+                checkAccess(_pvCurrentUserId);
+            }, 1200);
+        } catch (err) {
+            pvShowError(otpError, 'Network error. Please check your connection and try again.');
+            verifyBtn.disabled = false;
+            verifyBtn.textContent = 'Verify code';
+        }
+    });
+
+    backBtn.addEventListener('click', () => {
+        clearInterval(_pvCountdownTimer);
+        otpInputs.forEach(i => i.value = '');
+        pvClearError(otpError);
+        if (window.turnstile) turnstile.reset('#pv-turnstile-widget');
+        _pvTurnstileToken = null;
+        sendBtn.textContent = 'Send code';
+        pvValidatePhoneForm();
+        pvGoToStep('phone');
+    });
+
+    resendBtn.addEventListener('click', async () => {
+        resendBtn.disabled = true;
+        resendBtn.textContent = 'Resending...';
+        pvClearError(otpError);
+
+        if (window.turnstile) turnstile.reset('#pv-turnstile-widget');
+        _pvTurnstileToken = null;
+
+        // Turnstile tokens are single-use; if a fresh one lands via
+        // pvOnTurnstileSuccess in the next moment, use it. Otherwise ask
+        // the person to wait and tap Resend again.
+        await new Promise(r => setTimeout(r, 400));
+
+        if (!_pvTurnstileToken) {
+            pvShowError(otpError, 'Please wait a moment for verification to refresh, then tap Resend again.');
+            resendBtn.disabled = false;
+            resendBtn.textContent = 'Resend code';
+            return;
+        }
+
+        try {
+            const res = await fetch(PV_SEND_OTP_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ phone: _pvCurrentPhone, turnstileToken: _pvTurnstileToken, userId: _pvCurrentUserId })
+            });
+            const data = await res.json();
+
+            if (!res.ok) {
+                pvShowError(otpError, data.error || 'Could not resend code. Please try again.');
+                resendBtn.disabled = false;
+                resendBtn.textContent = 'Resend code';
+                return;
+            }
+
+            otpInputs.forEach(i => i.value = '');
+            otpInputs[0].focus();
+            pvStartResendCountdown();
+        } catch (err) {
+            pvShowError(otpError, 'Network error. Please try again.');
+            resendBtn.disabled = false;
+            resendBtn.textContent = 'Resend code';
+        }
+    });
+}
+
 function setAuthCurrentDate() {
     const el = document.getElementById('auth-current-date');
     if (!el) return;
@@ -6802,12 +7309,22 @@ supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
             // User is logged in: Hide login overlay, show badge + logout button
             overlay.classList.add('hidden');
             headerRight.style.display = 'flex';
-            checkAccess(session.user.id); // gate on trial/lifetime status
+            // Phone verification gate runs BEFORE the trial/lifetime check —
+            // an unverified phone blocks trial access entirely, regardless
+            // of what checkAccess would otherwise say.
+            checkPhoneVerified(session.user.id).then(verified => {
+                if (verified) {
+                    checkAccess(session.user.id); // gate on trial/lifetime status
+                } else {
+                    openPhoneVerifyOverlay(session.user.id);
+                }
+            });
         } else {
             // User is NOT logged in: Show overlay, hide header-right group
             overlay.classList.remove('hidden');
             headerRight.style.display = 'none';
             document.getElementById('access-lock-overlay').classList.add('hidden');
+            document.getElementById('phone-verify-overlay').classList.add('hidden');
             showLogin(); // Ensure the login form is the active view
         }
     }
@@ -7555,6 +8072,10 @@ window.addEventListener('DOMContentLoaded', async () => {
 
     // ── INIT SUPABASE AUTH ──
     initSupabase();
+
+    // ── INIT PHONE VERIFY OVERLAY (event wiring only; stays hidden until
+    //    updateAuthUI decides an unverified session needs it) ──
+    initPhoneVerifyOverlay();
     
     await openDB();
 
