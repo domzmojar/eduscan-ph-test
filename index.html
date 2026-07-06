@@ -19,6 +19,7 @@
   <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
@@ -1373,9 +1374,8 @@
 
     <!-- STEP 1: phone entry -->
     <div class="pv-step active" id="pv-step-phone">
-      <p class="eyebrow">Free trial</p>
       <h1>Verify your phone number</h1>
-      <p class="sub">One code, one trial per number. We'll text you a 6-digit code to confirm you're a real teacher, not a bot.</p>
+      <p class="sub">We'll text you a 6-digit code to confirm you're a real teacher, not a bot.</p>
 
       <label for="pv-phone-input">Mobile number</label>
       <div class="phone-row">
@@ -3367,19 +3367,19 @@ async function deleteStudent(id) {
 }
 
 // ── BULK QR DOWNLOAD ─────────────────────────────────────────────────────
-// Downloads one PNG per student for whichever set is currently visible in
-// the Students tab — i.e. it respects the SAME class filter as the on-
-// screen grid (filter-class-select), so "All classes" downloads every
-// student and picking a specific class downloads only that roster. This
-// mirrors renderStudents()'s own filtering exactly rather than re-deriving
-// it, so the button never disagrees with what's on screen.
+// Exports one PDF containing every student's QR code (with name/LRN label)
+// for whichever set is currently visible in the Students tab — i.e. it
+// respects the SAME class filter as the on-screen grid (filter-class-select),
+// so "All classes" exports every student and picking a specific class
+// exports only that roster. This mirrors renderStudents()'s own filtering
+// exactly rather than re-deriving it, so the button never disagrees with
+// what's on screen.
 //
-// Downloads are individual PNG files (not a zip) deliberately: a zip
-// would need a new CDN library, which breaks the app's offline-first
-// promise the moment a teacher tries this with no signal. Each file is
-// triggered with a small delay between downloads because mobile browsers
-// (notably Android Chrome) treat a tight loop of programmatic downloads
-// as spam and silently drop all but the first few.
+// A single PDF (built with jsPDF, offline, from the dataURL QR codes we
+// already generate locally) instead of individual PNG files: one file to
+// print instead of a folder of dozens, and it sidesteps mobile browsers
+// (notably Android Chrome) treating a tight loop of programmatic file
+// downloads as spam and silently dropping all but the first few.
 let qrDownloadInProgress = false;
 
 async function downloadAllQR() {
@@ -3393,8 +3393,9 @@ async function downloadAllQR() {
   const btn = document.getElementById('download-all-qr-btn');
   qrDownloadInProgress = true;
   btn.disabled = true;
+  btn.textContent = 'Preparing PDF…';
 
-  // Generate any missing QR codes OFFLINE before downloading anything.
+  // Generate any missing QR codes OFFLINE before exporting anything.
   // renderStudents() does this too, but a bulk export must never fall
   // back to the network QR API (api.qrserver.com) the way the on-screen
   // <img> tag does — a teacher exporting QR codes with no signal would
@@ -3420,42 +3421,66 @@ async function downloadAllQR() {
   if (!downloadable.length) {
     qrDownloadInProgress = false;
     btn.disabled = false;
+    btn.textContent = '⬇ Download all QR codes';
     return showToast('Could not generate any QR codes offline.', 'err');
   }
 
-  const className = filterVal ? (classes.find(c => c.id === filterVal)?.name || 'Class') : 'All Classes';
-  showToast(`Downloading ${downloadable.length} QR code${downloadable.length !== 1 ? 's' : ''}…`, 'info');
-
-  // Build a filesystem-safe filename per student: strip characters that
-  // are invalid (or awkward) across Windows/Android/iOS filesystems, and
-  // include LRN when available since teachers commonly sort/search a
-  // folder of printed QR codes by LRN rather than by full name.
-  const safeName = s => {
-    const base = (s.lrn ? `${s.name}_${s.lrn}` : s.name).replace(/[\\/:*?"<>|]+/g, '').trim();
-    return base || s.id;
-  };
-
-  for (let i = 0; i < downloadable.length; i++) {
-    const s = downloadable[i];
-    btn.textContent = `Downloading ${i + 1}/${downloadable.length}…`;
-    try {
-      const resp = await fetch(s.qrDataUrl);
-      const blob = await resp.blob();
-      triggerDownload(blob, `QR_${safeName(s)}.png`);
-    } catch (e) {
-      console.error('Failed to download QR for', s.name, e);
-    }
-    // Pace downloads so the browser doesn't treat this as download spam
-    // and start silently dropping files after the first few.
-    if (i < downloadable.length - 1) await new Promise(r => setTimeout(r, 350));
+  if (typeof window.jspdf === 'undefined') {
+    qrDownloadInProgress = false;
+    btn.disabled = false;
+    btn.textContent = '⬇ Download all QR codes';
+    return showToast('PDF library unavailable offline. Try again once online at least once.', 'err');
   }
+
+  const className = filterVal ? (classes.find(c => c.id === filterVal)?.name || 'Class') : 'All Classes';
+  showToast(`Building PDF for ${downloadable.length} student${downloadable.length !== 1 ? 's' : ''}…`, 'info');
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+
+  // 3x4 grid per A4 page — big enough to scan reliably once printed and
+  // cut apart, small enough that a typical class roster fits on 1-2 pages.
+  const cols = 3, rows = 4;
+  const pageW = 210, pageH = 297;
+  const marginX = 12, marginY = 14;
+  const cellW = (pageW - marginX * 2) / cols;
+  const cellH = (pageH - marginY * 2) / rows;
+  const qrSize = Math.min(cellW, cellH) - 14; // leave room for the label below
+
+  downloadable.forEach((s, i) => {
+    const perPage = cols * rows;
+    const posOnPage = i % perPage;
+    if (i > 0 && posOnPage === 0) doc.addPage();
+
+    const col = posOnPage % cols;
+    const row = Math.floor(posOnPage / cols);
+    const cellX = marginX + col * cellW;
+    const cellY = marginY + row * cellH;
+    const qrX = cellX + (cellW - qrSize) / 2;
+    const qrY = cellY + 4;
+
+    doc.addImage(s.qrDataUrl, 'PNG', qrX, qrY, qrSize, qrSize);
+
+    doc.setFontSize(9);
+    doc.setFont(undefined, 'bold');
+    doc.text(s.name, cellX + cellW / 2, qrY + qrSize + 5, { align: 'center', maxWidth: cellW - 4 });
+    if (s.lrn) {
+      doc.setFontSize(7.5);
+      doc.setFont(undefined, 'normal');
+      doc.text(String(s.lrn), cellX + cellW / 2, qrY + qrSize + 9.5, { align: 'center', maxWidth: cellW - 4 });
+    }
+  });
+
+  const safeClassName = className.replace(/[\\/:*?"<>|]+/g, '').trim() || 'Class';
+  const blob = doc.output('blob');
+  triggerDownload(blob, `QR_Codes_${safeClassName}.pdf`);
 
   btn.disabled = false;
   btn.textContent = '⬇ Download all QR codes';
   qrDownloadInProgress = false;
 
   const skippedMsg = genFailures ? ` (${genFailures} skipped — QR library unavailable)` : '';
-  showToast(`Downloaded ${downloadable.length} QR code${downloadable.length !== 1 ? 's' : ''} for ${className}.${skippedMsg}`, genFailures ? 'warn' : 'ok');
+  showToast(`Downloaded PDF with ${downloadable.length} QR code${downloadable.length !== 1 ? 's' : ''} for ${className}.${skippedMsg}`, genFailures ? 'warn' : 'ok');
 }
 
 async function renderStudents() {
@@ -7423,8 +7448,13 @@ supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
              // User clicked the reset link in their email
              document.getElementById('auth-overlay').classList.remove('hidden');
              showNewPasswordForm();
-         } else if (event === 'SIGNED_IN' && window._isSigningUp) {
-             // Suppress auto-login during signup — handleSignup redirects to login manually
+         } else if ((event === 'SIGNED_IN' || event === 'SIGNED_OUT') && window._isSigningUp) {
+             // Suppress auto-login AND the silent signOut() this triggers during
+             // signup (handleSignup calls signOut() right after signUp() in case
+             // Supabase auto-logged the new user in) — without this, that SIGNED_OUT
+             // event races updateAuthUI's showLogin() against handleSignup's own
+             // manual redirect-to-login-with-email-expanded, sometimes winning and
+             // collapsing the email section right back down.
              return;
          } else {
              // Handles INITIAL_SESSION, SIGNED_IN, SIGNED_OUT, etc.
@@ -7677,6 +7707,13 @@ function showLogin() {
     hideAuthForms();
     document.getElementById('loginForm').classList.remove('hidden');
     clearAuthAlerts();
+    // The login button element persists across show/hide (it's not
+    // recreated) — a successful login never gets a chance to reset its own
+    // "Signing in…" spinner state before the overlay hides, so without this
+    // a later logout would redisplay the login form with that same stuck
+    // spinner button on first paint.
+    const loginBtn = document.getElementById('loginBtn');
+    if (loginBtn) { loginBtn.disabled = false; loginBtn.innerHTML = '<span>Sign In</span>'; }
     // Always reset email section to collapsed when showing login
     const section = document.getElementById('emailLoginSection');
     const btn = document.getElementById('emailToggleBtn');
