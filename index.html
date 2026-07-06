@@ -1390,6 +1390,8 @@
       <button class="pv-primary" id="pv-send-code-btn" disabled>Send code</button>
 
       <div class="pv-error-banner" id="pv-phone-error"></div>
+
+      <button class="pv-back-link pv-back-to-signin" style="margin-top:4px;">← Back to sign in</button>
     </div>
 
     <!-- STEP 2: code entry -->
@@ -1421,6 +1423,7 @@
       </div>
 
       <button class="pv-back-link" id="pv-back-btn">Use a different number</button>
+      <button class="pv-back-link pv-back-to-signin" style="display:block;margin-top:4px;">← Back to sign in</button>
     </div>
 
     <!-- STEP 3: success -->
@@ -7023,6 +7026,20 @@ function pvGoToStep(name) {
     if (name === 'success') stepSuccess.classList.add('active');
 }
 
+// Lets a user stuck on the OTP screen bail out back to the sign-in page —
+// e.g. they signed in with the wrong Google account, or want to sign up
+// again with a different email. Signs them out so the OTP/phone gate isn't
+// still attached to the abandoned session.
+async function pvBackToSignIn() {
+    clearInterval(_pvCountdownTimer);
+    document.getElementById('phone-verify-overlay').classList.add('hidden');
+    document.getElementById('auth-overlay').classList.remove('hidden');
+    showLogin();
+    if (supabaseClient) {
+        try { await supabaseClient.auth.signOut(); } catch (e) { /* already signed out, ignore */ }
+    }
+}
+
 function pvShowError(el, msg) {
     el.textContent = msg;
     el.classList.add('show');
@@ -7086,7 +7103,10 @@ function initPhoneVerifyOverlay() {
     const otpError = document.getElementById('pv-otp-error');
     const verifyBtn = document.getElementById('pv-verify-btn');
     const backBtn = document.getElementById('pv-back-btn');
+    const backToSignInBtns = document.querySelectorAll('.pv-back-to-signin');
     const resendBtn = document.getElementById('pv-resend-btn');
+
+    backToSignInBtns.forEach(btn => btn.addEventListener('click', pvBackToSignIn));
 
     sendBtn.disabled = true;
 
@@ -7769,6 +7789,13 @@ async function handleSignup(event) {
             showToast('Account created! Please sign in.', 'ok');
             showLogin();
             document.getElementById('loginEmail').value = email;
+            // Open the email/password sign-in section directly so the user
+            // can log straight in with the account they just created,
+            // instead of landing on the collapsed "Continue with Google" view.
+            const emailSection = document.getElementById('emailLoginSection');
+            const emailToggleBtn = document.getElementById('emailToggleBtn');
+            if (emailSection) emailSection.classList.add('expanded');
+            if (emailToggleBtn) emailToggleBtn.classList.add('open');
         } else {
             showToast('Something went wrong. Please try again.', 'err');
         }
