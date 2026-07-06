@@ -1,16 +1,10 @@
-// EduScan PH — Service Worker v8
+// EduScan PH — Service Worker v7
 // Caches the app shell first, then best-effort CDN assets for offline use.
-// v8: split into index.html (login/phone-verify gate) + app.html (the real
-// PWA) + auth-check.js (shared). Both HTML pages must be precached so an
-// offline open of either one — and the index→app redirect — works with zero
-// network calls.
-const CACHE_NAME = 'eduscan-ph-v8';
+const CACHE_NAME = 'eduscan-ph-v7';
 
 const APP_SHELL = [
   '/',
   '/index.html',
-  '/app.html',
-  '/auth-check.js',
   '/manifest.json',
   '/icon-192-any.png',
   '/icon-192-maskable.png',
@@ -64,9 +58,6 @@ self.addEventListener('fetch', event => {
         return response;
       })
       .catch(async () => {
-        // Exact-URL match first — this is what lets an offline navigation
-        // straight to /app.html be served from cache directly, instead of
-        // incorrectly falling back to the login page below.
         const cached = await caches.match(event.request);
         if (cached) return cached;
         if (isNavigation) return caches.match('/index.html');
