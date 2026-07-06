@@ -937,8 +937,8 @@
 /* All selectors scoped under #phone-verify-overlay to avoid colliding with
    the app's own global .card / .step / etc classes. */
 #phone-verify-overlay {
-    position: fixed; inset: 0; background: rgba(15,23,42,0.6); backdrop-filter: blur(4px);
-    z-index: 9500; display: flex; align-items: center; justify-content: center; padding: 16px;
+    position: fixed; inset: 0; background: linear-gradient(135deg, #0A5548 0%, #0E6E5D 55%, #123B34 100%);
+    z-index: 10000; display: flex; align-items: center; justify-content: center; padding: 16px;
     font-family: 'Inter', sans-serif;
 }
 #phone-verify-overlay.hidden { display: none !important; }
@@ -7318,17 +7318,17 @@ supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         const headerRight = document.getElementById('header-right');
         
         if (session) {
-            // User is logged in: Hide login overlay, show badge + logout button
-            overlay.classList.add('hidden');
-            headerRight.style.display = 'flex';
-            // Phone verification gate runs BEFORE the trial/lifetime check —
-            // an unverified phone blocks trial access entirely, regardless
-            // of what checkAccess would otherwise say.
+            // Phone verification gate runs BEFORE anything else is revealed.
+            // Deliberately do NOT hide the login overlay or show header-right
+            // yet — an unverified session should still look logged-out, not
+            // like a popup sitting in front of an already-unlocked app.
             checkPhoneVerified(session.user.id).then(verified => {
                 if (verified) {
+                    overlay.classList.add('hidden');
+                    headerRight.style.display = 'flex';
                     checkAccess(session.user.id); // gate on trial/lifetime status
                 } else {
-                    openPhoneVerifyOverlay(session.user.id);
+                    openPhoneVerifyOverlay(session.user.id); // covers auth-overlay; app stays hidden
                 }
             });
         } else {
