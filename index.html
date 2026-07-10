@@ -1987,29 +1987,72 @@
     <!-- Import / restore -->
     <div class="card">
       <h2 style="margin-bottom:0.25rem;">📥 Import / Restore</h2>
-      <p style="font-size:0.82rem; color:var(--text-muted); margin-bottom:1rem;">Restore data from a previously exported JSON file. You'll see exactly what's in the file before anything is merged.</p>
+      <p style="font-size:0.82rem; color:var(--text-muted); margin-bottom:1rem;">Restore data from a previously exported JSON file. You'll see exactly what's in the file before anything is added — <strong>nothing is changed until you confirm.</strong></p>
       <label for="import-file-input" class="btn full outline" style="cursor:pointer; text-align:center;">
         📂 Choose backup file (.json)
       </label>
-      <input type="file" id="import-file-input" accept=".json" style="display:none;" onchange="importData(event)">
+      <input type="file" id="import-file-input" accept=".json" style="display:none;" onchange="handleImportFileSelected(event)">
       <div id="import-status-msg" style="margin-top:0.6rem;"></div>
 
-      <div id="import-undo-bar" style="display:none; align-items:center; justify-content:space-between; background:var(--warning-bg); border:1px solid var(--warning-border); border-radius:8px; padding:0.6rem 0.85rem; margin-top:0.85rem; gap:0.5rem; flex-wrap:wrap;">
-        <span id="import-undo-label" style="font-size:0.78rem; color:var(--warning); font-weight:600;"></span>
-        <button class="btn danger sm" onclick="undoLastImport()">Undo this import</button>
+      <!-- Undo last import — persistent, no timer (see undoLastImport()) -->
+      <div id="undo-import-bar" style="display:none; align-items:center; justify-content:space-between; background:var(--warning-bg); border:1px solid var(--warning-border); border-radius:8px; padding:0.6rem 0.85rem; margin-top:0.85rem; gap:0.5rem; flex-wrap:wrap;">
+        <span id="undo-import-label" style="font-size:0.78rem; color:var(--warning); font-weight:600;"></span>
+        <button class="btn danger sm" onclick="undoLastImport()">↩ Undo last import</button>
       </div>
     </div>
 
-    <!-- Danger zone -->
-    <div class="card" style="border:1px solid var(--danger-border);">
-      <h2 style="margin-bottom:0.25rem; color:var(--danger);">⚠️ Danger Zone</h2>
-      <p style="font-size:0.82rem; color:var(--text-muted); margin-bottom:1rem;">Permanently erase all classes, students, and attendance logs from this device. Use this if you imported the wrong backup and need a clean slate. A safety backup is downloaded automatically before anything is deleted. This does not affect data already synced to Google Sheets.</p>
-      <button class="btn danger full" onclick="openWipeDataModal()">🗑️ Wipe all data</button>
+    <!-- Wipe all data -->
+    <div class="card" style="border:1px solid var(--danger);">
+      <h2 style="margin-bottom:0.25rem; color:var(--danger);">🗑️ Wipe All Data</h2>
+      <p style="font-size:0.82rem; color:var(--text-muted); margin-bottom:1rem;">Permanently erase every class, student, and attendance log from this device. Useful if you imported the wrong backup file and want to start clean. <strong>This is only ever reversible from a downloaded backup file — there is no in-app undo.</strong></p>
+      <button class="btn full danger" onclick="openWipeDataModal()">🗑️ Wipe all data…</button>
     </div>
 
   </div>
 
 </main>
+
+<!-- IMPORT PREVIEW MODAL — shows counts BEFORE anything touches IndexedDB -->
+<div class="modal-backdrop" id="import-preview-modal">
+  <div class="modal-sheet">
+    <div class="modal-header">
+      <span class="modal-title">📥 Review import</span>
+      <button class="modal-close" onclick="cancelImportPreview()">✕</button>
+    </div>
+    <div class="modal-body" id="import-preview-body">
+      <!-- filled by showImportPreview() -->
+    </div>
+    <div style="display:flex; gap:0.5rem; padding:0 1.25rem 1.25rem;">
+      <button class="btn full outline" onclick="cancelImportPreview()">Cancel</button>
+      <button class="btn full" id="import-preview-confirm-btn" onclick="confirmImport()">Import into my data</button>
+    </div>
+  </div>
+</div>
+
+<!-- WIPE ALL DATA MODAL — forced backup download, exact counts, type-to-confirm gate -->
+<div class="modal-backdrop" id="wipe-data-modal">
+  <div class="modal-sheet">
+    <div class="modal-header">
+      <span class="modal-title" style="color:var(--danger);">🗑️ Wipe all data</span>
+      <button class="modal-close" onclick="closeWipeDataModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="wipe-backup-status" style="font-size:0.85rem; margin-bottom:1rem;"></div>
+      <div id="wipe-counts" style="font-size:0.9rem; font-weight:600; margin-bottom:1rem;"></div>
+      <p style="font-size:0.82rem; color:var(--text-muted); line-height:1.5; margin-bottom:0.75rem;">
+        This <strong>permanently deletes</strong> the data above from this device. It cannot be undone in-app — only by re-importing the backup file that was just downloaded.
+      </p>
+      <div class="form-group" style="margin-bottom:0.5rem;">
+        <label for="wipe-confirm-input">Type <strong>WIPE</strong> to confirm</label>
+        <input type="text" id="wipe-confirm-input" autocomplete="off" autocapitalize="off" placeholder="WIPE" oninput="onWipeConfirmInput()">
+      </div>
+    </div>
+    <div style="display:flex; gap:0.5rem; padding:0 1.25rem 1.25rem;">
+      <button class="btn full outline" onclick="closeWipeDataModal()">Cancel</button>
+      <button class="btn full danger" id="wipe-confirm-btn" onclick="performWipeAllData()" disabled>Permanently wipe data</button>
+    </div>
+  </div>
+</div>
 
 <div id="toast"></div>
 
@@ -2021,52 +2064,6 @@
     <div class="confirm-modal-actions">
       <button class="btn outline" id="confirm-modal-cancel">Cancel</button>
       <button class="btn" id="confirm-modal-ok">Confirm</button>
-    </div>
-  </div>
-</div>
-
-<!-- IMPORT PREVIEW MODAL — shows what a backup file contains before anything
-     is written to IndexedDB. This is the real fix for "imported the wrong
-     file": the numbers make a mismatched file obvious before it touches
-     live data. -->
-<div class="modal-backdrop" id="import-preview-modal" onclick="closeImportPreviewModal(event)">
-  <div class="modal-sheet">
-    <div class="modal-header">
-      <span class="modal-title">📥 Review import</span>
-      <button class="modal-close" onclick="closeImportPreviewModalDirect()">✕</button>
-    </div>
-    <div class="modal-body" id="import-preview-body"></div>
-    <div style="display:flex; gap:0.5rem; padding:0 1.25rem 1.1rem;">
-      <button class="btn outline full" onclick="closeImportPreviewModalDirect()">Cancel</button>
-      <button class="btn full" id="import-preview-confirm-btn" onclick="commitPendingImport()">Import</button>
-    </div>
-  </div>
-</div>
-
-<!-- WIPE ALL DATA MODAL — one-way door, so the door is guarded instead of
-     offering an in-app "undo": a safety backup is forced before the confirm
-     control is even usable, and the confirm button stays disabled until the
-     user types WIPE and a short countdown elapses. -->
-<div class="modal-backdrop" id="wipe-modal" onclick="closeWipeModal(event)">
-  <div class="modal-sheet">
-    <div class="modal-header">
-      <span class="modal-title" style="color:var(--danger);">⚠️ Wipe all data</span>
-      <button class="modal-close" onclick="closeWipeModalDirect()">✕</button>
-    </div>
-    <div class="modal-body">
-      <p style="font-size:0.85rem; color:var(--text); font-weight:600; margin-bottom:0.5rem;">
-        This will permanently delete <span id="wipe-modal-counts">0 classes · 0 students · 0 logs</span> from this device.
-      </p>
-      <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:0.85rem;">This cannot be undone from within the app. It does not delete anything already synced to Google Sheets.</p>
-      <div id="wipe-modal-backup-status" class="sync-status info" style="margin-top:0;">Preparing safety backup…</div>
-      <div class="form-group" style="margin-top:1rem;">
-        <label for="wipe-modal-input">Type <strong>WIPE</strong> to confirm</label>
-        <input type="text" id="wipe-modal-input" autocomplete="off" autocapitalize="off" spellcheck="false" oninput="updateWipeConfirmState()" placeholder="WIPE">
-      </div>
-    </div>
-    <div style="display:flex; gap:0.5rem; padding:0 1.25rem 1.1rem;">
-      <button class="btn outline full" onclick="closeWipeModalDirect()">Cancel</button>
-      <button class="btn danger full" id="wipe-modal-confirm-btn" onclick="confirmWipeAllData()" disabled>Wait…</button>
     </div>
   </div>
 </div>
@@ -6266,6 +6263,7 @@ async function renderDownloadPage() {
   }
 
   updatePWAInstallUI();
+  await renderUndoImportBar();
 }
 
 // ── EXPORT / IMPORT ───────────────────────────────────────────────────────
@@ -6326,317 +6324,343 @@ async function checkAutoExport(trigger = 'boot') {
   }
 }
 
-// Dedupe on the semantic identity of an attendance record — one
-// arrival/departure per student, per class, per day — rather than on raw
-// timestamp. Editing a log's time (saveEditLog) changes `timestamp` but not
-// the underlying event, so a timestamp-based key would let an old backup
-// re-insert a duplicate of an already-edited record.
-function importLogRecordKey(l) {
-  return `${l.studentId}|${l.classId}|${l.localDate || getLogDate(l)}|${l.type}`;
+// ── IMPORT: preview-before-commit ───────────────────────────────────────────
+// The old importData() parsed the file and merged it straight into live
+// data in one step — a wrong backup file (e.g. from a different school)
+// would silently mix into the real roster before anyone had a chance to
+// notice. Now the flow is split in two: handleImportFileSelected() only
+// PARSES and computes counts (no IndexedDB writes at all), then shows a
+// preview modal. confirmImport() is the only place that actually writes,
+// and only runs if the user taps "Import into my data" after seeing the
+// numbers. Cancelling (or just closing the modal) leaves everything
+// untouched.
+let pendingImportPayload = null;
+let pendingImportFileInput = null;
+
+function computeImportPreview(payload) {
+  const existingClassIds   = new Set(classes.map(c => c.id));
+  const existingStudentIds = new Set(students.map(s => s.id));
+  const recordKey     = l => `${l.studentId}|${l.classId}|${l.localDate || getLogDate(l)}|${l.type}`;
+  const existingLogKeys = new Set(logs.map(recordKey));
+
+  const newClasses  = (payload.classes  || []).filter(c => !existingClassIds.has(c.id));
+  const newStudents = (payload.students || []).filter(s => !existingStudentIds.has(s.id));
+  const newLogs     = (payload.logs     || []).filter(l => !existingLogKeys.has(recordKey(l)));
+
+  return {
+    totalClasses:  (payload.classes  || []).length,
+    totalStudents: (payload.students || []).length,
+    totalLogs:     (payload.logs     || []).length,
+    newClasses:    newClasses.length,
+    newStudents:   newStudents.length,
+    newLogs:       newLogs.length,
+    dupClasses:    (payload.classes  || []).length - newClasses.length,
+    dupStudents:   (payload.students || []).length - newStudents.length,
+    dupLogs:       (payload.logs     || []).length - newLogs.length,
+  };
 }
 
-// Holds the parsed-but-not-yet-committed backup file between choosing it
-// and confirming the preview modal. Nothing touches IndexedDB until
-// commitPendingImport() runs.
-let pendingImportPayload = null;
-
-async function importData(event) {
+async function handleImportFileSelected(event) {
   const file = event.target.files[0];
   const msg  = document.getElementById('import-status-msg');
-  event.target.value = ''; // reset now so re-choosing the same file re-fires onchange
+  msg.innerHTML = '';
   if (!file) return;
+  pendingImportFileInput = event.target;
   try {
     const text    = await file.text();
     const payload = JSON.parse(text);
     if (!payload.version && !payload.classes && !payload.logs) {
-      msg.innerHTML = `<div class="sync-status err">This doesn't look like an EduScan backup file.</div>`; return;
+      msg.innerHTML = `<div class="sync-status err">This doesn't look like an EduScan backup file.</div>`;
+      event.target.value = '';
+      return;
     }
-
-    // Compute the diff against current data WITHOUT writing anything yet,
-    // so the user can see the numbers and catch an obviously-wrong file
-    // (e.g. a backup from a different school) before it's merged.
-    const existingClassIds   = new Set(classes.map(c => c.id));
-    const existingStudentIds = new Set(students.map(s => s.id));
-    const existingLogKeys    = new Set(logs.map(importLogRecordKey));
-
-    const newClasses  = (payload.classes  || []).filter(c => !existingClassIds.has(c.id));
-    const newStudents = (payload.students || []).filter(s => !existingStudentIds.has(s.id));
-    const newLogs      = (payload.logs || []).filter(l => !existingLogKeys.has(importLogRecordKey(l)));
-    const skippedLogs = (payload.logs || []).length - newLogs.length;
-
-    pendingImportPayload = { payload, newClasses, newStudents, newLogs, fileName: file.name };
-    msg.innerHTML = '';
-    openImportPreviewModal({
-      fileName: file.name,
-      classCount: newClasses.length,
-      studentCount: newStudents.length,
-      logCount: newLogs.length,
-      skippedLogs
-    });
+    pendingImportPayload = payload;
+    showImportPreview(computeImportPreview(payload));
   } catch(e) {
     msg.innerHTML = `<div class="sync-status err">Failed to read file: ${e.message}</div>`;
+    event.target.value = '';
   }
 }
 
-function openImportPreviewModal({ fileName, classCount, studentCount, logCount, skippedLogs }) {
+function showImportPreview(counts) {
   const body = document.getElementById('import-preview-body');
-  const totalNew = classCount + studentCount + logCount;
+  const row = (label, n, dup) => `
+    <div style="display:flex; justify-content:space-between; padding:0.5rem 0; border-bottom:1px solid var(--border);">
+      <span>${label}</span>
+      <span style="text-align:right;">
+        <strong>${n} new</strong>${dup ? `<br><span style="font-size:0.75rem; color:var(--text-muted);">${dup} already in your data — skipped</span>` : ''}
+      </span>
+    </div>`;
   body.innerHTML = `
-    <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:0.85rem; word-break:break-all;">
-      📄 <strong>${escapeHTML(fileName)}</strong>
-    </p>
-    ${totalNew === 0
-      ? `<div class="sync-status info">Nothing new in this file — everything already exists in your data.</div>`
-      : `
-        <ul style="list-style:none; padding:0; margin:0 0 0.85rem; display:flex; flex-direction:column; gap:0.5rem; font-size:0.9rem;">
-          <li>📚 <strong>${classCount}</strong> new class${classCount !== 1 ? 'es' : ''}</li>
-          <li>👥 <strong>${studentCount}</strong> new student${studentCount !== 1 ? 's' : ''}</li>
-          <li>📋 <strong>${logCount}</strong> new attendance log${logCount !== 1 ? 's' : ''}</li>
-        </ul>
-        ${skippedLogs > 0 ? `<p style="font-size:0.78rem; color:var(--text-muted); margin-bottom:0.5rem;">${skippedLogs} log${skippedLogs !== 1 ? 's' : ''} already in your data and will be skipped as duplicates.</p>` : ''}
-      `
-    }
-    <p style="font-size:0.78rem; color:var(--text-muted); margin-top:0.5rem;">This merges into your current data — nothing is added or changed until you tap Import. If the numbers above look wrong for what you meant to restore, tap Cancel.</p>
+    <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:0.75rem;">This file contains ${counts.totalClasses} classes, ${counts.totalStudents} students, and ${counts.totalLogs} logs. Here's what will actually be added to <strong>this device</strong>:</p>
+    ${row('📚 Classes',  counts.newClasses,  counts.dupClasses)}
+    ${row('👥 Students', counts.newStudents, counts.dupStudents)}
+    ${row('📋 Logs',     counts.newLogs,     counts.dupLogs)}
+    ${(counts.newClasses === 0 && counts.newStudents === 0 && counts.newLogs === 0)
+      ? `<p style="margin-top:0.85rem; font-size:0.82rem; color:var(--warning); font-weight:600;">Nothing new here — everything in this file already matches what's on this device.</p>`
+      : `<p style="margin-top:0.85rem; font-size:0.78rem; color:var(--text-muted);">Nothing is written until you tap "Import into my data" below. If these numbers look wrong for this device (e.g. a much larger student count), cancel and check the file.</p>`}
   `;
-  const btn = document.getElementById('import-preview-confirm-btn');
-  btn.disabled    = totalNew === 0;
-  btn.textContent = totalNew === 0 ? 'Nothing to import' : `Import ${totalNew} item${totalNew !== 1 ? 's' : ''}`;
-
-  document.getElementById('import-preview-modal').classList.add('open');
+  document.getElementById('import-preview-confirm-btn').disabled = false;
   lockBodyScroll();
+  document.getElementById('import-preview-modal').classList.add('open');
 }
 
-function closeImportPreviewModal(e) { if (e.target === document.getElementById('import-preview-modal')) closeImportPreviewModalDirect(); }
-function closeImportPreviewModalDirect() {
+function cancelImportPreview() {
   document.getElementById('import-preview-modal').classList.remove('open');
   unlockBodyScroll();
   pendingImportPayload = null;
+  if (pendingImportFileInput) pendingImportFileInput.value = '';
+  pendingImportFileInput = null;
 }
 
-async function commitPendingImport() {
-  if (!pendingImportPayload) return;
-  const { payload, newClasses, newStudents, newLogs, fileName } = pendingImportPayload;
-  const msg = document.getElementById('import-status-msg');
+async function confirmImport() {
+  const payload = pendingImportPayload;
+  const msg     = document.getElementById('import-status-msg');
+  if (!payload) return cancelImportPreview();
+
   const btn = document.getElementById('import-preview-confirm-btn');
   btn.disabled = true; btn.textContent = 'Importing…';
 
-  // Tag every item this import actually adds so "Undo last import" can
-  // remove exactly those rows later, and nothing else.
-  const batch = { importedAt: nowIso(), fileName, classIds: [], studentIds: [], logIds: [] };
+  // Tag this import as one batch so "Undo last import" can remove exactly
+  // (and only) what this file added — never touching data that was
+  // already on the device before this import.
+  const batch = { classIds: [], studentIds: [], logIds: [], importedAt: nowIso() };
 
-  try {
-    if (newClasses.length) {
-      const stamped = newClasses.map(c => ({ ...c, updatedAt: c.updatedAt || nowIso() }));
-      classes.push(...stamped);
-      await dbPutAll('classes', classes);
-      batch.classIds = stamped.map(c => c.id);
+  let importedClasses = 0, importedStudents = 0, importedLogs = 0;
+  if (payload.classes?.length) {
+    const existingIds = new Set(classes.map(c => c.id));
+    const newClasses  = payload.classes.filter(c => !existingIds.has(c.id)).map(c => ({ ...c, updatedAt: c.updatedAt || nowIso() }));
+    classes.push(...newClasses);
+    await dbPutAll('classes', classes);
+    importedClasses = newClasses.length;
+    batch.classIds  = newClasses.map(c => c.id);
+  }
+  if (payload.students?.length) {
+    const existingIds = new Set(students.map(s => s.id));
+    const newStudents = payload.students.filter(s => !existingIds.has(s.id)).map(s => ({ ...s, updatedAt: s.updatedAt || nowIso() }));
+    students.push(...newStudents);
+    students.sort((a, b) => { const la=(a.lastName||a.name||"").toLowerCase(),lb=(b.lastName||b.name||"").toLowerCase(); return la!==lb?la.localeCompare(lb):(a.firstName||"").toLowerCase().localeCompare((b.firstName||"").toLowerCase()); });
+    await dbPutAll('students', students);
+    importedStudents = newStudents.length;
+    batch.studentIds = newStudents.map(s => s.id);
+  }
+  if (importedClasses || importedStudents) {
+    await markRosterDirty();
+    scheduleRosterSync();
+  }
+  if (payload.logs?.length) {
+    // Dedupe on the semantic identity of an attendance record — one
+    // arrival/departure per student, per class, per day — rather than
+    // on raw timestamp. Editing a log's time (saveEditLog) changes
+    // `timestamp` but not the underlying event, so a timestamp-based
+    // key would let an old backup re-insert a duplicate of an
+    // already-edited record.
+    const recordKey = l => `${l.studentId}|${l.classId}|${l.localDate || getLogDate(l)}|${l.type}`;
+    const existingKeys = new Set(logs.map(recordKey));
+    const newLogs      = payload.logs.filter(l => !existingKeys.has(recordKey(l)));
+    for (const l of newLogs) {
+      const entry = { ...l }; delete entry.id;
+      // Backfill localDate if missing (logs from an older PWA version
+      // before this field was introduced). Without this, an imported
+      // log keeps missing localDate forever — including through a
+      // later re-export, since export/import only spreads existing
+      // fields and never adds new ones. getLogDate() already computes
+      // the correct PH-time value from the timestamp as a read-time
+      // fallback, so backfilling it here just makes that permanent and
+      // keeps every log's schema consistent going forward.
+      if (!entry.localDate) entry.localDate = getLogDate(entry);
+      const newId = await dbAdd('logs', entry);
+      entry.id = newId;
+      logs.push(entry);
+      existingKeys.add(recordKey(entry));
+      batch.logIds.push(newId);
     }
-    if (newStudents.length) {
-      const stamped = newStudents.map(s => ({ ...s, updatedAt: s.updatedAt || nowIso() }));
-      students.push(...stamped);
-      students.sort((a, b) => { const la=(a.lastName||a.name||"").toLowerCase(),lb=(b.lastName||b.name||"").toLowerCase(); return la!==lb?la.localeCompare(lb):(a.firstName||"").toLowerCase().localeCompare((b.firstName||"").toLowerCase()); });
-      await dbPutAll('students', students);
-      batch.studentIds = stamped.map(s => s.id);
-    }
-    if (batch.classIds.length || batch.studentIds.length) {
-      await markRosterDirty();
-      scheduleRosterSync();
-    }
-    if (newLogs.length) {
-      for (const l of newLogs) {
-        const entry = { ...l }; delete entry.id;
-        // Backfill localDate if missing (logs from an older PWA version
-        // before this field was introduced). Without this, an imported
-        // log keeps missing localDate forever — including through a
-        // later re-export, since export/import only spreads existing
-        // fields and never adds new ones. getLogDate() already computes
-        // the correct PH-time value from the timestamp as a read-time
-        // fallback, so backfilling it here just makes that permanent and
-        // keeps every log's schema consistent going forward.
-        if (!entry.localDate) entry.localDate = getLogDate(entry);
-        const newId = await dbAdd('logs', entry);
-        entry.id = newId;
-        logs.push(entry);
-        batch.logIds.push(newId);
-      }
-      logs.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
-      scheduleAutoSync();
-    }
-    if (payload.settings?.syncUrl) await dbSetSetting('sync_url', payload.settings.syncUrl);
+    logs.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+    importedLogs = newLogs.length;
+  }
+  if (payload.settings?.syncUrl) await dbSetSetting('sync_url', payload.settings.syncUrl);
 
-    if (batch.classIds.length || batch.studentIds.length || batch.logIds.length) {
-      await dbSetSetting('last_import_batch', batch);
-    }
-
-    populateDropdowns();
-    await renderImportUndoBar();
-    msg.innerHTML = `<div class="sync-status ok">✅ Import complete: ${batch.classIds.length} classes · ${batch.studentIds.length} students · ${batch.logIds.length} logs added</div>`;
-    showToast('Import complete ✓', 'ok');
-  } catch (e) {
-    msg.innerHTML = `<div class="sync-status err">Import failed: ${e.message}</div>`;
-    showToast('Import failed.', 'err');
+  batch.counts = { classes: importedClasses, students: importedStudents, logs: importedLogs };
+  if (batch.classIds.length || batch.studentIds.length || batch.logIds.length) {
+    await dbSetSetting('last_import_batch', batch);
   }
 
-  pendingImportPayload = null;
+  populateDropdowns();
   document.getElementById('import-preview-modal').classList.remove('open');
   unlockBodyScroll();
+  msg.innerHTML = `<div class="sync-status ok">✅ Import complete: ${importedClasses} classes · ${importedStudents} students · ${importedLogs} logs added</div>`;
+  showToast('Import complete ✓', 'ok');
+
+  pendingImportPayload = null;
+  if (pendingImportFileInput) pendingImportFileInput.value = '';
+  pendingImportFileInput = null;
+  btn.disabled = false; btn.textContent = 'Import into my data';
+
+  renderClasses(); renderStudents();
+  renderLog(false); renderTodayList();
+  await renderUndoImportBar();
 }
 
 // ── UNDO LAST IMPORT ─────────────────────────────────────────────────────
-// Belt-and-suspenders alongside the preview step above: if a wrong file
-// still gets confirmed, this removes exactly the rows that one import
-// added. Persistent on the Backup/Restore page (not a timed toast), since
-// reviewing an import can easily take longer than a snackbar window.
-async function renderImportUndoBar() {
-  const bar = document.getElementById('import-undo-bar');
-  if (!bar) return;
+// Belt-and-suspenders alongside the preview step above. No timed toast —
+// import review can take longer than a snackbar window (checking the
+// Students tab first, etc.) — so this just sits on the Backup/Restore page
+// until the next import overwrites it.
+async function renderUndoImportBar() {
+  const bar = document.getElementById('undo-import-bar');
+  const label = document.getElementById('undo-import-label');
+  if (!bar || !label) return;
   const batch = await dbGetSetting('last_import_batch');
-  const hasAny = batch && ((batch.classIds || []).length || (batch.studentIds || []).length || (batch.logIds || []).length);
-  if (!hasAny) { bar.style.display = 'none'; return; }
-
-  const when = batch.importedAt
-    ? new Date(batch.importedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-    : '';
-  document.getElementById('import-undo-label').textContent =
-    `Last import${when ? ' · ' + when : ''}: ${(batch.classIds||[]).length} classes · ${(batch.studentIds||[]).length} students · ${(batch.logIds||[]).length} logs`;
+  if (!batch) { bar.style.display = 'none'; return; }
+  const { classes: c = 0, students: s = 0, logs: l = 0 } = batch.counts || {};
+  const when = batch.importedAt ? new Date(batch.importedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+  label.innerHTML = `Last import (${when}): ${c} classes, ${s} students, ${l} logs added`;
   bar.style.display = 'flex';
 }
 
 async function undoLastImport() {
   const batch = await dbGetSetting('last_import_batch');
   if (!batch) return;
+  const { classes: c = 0, students: s = 0, logs: l = 0 } = batch.counts || {};
+  if (!confirm(`Undo the last import? This removes exactly what that import added: ${c} classes, ${s} students, ${l} logs. Data that was already on this device before that import is not touched.`)) return;
 
-  const ok = await showConfirmDialog({
-    title: 'Undo last import?',
-    message: `This removes the ${(batch.classIds||[]).length} classes, ${(batch.studentIds||[]).length} students, and ${(batch.logIds||[]).length} logs added by ${batch.fileName ? '"' + batch.fileName + '"' : 'the last import'}. Anything you've since edited by hand will be removed too.`,
-    confirmLabel: 'Undo import',
-    danger: true
-  });
-  if (!ok) return;
-
-  // Logs: reuse the same delete+queue plumbing as deleting a single log
-  // entry, so a deletion still reaches Sheets on the next sync.
-  const logIdSet = new Set(batch.logIds || []);
-  for (const logId of logIdSet) {
-    const log = logs.find(l => l.id === logId);
-    if (log) await queueDeletedLog(log);
-  }
-  logs = logs.filter(l => !logIdSet.has(l.id));
-  for (const logId of logIdSet) { await dbDelete('logs', logId); }
-
-  // Classes/students: same filter-and-rewrite pattern as removeClass()/deleteStudent().
-  const classIdSet   = new Set(batch.classIds || []);
+  const classIdSet   = new Set(batch.classIds   || []);
   const studentIdSet = new Set(batch.studentIds || []);
-  let rosterChanged = false;
+  const logIdSet     = new Set((batch.logIds || []).map(Number));
+
   if (classIdSet.size) {
-    classes = classes.filter(c => !classIdSet.has(c.id));
+    classes = classes.filter(cl => !classIdSet.has(cl.id));
     await dbClear('classes'); await dbPutAll('classes', classes);
-    rosterChanged = true;
   }
   if (studentIdSet.size) {
-    students = students.filter(s => !studentIdSet.has(s.id));
+    students = students.filter(st => !studentIdSet.has(st.id));
     await dbClear('students'); await dbPutAll('students', students);
-    rosterChanged = true;
   }
-  if (rosterChanged) { await markRosterDirty(); scheduleRosterSync(); }
-  if (logIdSet.size) scheduleAutoSync();
+  if (classIdSet.size || studentIdSet.size) {
+    await markRosterDirty();
+    scheduleRosterSync();
+  }
+  if (logIdSet.size) {
+    // Queue each removed log as a delete so it's also retracted from
+    // Google Sheets if it had already synced — same plumbing normal
+    // per-record deletes use (see deleteLogEntry()).
+    for (const log of logs.filter(lg => logIdSet.has(lg.id))) {
+      await queueDeletedLog(log);
+      await dbDelete('logs', log.id);
+    }
+    logs = logs.filter(lg => !logIdSet.has(lg.id));
+    scheduleAutoSync();
+  }
 
   await dbSetSetting('last_import_batch', null);
-
   populateDropdowns();
-  renderClasses(); renderStudents(); renderLog(false); renderTodayList();
-  await renderImportUndoBar();
+  renderClasses(); renderStudents();
+  renderLog(false); renderTodayList();
+  await renderUndoImportBar();
   showToast('Last import undone.', 'ok');
 }
 
 // ── WIPE ALL DATA ────────────────────────────────────────────────────────
-// A full wipe is a one-way door — instead of trying to make it "undoable"
-// in-app (too big/risky to hold in memory), the door itself is guarded:
-// a JSON backup is forced to disk before the confirm control is even
-// enabled, so the worst case is always recoverable from that file.
-let wipeBackupReady       = false;
-let wipeCountdownRemaining = 0;
-let wipeCountdownTimer    = null;
+// Treated as a one-way door: instead of trying to build an in-app "undo"
+// for something this destructive, the guard is on the way IN — a forced
+// backup download the moment the screen opens (so worst case is always
+// recoverable from a file), exact counts, and a type-to-confirm gate that's
+// much harder to blow through by accident than a browser confirm() dialog.
+let wipeCountdownDone = false;
+let wipeTextMatches   = false;
 
-function openWipeDataModal() {
-  document.getElementById('wipe-modal-input').value = '';
-  document.getElementById('wipe-modal-counts').textContent =
-    `${classes.length} classes · ${students.length} students · ${logs.length} logs`;
-  document.getElementById('wipe-modal-backup-status').className = 'sync-status info';
-  document.getElementById('wipe-modal-backup-status').textContent = 'Preparing safety backup…';
+async function openWipeDataModal() {
+  wipeCountdownDone = false;
+  wipeTextMatches   = false;
 
-  wipeBackupReady = false;
-  updateWipeConfirmState();
+  const input = document.getElementById('wipe-confirm-input');
+  input.value = '';
+  const btn = document.getElementById('wipe-confirm-btn');
+  btn.disabled = true;
+  btn.textContent = 'Downloading backup…';
 
-  document.getElementById('wipe-modal').classList.add('open');
+  document.getElementById('wipe-counts').innerHTML = `
+    This will permanently delete <strong>${classes.length} classes</strong>, <strong>${students.length} students</strong>, and <strong>${logs.length} attendance logs</strong> from this device.
+  `;
+  document.getElementById('wipe-backup-status').innerHTML =
+    `<span style="color:var(--text-muted);">⏳ Downloading a safety backup first…</span>`;
+
   lockBodyScroll();
+  document.getElementById('wipe-data-modal').classList.add('open');
 
-  // Force the backup download immediately — before the user can even
-  // reach the confirm button — since this file IS the undo for a wipe.
-  exportData('all').then(() => {
-    wipeBackupReady = true;
-    document.getElementById('wipe-modal-backup-status').className = 'sync-status ok';
-    document.getElementById('wipe-modal-backup-status').textContent = '✅ Safety backup downloaded. Keep it somewhere safe — it can restore everything via Import.';
-    startWipeCountdown();
-  }).catch(() => {
-    document.getElementById('wipe-modal-backup-status').className = 'sync-status err';
-    document.getElementById('wipe-modal-backup-status').textContent = '⚠️ Could not create a safety backup automatically. Please use "Export everything" above before wiping.';
-  });
-}
+  // Forced backup — happens before the person can even reach the confirm
+  // button, so a wipe is always recoverable from this file even though
+  // there's no in-app undo for it.
+  try {
+    await exportData('all');
+    document.getElementById('wipe-backup-status').innerHTML =
+      `<span style="color:var(--success);">✅ Safety backup downloaded to your device. Keep it somewhere safe — it's the only way to undo this.</span>`;
+  } catch (e) {
+    document.getElementById('wipe-backup-status').innerHTML =
+      `<span style="color:var(--danger);">⚠️ Could not download a backup automatically (${e.message}). Please use "Export everything" above before wiping.</span>`;
+  }
 
-function startWipeCountdown() {
-  wipeCountdownRemaining = 5;
-  updateWipeConfirmState();
-  clearInterval(wipeCountdownTimer);
-  wipeCountdownTimer = setInterval(() => {
-    wipeCountdownRemaining--;
-    updateWipeConfirmState();
-    if (wipeCountdownRemaining <= 0) clearInterval(wipeCountdownTimer);
+  // Small forced pause after the modal is fully ready, so the confirm
+  // button can't be double-tapped through immediately after opening.
+  let secondsLeft = 4;
+  btn.textContent = `Wait ${secondsLeft}s…`;
+  const countdown = setInterval(() => {
+    secondsLeft--;
+    if (secondsLeft <= 0) {
+      clearInterval(countdown);
+      wipeCountdownDone = true;
+      updateWipeConfirmButton();
+    } else {
+      btn.textContent = `Wait ${secondsLeft}s…`;
+    }
   }, 1000);
 }
 
-function updateWipeConfirmState() {
-  const btn      = document.getElementById('wipe-modal-confirm-btn');
-  const input    = document.getElementById('wipe-modal-input').value.trim();
-  const phraseOk = input === 'WIPE';
-  const timeOk   = wipeBackupReady && wipeCountdownRemaining <= 0;
-  btn.disabled = !(phraseOk && timeOk);
-  btn.textContent = !wipeBackupReady
-    ? 'Waiting for backup…'
-    : (!timeOk ? `Wait ${Math.max(wipeCountdownRemaining, 0)}s…` : 'Permanently wipe all data');
-}
-
-function closeWipeModal(e) { if (e.target === document.getElementById('wipe-modal')) closeWipeModalDirect(); }
-function closeWipeModalDirect() {
-  document.getElementById('wipe-modal').classList.remove('open');
+function closeWipeDataModal() {
+  document.getElementById('wipe-data-modal').classList.remove('open');
   unlockBodyScroll();
-  clearInterval(wipeCountdownTimer);
 }
 
-async function confirmWipeAllData() {
-  const input = document.getElementById('wipe-modal-input').value.trim();
-  if (input !== 'WIPE' || !wipeBackupReady || wipeCountdownRemaining > 0) return;
+function onWipeConfirmInput() {
+  const val = document.getElementById('wipe-confirm-input').value;
+  wipeTextMatches = (val === 'WIPE');
+  updateWipeConfirmButton();
+}
 
-  const btn = document.getElementById('wipe-modal-confirm-btn');
-  btn.disabled = true; btn.textContent = 'Wiping…';
+function updateWipeConfirmButton() {
+  const btn = document.getElementById('wipe-confirm-btn');
+  if (!wipeCountdownDone) return; // countdown interval owns the label until it finishes
+  btn.disabled = !wipeTextMatches;
+  btn.textContent = 'Permanently wipe data';
+}
+
+async function performWipeAllData() {
+  if (!wipeCountdownDone || !wipeTextMatches) return;
+
+  const btn = document.getElementById('wipe-confirm-btn');
+  btn.disabled = true;
+  btn.textContent = 'Wiping…';
 
   await dbClear('classes');
   await dbClear('students');
   await dbClear('logs');
-  classes = []; students = []; logs = [];
+  classes = [];
+  students = [];
+  logs = [];
 
-  // Local wipe only — deliberately does NOT push these deletions to Google
-  // Sheets. roster_dirty is cleared (not set) so the empty roster is never
-  // auto-synced out either; the wipe stays confined to this device.
-  await dbSetSetting('roster_dirty', false);
-  await dbSetSetting('pending_deletes', []);
+  // Clear import/undo bookkeeping too — none of it refers to anything
+  // that still exists after a full wipe.
   await dbSetSetting('last_import_batch', null);
+  await dbSetSetting('pending_deletes', []);
 
-  closeWipeModalDirect();
   populateDropdowns();
-  renderClasses(); renderStudents(); renderLog(false); renderTodayList();
-  await renderImportUndoBar();
-  showToast('All data wiped. A safety backup was downloaded before wiping.', 'ok');
+  renderClasses(); renderStudents();
+  renderLog(false); renderTodayList();
+  if (document.getElementById('page-summary').classList.contains('active')) renderSummary();
+  await renderUndoImportBar();
+
+  closeWipeDataModal();
+  showToast('All data wiped from this device.', 'ok');
 }
 
 function triggerDownload(blob, filename) {
