@@ -698,6 +698,21 @@
 }
 .log-feed-edit:hover { background: var(--bg); border-color: #cbd5e1; color: var(--text); }
 
+/* ── TRASH (Recently Deleted) — reuses the log-feed-item grid, swaps the
+   accent colour and action buttons for restore / delete-forever ── */
+.log-feed-accent.trash { background: var(--text-muted); }
+.trash-type-chip {
+  display: inline-flex; align-items: center;
+  padding: 1px 7px; border-radius: 20px;
+  font-size: 0.67rem; font-weight: 700;
+  white-space: nowrap; flex-shrink: 0; letter-spacing: 0.02em;
+  background: var(--bg); color: var(--text-muted); border: 1px solid var(--border);
+}
+.trash-restore-btn { color: var(--success); border-color: var(--arrival-border); }
+.trash-restore-btn:hover { background: var(--arrival-bg); }
+.trash-delete-btn { color: var(--danger, #dc2626); }
+.trash-delete-btn:hover { background: #fef2f2; border-color: #fecaca; }
+
 /* Bottom row: class · LRN  +  time right-aligned */
 .log-feed-bottom {
   grid-column: 2;
@@ -1350,6 +1365,10 @@
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="5" y="2" width="14" height="20" rx="2" stroke="currentColor" stroke-width="2"/><line x1="12" y1="18" x2="12.01" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
         Install App Guide
       </button>
+      <button onclick="showPage('trash'); closeHeaderMenu()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6h16z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Recently Deleted
+      </button>
       <div class="menu-divider"></div>
       <button onclick="showFeedbackModal(); closeHeaderMenu()">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
@@ -1378,6 +1397,7 @@
   <button class="nav-btn"        id="nav-terms"    onclick="showPage('terms')">Terms</button>
   <button class="nav-btn"        id="nav-sync"     onclick="showPage('sync')">Sync</button>
   <button class="nav-btn"        id="nav-download" onclick="showPage('download')">Download</button>
+  <button class="nav-btn" id="nav-trash" onclick="showPage('trash')" style="display:none;" aria-hidden="true" tabindex="-1">Recently Deleted</button>
 </nav>
 
 <!-- MOBILE BOTTOM NAVIGATION — 4 primary tasks + More -->
@@ -1426,6 +1446,10 @@
   <button data-page="download" onclick="showPage('download')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5M12 15V3"/></svg>
     Download
+  </button>
+  <button data-page="trash" onclick="showPage('trash')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6h16z"/></svg>
+    Recently Deleted
   </button>
 </div>
 
@@ -2030,6 +2054,24 @@
 
   </div>
 
+  <!-- RECENTLY DELETED (TRASH) PAGE -->
+  <div id="page-trash" class="page">
+    <div class="card">
+      <div class="row-flex">
+        <h2 style="margin:0;">🗑️ Recently Deleted</h2>
+        <button class="btn danger sm" onclick="emptyTrash()">Empty trash</button>
+      </div>
+      <p style="font-size:0.8rem; color:var(--text-muted); margin-top:0.4rem;">
+        Deleted classes, students, and attendance records are kept here for
+        <strong id="trash-retention-label">30 days</strong> so you can undo a mistake, even after closing the app.
+        This is separate from sync — nothing here affects your Google Sheets/Supabase data.
+      </p>
+      <div id="trash-list-container" style="overflow-y:auto; max-height:65vh; border-radius:8px; border:1px solid var(--border); margin-top:0.75rem; padding: 0 0.5rem;">
+        <!-- Content injected by JS -->
+      </div>
+    </div>
+  </div>
+
 </main>
 
 <!-- IMPORT PREVIEW MODAL — shows counts BEFORE anything touches IndexedDB -->
@@ -2403,7 +2445,7 @@ function unlockBodyScroll() {
 
 // ── INDEXEDDB ──────────────────────────────────────────────────────────────
 const DB_NAME    = 'EduScanPH';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 let   db         = null;
 
 function openDB() {
@@ -2419,6 +2461,12 @@ function openDB() {
         d.createObjectStore('logs',     { keyPath: 'id', autoIncrement: true });
       if (!d.objectStoreNames.contains('settings'))
         d.createObjectStore('settings', { keyPath: 'key' });
+      // v2: Recently Deleted / Trash — a purely local recovery net for
+      // deleted classes, students, and logs. Deliberately its own store,
+      // never referenced by getRosterPayload()/getPendingLogs()/
+      // pending_deletes, so it can never leak into or block auto-sync.
+      if (!d.objectStoreNames.contains('trash'))
+        d.createObjectStore('trash', { keyPath: 'id', autoIncrement: true });
     };
     req.onsuccess = e => { db = e.target.result; resolve(db); };
     req.onerror   = e => reject(e.target.error);
@@ -2487,6 +2535,39 @@ function dbSetSetting(key, value) {
     tx.oncomplete = resolve;
     tx.onerror    = () => reject(tx.error);
   });
+}
+
+// ── TRASH (Recently Deleted) ─────────────────────────────────────────────
+// Local-only recovery net. Entries here are NEVER read by getRosterPayload,
+// getPendingLogs, or pending_deletes — auto-sync has no idea this store
+// exists. Deleting/restoring trash only ever touches classes/students/logs
+// through the same functions the normal delete/undo path already uses, so
+// sync behavior for those stores is unchanged.
+const TRASH_RETENTION_DAYS = 30;
+
+// type: 'class' | 'student' | 'log' | 'logs_batch'
+async function addToTrash(type, data, meta = {}) {
+  const entry = { type, data, meta, deletedAt: nowIso() };
+  return await dbAdd('trash', entry);
+}
+
+async function getTrash() {
+  const items = await dbGetAll('trash');
+  return items.sort((a, b) => (b.deletedAt || '').localeCompare(a.deletedAt || ''));
+}
+
+async function removeFromTrash(trashId) {
+  await dbDelete('trash', trashId);
+}
+
+// Silently drops anything past the retention window. Called on app start
+// and whenever the Trash page is opened — never blocks or delays sync.
+async function purgeExpiredTrash() {
+  const cutoff = Date.now() - TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+  const items = await dbGetAll('trash');
+  const expired = items.filter(t => new Date(t.deletedAt).getTime() < cutoff);
+  for (const t of expired) await dbDelete('trash', t.id);
+  return expired.length;
 }
 
 // ── SF2 SCHOOL PROFILE ──────────────────────────────────────────────────────
@@ -3159,7 +3240,14 @@ async function removeClass(id) {
   await markRosterDirty();
   scheduleRosterSync();
   renderClasses(); populateDropdowns();
+
+  // Persistent recovery net — separate from the short-lived undo toast
+  // below. If the toast expires or the app is closed, the class is still
+  // recoverable from the Trash page for TRASH_RETENTION_DAYS.
+  const trashId = await addToTrash('class', { cls, removedStudents }, { logCount });
+
   showUndoToast(logCount ? `Class deleted. ${logCount} past attendance record${logCount !== 1 ? 's' : ''} kept in Logs.` : 'Class deleted.', async () => {
+    await removeFromTrash(trashId); // undone immediately — don't also leave it in Trash
     classes.push(cls);
     students.push(...removedStudents);
     students.sort((a, b) => { const la=(a.lastName||a.name||"").toLowerCase(),lb=(b.lastName||b.name||"").toLowerCase(); return la!==lb?la.localeCompare(lb):(a.firstName||"").toLowerCase().localeCompare((b.firstName||"").toLowerCase()); });
@@ -3312,7 +3400,11 @@ async function deleteStudent(id) {
   await markRosterDirty();
   scheduleRosterSync();
   renderStudents(); renderClasses();
+
+  const trashId = await addToTrash('student', { student }, { logCount });
+
   showUndoToast(logCount ? `Student removed. ${logCount} past attendance record${logCount !== 1 ? 's' : ''} kept in Logs.` : 'Student removed.', async () => {
+    await removeFromTrash(trashId);
     students.push(student);
     students.sort((a, b) => { const la=(a.lastName||a.name||"").toLowerCase(),lb=(b.lastName||b.name||"").toLowerCase(); return la!==lb?la.localeCompare(lb):(a.firstName||"").toLowerCase().localeCompare((b.firstName||"").toLowerCase()); });
     await dbClear('students'); await dbPutAll('students', students);
@@ -5129,7 +5221,11 @@ async function deleteLogEntry() {
   if (document.getElementById('page-summary').classList.contains('active')) renderSummary();
   if (document.getElementById('terms-modal-backdrop').classList.contains('open')) renderTermsModalBody();
   scheduleAutoSync();
+
+  const trashId = await addToTrash('log', deletedLog);
+
   showUndoToast('Record deleted.', async () => {
+    await removeFromTrash(trashId);
     // Reverse: drop the queued delete we just pushed (it's the last entry
     // in the pending-deletes list) and put the log row back at its
     // original id — dbPutAll uses put(), so this restores it in place
