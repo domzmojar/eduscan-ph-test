@@ -302,6 +302,26 @@
     #toast.toast-warn { background: #78350f; }
     #toast.toast-info { background: #1e293b; }
 
+    /* Undo toast — separate from #toast because it needs a clickable
+       button (pointer-events: none on #toast keeps it from blocking taps
+       when idle, but that would also block the Undo button). Same visual
+       language, positioned in the same spot. */
+    #undo-toast {
+      position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%) translateY(100px);
+      background: #1e293b; color: white; padding: 0.55rem 0.6rem 0.55rem 1.1rem;
+      border-radius: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+      transition: transform 0.3s ease; z-index: 1000; display: flex; align-items: center;
+      gap: 0.75rem; font-size: 0.85rem; max-width: 90vw; pointer-events: none;
+    }
+    #undo-toast.show { transform: translateX(-50%) translateY(0); pointer-events: auto; }
+    #undo-toast-msg { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #undo-toast-btn {
+      flex-shrink: 0; background: rgba(255,255,255,0.15); color: #93c5fd; border: none;
+      padding: 0.4rem 0.85rem; border-radius: 20px; font-size: 0.82rem; font-weight: 700;
+      cursor: pointer; white-space: nowrap;
+    }
+    #undo-toast-btn:hover { background: rgba(255,255,255,0.25); }
+
     /* ── QR GRID — 3 columns ── */
     #students-qr-container {
       display: grid;
@@ -2055,6 +2075,10 @@
 </div>
 
 <div id="toast"></div>
+<div id="undo-toast">
+  <span id="undo-toast-msg"></span>
+  <button id="undo-toast-btn" onclick="handleUndoToastClick()">Undo</button>
+</div>
 
 <!-- CUSTOM CONFIRM DIALOG (styled replacement for browser confirm()) -->
 <div class="confirm-modal-backdrop" id="confirm-modal-backdrop">
@@ -2579,6 +2603,42 @@ function showToast(msg, type = 'info') {
   toastTimer = setTimeout(() => t.classList.remove('show'), 3000);
 }
 
+// ── UNDO TOAST (per-item delete) ─────────────────────────────────────────
+// For single-record deletes (a log, a student, a class). The delete still
+// commits to IndexedDB right away — same as before — but the matching
+// sync-out (scheduleAutoSync / scheduleRosterSync) already waits
+// AUTO_SYNC_DELAY (8s) before actually pushing anything to Google Sheets.
+// Giving Undo the same 8s window means: if tapped in time, the deletion
+// never reaches Sheets at all — it's a true undo, not just a local
+// re-add. If the window passes, the toast just fades and the delete
+// stands, already synced or on its way.
+let undoToastTimer  = null;
+let undoToastAction = null;
+
+function showUndoToast(msg, onUndo, duration = (typeof AUTO_SYNC_DELAY !== 'undefined' ? AUTO_SYNC_DELAY : 8000)) {
+  const el    = document.getElementById('undo-toast');
+  const msgEl = document.getElementById('undo-toast-msg');
+  if (!el || !msgEl) return;
+  clearTimeout(undoToastTimer);
+  msgEl.textContent = msg;
+  undoToastAction = onUndo;
+  void el.offsetWidth;
+  el.classList.add('show');
+  undoToastTimer = setTimeout(() => {
+    el.classList.remove('show');
+    undoToastAction = null;
+  }, duration);
+}
+
+async function handleUndoToastClick() {
+  const el = document.getElementById('undo-toast');
+  const action = undoToastAction;
+  clearTimeout(undoToastTimer);
+  el.classList.remove('show');
+  undoToastAction = null;
+  if (action) await action();
+}
+
 // ── NAVIGATION ────────────────────────────────────────────────────────────
 const TRIAL_FREE_PAGES = new Set(['summary', 'terms', 'sync', 'download']); // pages allowed even when trial expired
 
@@ -3076,7 +3136,8 @@ async function addClass() {
 
 async function removeClass(id) {
   const cls = classes.find(c => c.id === id);
-  const studentCount = students.filter(s => s.classId === id).length;
+  const removedStudents = students.filter(s => s.classId === id);
+  const studentCount = removedStudents.length;
   const logCount = logs.filter(l => l.classId === id).length;
   const warningDetail = (studentCount || logCount)
     ? ` This removes ${studentCount} student${studentCount !== 1 ? 's' : ''} from active rosters. Their ${logCount} attendance record${logCount !== 1 ? 's' : ''} will be KEPT (visible in Logs/exports) but will no longer appear in Summary, Terms, or chart views, since those are scoped to currently-active classes.`
@@ -3098,7 +3159,17 @@ async function removeClass(id) {
   await markRosterDirty();
   scheduleRosterSync();
   renderClasses(); populateDropdowns();
-  showToast(logCount ? `Class deleted. ${logCount} past attendance record${logCount !== 1 ? 's' : ''} kept in Logs.` : 'Class deleted.', 'ok');
+  showUndoToast(logCount ? `Class deleted. ${logCount} past attendance record${logCount !== 1 ? 's' : ''} kept in Logs.` : 'Class deleted.', async () => {
+    classes.push(cls);
+    students.push(...removedStudents);
+    students.sort((a, b) => { const la=(a.lastName||a.name||"").toLowerCase(),lb=(b.lastName||b.name||"").toLowerCase(); return la!==lb?la.localeCompare(lb):(a.firstName||"").toLowerCase().localeCompare((b.firstName||"").toLowerCase()); });
+    await dbClear('classes');  await dbPutAll('classes',  classes);
+    await dbClear('students'); await dbPutAll('students', students);
+    await markRosterDirty();
+    scheduleRosterSync();
+    renderClasses(); renderStudents(); populateDropdowns();
+    showToast('Class restored.', 'ok');
+  });
 }
 
 function renderClasses() {
@@ -3241,7 +3312,15 @@ async function deleteStudent(id) {
   await markRosterDirty();
   scheduleRosterSync();
   renderStudents(); renderClasses();
-  showToast(logCount ? `Student removed. ${logCount} past attendance record${logCount !== 1 ? 's' : ''} kept in Logs.` : 'Student removed.', 'ok');
+  showUndoToast(logCount ? `Student removed. ${logCount} past attendance record${logCount !== 1 ? 's' : ''} kept in Logs.` : 'Student removed.', async () => {
+    students.push(student);
+    students.sort((a, b) => { const la=(a.lastName||a.name||"").toLowerCase(),lb=(b.lastName||b.name||"").toLowerCase(); return la!==lb?la.localeCompare(lb):(a.firstName||"").toLowerCase().localeCompare((b.firstName||"").toLowerCase()); });
+    await dbClear('students'); await dbPutAll('students', students);
+    await markRosterDirty();
+    scheduleRosterSync();
+    renderStudents(); renderClasses();
+    showToast('Student restored.', 'ok');
+  });
 }
 
 // ── QR PDF EXPORT (shared) ──────────────────────────────────────────────
@@ -5050,7 +5129,23 @@ async function deleteLogEntry() {
   if (document.getElementById('page-summary').classList.contains('active')) renderSummary();
   if (document.getElementById('terms-modal-backdrop').classList.contains('open')) renderTermsModalBody();
   scheduleAutoSync();
-  showToast('Record deleted.', 'ok');
+  showUndoToast('Record deleted.', async () => {
+    // Reverse: drop the queued delete we just pushed (it's the last entry
+    // in the pending-deletes list) and put the log row back at its
+    // original id — dbPutAll uses put(), so this restores it in place
+    // rather than appending a new record.
+    const pending = await getPendingDeletes();
+    pending.pop();
+    await dbSetSetting('pending_deletes', pending);
+    await dbPutAll('logs', [deletedLog]);
+    logs.push(deletedLog);
+    logs.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+    renderLog(false); renderTodayList();
+    if (document.getElementById('page-summary').classList.contains('active')) renderSummary();
+    if (document.getElementById('terms-modal-backdrop').classList.contains('open')) renderTermsModalBody();
+    scheduleAutoSync();
+    showToast('Record restored.', 'ok');
+  });
 }
 
 function closeEditLogModal(e)      { if (e.target === document.getElementById('edit-log-modal')) closeEditLogModalDirect(); }
