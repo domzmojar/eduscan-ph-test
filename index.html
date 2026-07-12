@@ -2570,6 +2570,175 @@ async function purgeExpiredTrash() {
   return expired.length;
 }
 
+// ── TRASH PAGE (Recently Deleted UI) ─────────────────────────────────────
+function trashTimeAgo(iso) {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1)  return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24)  return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < TRASH_RETENTION_DAYS) return `${days}d ago`;
+  return new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric' });
+}
+
+// data shape written by addToTrash() varies by type — see removeClass(),
+// deleteStudent(), deleteLogEntry():
+//   class:   data = { cls, removedStudents }, meta = { logCount }
+//   student: data = { student },              meta = { logCount }
+//   log:     data = the log record itself,    meta = {}
+function trashItemLabel(t) {
+  if (t.type === 'class') {
+    const cls = (t.data || {}).cls || {};
+    const studentCount = ((t.data || {}).removedStudents || []).length;
+    const logCount = (t.meta || {}).logCount || 0;
+    return { title: cls.name || 'Unnamed class', meta: `Class · ${studentCount} student${studentCount !== 1 ? 's' : ''}${logCount ? ', ' + logCount + ' log(s) kept' : ''}` };
+  }
+  if (t.type === 'student') {
+    const s = (t.data || {}).student || {};
+    const logCount = (t.meta || {}).logCount || 0;
+    return { title: s.name || 'Unnamed student', meta: `Student · ${s.lrn || 'No LRN'}${logCount ? ' · ' + logCount + ' log(s) kept' : ''}` };
+  }
+  if (t.type === 'log') {
+    const l = t.data || {};
+    return { title: l.studentName || 'Unknown student', meta: `Log · ${l.className || 'Unknown class'} · ${l.studentLrn || 'N/A'}` };
+  }
+  return { title: 'Deleted item', meta: t.type || '' };
+}
+
+function buildTrashRowHTML(t) {
+  const { title, meta } = trashItemLabel(t);
+  const typeChipText = t.type === 'class' ? '🏫 Class' : t.type === 'student' ? '🧑 Student' : '📝 Log';
+  return `
+    <div class="log-feed-item trash-item" data-trash-id="${t.id}">
+      <div class="log-feed-accent trash"></div>
+      <div class="log-feed-top">
+        <span class="log-feed-name-text">${escapeHTML(title)}</span>
+        <span class="trash-type-chip">${typeChipText}</span>
+      </div>
+      <div class="log-feed-actions">
+        <button class="log-feed-edit trash-restore-btn" onclick="restoreTrashItem(${t.id})" title="Restore">↩️</button>
+        <button class="log-feed-edit trash-delete-btn" onclick="deleteForeverTrashItem(${t.id})" title="Delete forever">🗑️</button>
+      </div>
+      <div class="log-feed-bottom">
+        <span class="log-feed-meta">${escapeHTML(meta)}</span>
+        <div class="log-feed-time-pill"><span class="lf-time">${trashTimeAgo(t.deletedAt)}</span></div>
+      </div>
+    </div>`;
+}
+
+// Cache of the last-rendered list so restore/delete-forever handlers don't
+// need to round-trip IndexedDB just to look up which item was clicked.
+let _trashCache = [];
+
+async function renderTrashPage() {
+  await purgeExpiredTrash();
+  _trashCache = await getTrash();
+  const container = document.getElementById('trash-list-container');
+  const label = document.getElementById('trash-retention-label');
+  if (label) label.textContent = TRASH_RETENTION_DAYS + ' days';
+  if (!container) return;
+  if (!_trashCache.length) {
+    container.innerHTML = `<p class="empty" style="padding:2rem 0;">Nothing here. Deleted classes, students, and logs show up here for ${TRASH_RETENTION_DAYS} days before they're purged for good.</p>`;
+    return;
+  }
+  container.innerHTML = _trashCache.map(buildTrashRowHTML).join('');
+}
+
+async function restoreTrashItem(trashId) {
+  const item = _trashCache.find(t => t.id === trashId) || (await getTrash()).find(t => t.id === trashId);
+  if (!item) return;
+
+  if (item.type === 'class') {
+    const cls = (item.data || {}).cls;
+    const removedStudents = (item.data || {}).removedStudents || [];
+    if (!cls) {
+      showToast('Could not restore — original class data is missing.', 'warn');
+    } else if (classes.some(c => c.id === cls.id)) {
+      showToast('A class with that ID already exists — restore skipped.', 'info');
+    } else {
+      classes.push(cls);
+      removedStudents.forEach(s => { if (!students.some(x => x.id === s.id)) students.push(s); });
+      students.sort((a, b) => { const la=(a.lastName||a.name||"").toLowerCase(),lb=(b.lastName||b.name||"").toLowerCase(); return la!==lb?la.localeCompare(lb):(a.firstName||"").toLowerCase().localeCompare((b.firstName||"").toLowerCase()); });
+      await dbClear('classes');  await dbPutAll('classes',  classes);
+      await dbClear('students'); await dbPutAll('students', students);
+      await markRosterDirty();
+      scheduleRosterSync();
+      renderClasses(); renderStudents(); populateDropdowns();
+      showToast('Class restored.', 'ok');
+    }
+  } else if (item.type === 'student') {
+    const student = (item.data || {}).student;
+    if (!student) {
+      showToast('Could not restore — original student data is missing.', 'warn');
+    } else if (students.some(s => s.id === student.id)) {
+      showToast('A student with that ID already exists — restore skipped.', 'info');
+    } else {
+      students.push(student);
+      students.sort((a, b) => { const la=(a.lastName||a.name||"").toLowerCase(),lb=(b.lastName||b.name||"").toLowerCase(); return la!==lb?la.localeCompare(lb):(a.firstName||"").toLowerCase().localeCompare((b.firstName||"").toLowerCase()); });
+      await dbClear('students'); await dbPutAll('students', students);
+      await markRosterDirty();
+      scheduleRosterSync();
+      renderStudents(); renderClasses();
+      showToast('Student restored.', 'ok');
+    }
+  } else if (item.type === 'log') {
+    const log = item.data;
+    if (!log || log.id == null) {
+      showToast('Could not restore — original log data is missing.', 'warn');
+    } else if (logs.some(l => l.id === log.id)) {
+      showToast('That log already exists — restore skipped.', 'info');
+    } else {
+      // Outside the original few-second undo window, the delete has
+      // almost certainly already synced (queueDeletedLog → pending_deletes
+      // → pushed to Sheets on the next auto-sync pass). Popping
+      // pending_deletes here — like the in-window undo does — would be
+      // wrong/stale, so instead flag the restored row the same way
+      // saveEditLog() flags an edited-in-place record: needsSync = true
+      // makes getPendingLogs() re-include it regardless of the sync
+      // watermark, so it gets pushed again as a fresh row.
+      log.needsSync = true;
+      log.updatedAt = nowIso();
+      await dbPutAll('logs', [log]);
+      logs.push(log);
+      logs.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+      scheduleRosterSync();
+      renderTodayList();
+      if (document.getElementById('page-log').classList.contains('active')) renderLog();
+      if (document.getElementById('page-summary').classList.contains('active')) renderSummary();
+      showToast('Log restored — will re-sync on the next sync.', 'ok');
+    }
+  }
+
+  await removeFromTrash(trashId);
+  renderTrashPage();
+}
+
+async function deleteForeverTrashItem(trashId) {
+  const item = _trashCache.find(t => t.id === trashId) || (await getTrash()).find(t => t.id === trashId);
+  if (!item) return;
+  const { title } = trashItemLabel(item);
+  if (!confirm(`Permanently delete "${title}"? This cannot be undone.`)) return;
+  // Nothing further needs to happen to classes.json/students on Sheets —
+  // trash is a local-only copy that sync never reads. A trashed LOG's
+  // Sheet-side delete was already queued/pushed the moment it was
+  // originally deleted (see queueDeletedLog in deleteLogEntry), so there's
+  // no separate "commit the delete" step to fire here either — Delete
+  // Forever just removes the local recovery copy.
+  await removeFromTrash(trashId);
+  renderTrashPage();
+  showToast('Permanently deleted.', 'ok');
+}
+
+async function emptyTrash() {
+  if (!_trashCache.length) return;
+  if (!confirm(`Permanently delete all ${_trashCache.length} item(s) in Trash? This cannot be undone.`)) return;
+  await dbClear('trash');
+  renderTrashPage();
+  showToast('Trash emptied.', 'ok');
+}
+
 // ── SF2 SCHOOL PROFILE ──────────────────────────────────────────────────────
 // One-time-fill fields (School ID, Name, Year, Grade Level, Page-of) that get
 // stamped onto every official SF2 export. Stored as a single JSON blob under
@@ -2761,6 +2930,7 @@ function showPage(page) {
   if (page === 'log')      renderLog();
   if (page === 'summary') { initSummaryPeriod(); renderSummary(); }
   if (page === 'sync')     renderSyncPage();
+  if (page === 'trash')    renderTrashPage();
 }
 
 // ── MORE SHEET (mobile secondary utilities) ─────────────────────────────
@@ -8353,6 +8523,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   students = await dbGetAll('students');
   logs     = await dbGetAll('logs');
   await removePulledSystemRecords();
+  await purgeExpiredTrash();
 
   // Migrate old logs missing type field
   let needsLogFix = false;
