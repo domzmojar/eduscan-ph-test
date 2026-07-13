@@ -1284,8 +1284,13 @@
       </div>
       <div class="gcash-hint">Scan the QR or send ₱499 to the number above.</div>
 
-      <button class="btn outline sm" style="width: 100%; margin-bottom: 12px;" onclick="downloadGCashQR()">
-        ⬇ Download QR Code
+      <button id="download-qr-btn" onclick="downloadGCashQR()" style="
+        width:100%; margin-top:12px; padding:10px;
+        background:#007aff; color:#fff; border:none; border-radius:8px;
+        font-weight:700; font-size:0.9rem; cursor:pointer;
+        display:flex; align-items:center; justify-content:center; gap:8px;
+      ">
+        ⬇️ Download QR Code
       </button>
     </div>
 
@@ -7044,22 +7049,31 @@ function triggerDownload(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-// ── GCASH QR DOWNLOAD ────────────────────────────────────────────────────
+// ── DOWNLOAD GCASH QR ──────────────────────────────────────────────────────
 function downloadGCashQR() {
-  const img = document.querySelector('.gcash-qr-img');
-  if (!img || !img.src) {
-    showToast('Could not find the QR code image.', 'err');
-    return;
-  }
-  
-  const a = document.createElement('a');
-  a.href = img.src;
-  a.download = 'EduScanPH_GCash_QR.png';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  
-  showToast('GCash QR Code saved to your device! ✓', 'ok');
+  // Grab the QR image element from the lock overlay
+  const img = document.querySelector('#access-lock-overlay .gcash-qr-img');
+  if (!img) return showToast('QR image not found.', 'err');
+
+  // Create a temporary canvas to convert the image to a downloadable blob
+  const canvas = document.createElement('canvas');
+  canvas.width  = img.naturalWidth  || 400;
+  canvas.height = img.naturalHeight || 400;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+  canvas.toBlob((blob) => {
+    if (!blob) return showToast('Failed to generate image.', 'err');
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'GCash_QR_EduScan.png';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('QR code downloaded!', 'ok');
+  }, 'image/png');
 }
 
 // ── TERMS ────────────────────────────────────────────────────────────────
