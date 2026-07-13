@@ -1283,6 +1283,15 @@
         <div class="gcash-row"><span class="gcash-label">Account Name</span><span class="gcash-value">Dominique Mojar</span></div>
       </div>
       <div class="gcash-hint">Scan the QR or send ₱499 to the number above.</div>
+
+        <button id="download-qr-btn" onclick="downloadGCashQR()" style="
+          width:100%; margin-top:12px; padding:10px;
+          background:#007aff; color:#fff; border:none; border-radius:8px;
+          font-weight:700; font-size:0.9rem; cursor:pointer;
+          display:flex; align-items:center; justify-content:center; gap:8px;
+        ">
+          ⬇️ Download QR Code
+        </button>
     </div>
 
     <button class="btn-upgrade" id="upgrade-pay-btn" onclick="window.open(MESSENGER_URL, '_blank')">
