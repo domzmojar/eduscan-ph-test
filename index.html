@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -4471,6 +4470,10 @@ async function generateSF2Official() {
   // AC35/AC61/AC62 = total presents for the whole month (Male/Female/Combined),
   // same column used for each student's AC{row} absCount — reuses the totals
   // already computed above so this always matches totalDailyAttendance.
+  ['AC35', 'AC61', 'AC62'].forEach(coord => {
+    ws.getCell(coord).numFmt = '0'; // force plain integer — template's inherited
+                                     // format (0.00 / percent) rendered extra "00"
+  });
   centerCell('AC35').value = totalDailyAttendanceM;
   centerCell('AC61').value = totalDailyAttendanceF;
   centerCell('AC62').value = totalDailyAttendance;
