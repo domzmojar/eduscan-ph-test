@@ -1283,6 +1283,10 @@
         <div class="gcash-row"><span class="gcash-label">Account Name</span><span class="gcash-value">Dominique Mojar</span></div>
       </div>
       <div class="gcash-hint">Scan the QR or send ₱499 to the number above.</div>
+
+      <button class="btn outline sm" style="width: 100%; margin-bottom: 12px;" onclick="downloadGCashQR()">
+        ⬇ Download QR Code
+      </button>
     </div>
 
     <button class="btn-upgrade" id="upgrade-pay-btn" onclick="window.open(MESSENGER_URL, '_blank')">
@@ -7038,6 +7042,24 @@ function triggerDownload(blob, filename) {
   a.href = url; a.download = filename;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// ── GCASH QR DOWNLOAD ────────────────────────────────────────────────────
+function downloadGCashQR() {
+  const img = document.querySelector('.gcash-qr-img');
+  if (!img || !img.src) {
+    showToast('Could not find the QR code image.', 'err');
+    return;
+  }
+  
+  const a = document.createElement('a');
+  a.href = img.src;
+  a.download = 'EduScanPH_GCash_QR.png';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  
+  showToast('GCash QR Code saved to your device! ✓', 'ok');
 }
 
 // ── TERMS ────────────────────────────────────────────────────────────────
