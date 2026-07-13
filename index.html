@@ -4435,6 +4435,13 @@ async function generateSF2Official() {
     centerCell(62, col).value = totalDayPresentM[i] + totalDayPresentF[i];
   }
 
+  // AC35/AC61/AC62 = total presents for the whole month (Male/Female/Combined),
+  // same column used for each student's AC{row} absCount — reuses the totals
+  // already computed above so this always matches totalDailyAttendance.
+  centerCell('AC35').value = totalDailyAttendanceM;
+  centerCell('AC61').value = totalDailyAttendanceF;
+  centerCell('AC62').value = totalDailyAttendance;
+
   // OCR-verified via LibreOffice render: label cells are AB{row} (must stay
   // untouched), value cells are AH{row}(M) / AI{row}(F) / AJ{row}(Total).
   // AH65/AI65/AJ65 are the 'M'/'F'/'TOTAL' column headers — never write to those.
