@@ -4493,9 +4493,9 @@ async function generateSF2Official() {
   ['AH74', 'AI74', 'AJ74'].forEach(coord => {
     ws.getCell(coord).numFmt = '0'; // whole number, no inherited decimals
   });
-  ws.getCell('AH74').value = adaM;
-  ws.getCell('AI74').value = adaF;
-  ws.getCell('AJ74').value = ada;
+  centerCell('AH74').value = adaM;
+  centerCell('AI74').value = adaF;
+  centerCell('AJ74').value = ada;
   ws.getCell('AH75').value = pctAttendanceM;
   ws.getCell('AI75').value = pctAttendanceF;
   ws.getCell('AJ75').value = pctAttendance;
