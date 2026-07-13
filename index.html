@@ -7960,52 +7960,68 @@ function renderAccessUI(access) {
 // dismissible=false → trial truly expired; blocks all usage
 // fromActiveTrial   → when true, show "upgrade" copy instead of "expired" copy
 function showAccessLock(dismissible, fromActiveTrial) {
-    const overlay  = document.getElementById('access-lock-overlay');
-    const title    = document.getElementById('lock-title');
-    const message  = document.getElementById('lock-message');
+    const overlay = document.getElementById('access-lock-overlay');
+    const title = document.getElementById('lock-title');
+    const message = document.getElementById('lock-message');
     const lockCard = overlay.querySelector('.lock-card');
 
     // Swap copy based on context
     if (fromActiveTrial) {
         if (_lastKnownAccess && _lastKnownAccess.tier === 'annual') {
-            title.textContent   = 'Renew Your Annual Subscription';
+            title.textContent = 'Renew Your Annual Subscription';
             message.textContent = 'Renew your ₱499/year subscription to keep attendance scanning, reports, and sync running without interruption.';
         } else {
-            title.textContent   = 'Subscribe to EduScan PH';
+            title.textContent = 'Subscribe to EduScan PH';
             message.textContent = 'Unlock a full year of EduScan PH for ₱499/year. Keep all your data, scanning, reports, and sync.';
         }
     } else {
-        title.textContent   = 'Your free trial has ended';
+        title.textContent = 'Your free trial has ended';
         message.textContent = 'Your 7-day free trial of EduScan PH is over. Subscribe annually to keep using attendance scanning, reports, and sync.';
     }
 
-    // Inject or remove the ✕ close button
-    const existingClose = lockCard.querySelector('.lock-close-btn');
-    if (dismissible) {
-        if (!existingClose) {
-            const closeBtn = document.createElement('button');
-            closeBtn.className = 'lock-close-btn';
-            closeBtn.setAttribute('aria-label', 'Close');
-            closeBtn.innerHTML = '✕';
-            closeBtn.style.cssText = [
-                'position:absolute', 'top:12px', 'right:14px',
-                'background:none', 'border:none', 'font-size:1.1rem',
-                'color:#9ca3af', 'cursor:pointer', 'line-height:1',
-                'padding:4px 6px', 'border-radius:6px', 'transition:color 0.15s'
-            ].join(';');
-            closeBtn.onmouseenter = () => closeBtn.style.color = '#374151';
-            closeBtn.onmouseleave = () => closeBtn.style.color = '#9ca3af';
-            closeBtn.onclick = (e) => { e.stopPropagation(); overlay.classList.add('hidden'); };
-            lockCard.style.position = 'relative';
-            lockCard.insertBefore(closeBtn, lockCard.firstChild);
-        }
-        overlay.onclick = (e) => { if (e.target === overlay) overlay.classList.add('hidden'); };
+    // ── ALWAYS ADD A CLOSE BUTTON ──
+    let closeBtn = lockCard.querySelector('.lock-close-btn');
+    if (!closeBtn) {
+        closeBtn = document.createElement('button');
+        closeBtn.className = 'lock-close-btn';
+        closeBtn.setAttribute('aria-label', 'Close');
+        closeBtn.innerHTML = '✕';
+        closeBtn.style.cssText = [
+            'position:absolute', 'top:12px', 'right:14px',
+            'background:none', 'border:none', 'font-size:1.2rem',
+            'color:#9ca3af', 'cursor:pointer', 'line-height:1',
+            'padding:4px 6px', 'border-radius:6px',
+            'transition:color 0.15s, background 0.15s',
+            'z-index:10'
+        ].join(';');
+        closeBtn.onmouseenter = () => { closeBtn.style.color = '#374151'; closeBtn.style.background = '#f3f4f6'; };
+        closeBtn.onmouseleave = () => { closeBtn.style.color = '#9ca3af'; closeBtn.style.background = 'transparent'; };
+        closeBtn.onclick = (e) => {
+            e.stopPropagation();
+            overlay.classList.add('hidden');
+            unlockBodyScroll();
+        };
+        lockCard.style.position = 'relative';
+        lockCard.insertBefore(closeBtn, lockCard.firstChild);
     } else {
-        if (existingClose) existingClose.remove();
+        // Ensure it's visible (in case it was hidden)
+        closeBtn.style.display = 'block';
+    }
+
+    // Outside click: only if dismissible is true
+    if (dismissible) {
+        overlay.onclick = (e) => {
+            if (e.target === overlay) {
+                overlay.classList.add('hidden');
+                unlockBodyScroll();
+            }
+        };
+    } else {
         overlay.onclick = null;
     }
 
     overlay.classList.remove('hidden');
+    lockBodyScroll();
 }
 
 async function recheckAccess(btn) {
