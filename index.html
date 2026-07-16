@@ -198,7 +198,20 @@
       border-radius: var(--radius-sm); font-size: 0.95rem; background: var(--surface); color: var(--text);
       min-height: 48px; transition: border-color 0.15s, border-width 0.15s;
     }
+    /* Strip the OS's native arrow/box chrome so the closed select matches
+       the rest of the app's inputs; the open option list itself is still
+       rendered by the OS on mobile (can't be restyled with CSS) but the
+       part visible the other 99% of the time now looks premium. */
+    select {
+      -webkit-appearance: none; -moz-appearance: none; appearance: none;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+      background-repeat: no-repeat; background-position: right 0.6rem center; background-size: 18px 18px;
+      padding-right: 2.2rem; cursor: pointer;
+    }
+    select:disabled { cursor: default; opacity: 0.6; }
     select:focus, input:focus { outline: none; border-color: var(--primary); border-width: 2px; padding: 0.6rem 0.7rem; box-shadow: none; }
+    select:focus { padding-right: calc(2.2rem - 1px); }
+    select.bulk-day-status { background-size: 14px 14px; background-position: right 0.4rem center; }
     textarea { width: 100%; padding: 0.65rem 0.75rem; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); font-size: 0.85rem; background: var(--bg); color: var(--text); resize: none; font-family: monospace; }
 
     .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; background: var(--primary); color: var(--on-primary); padding: 0.7rem 1.25rem; min-height: 48px; border: none; border-radius: var(--radius-sm); font-weight: 600; font-size: 0.9rem; cursor: pointer; transition: background 0.15s, transform 0.1s; }
@@ -859,12 +872,15 @@
 }
 #header-menu-btn:hover { background: var(--bg); color: var(--text); border-color: #cbd5e1; }
 
-/* Dropdown menu */
+/* Dropdown menu — deliberately more opaque than the header's glass (0.82).
+   A floating menu needs to read cleanly over whatever busy content sits
+   behind it, so it gets its own higher-opacity value instead of reusing
+   --glass-bg-strong. */
 #header-menu-dropdown {
     position: absolute; top: calc(100% + 8px); right: 0;
-    background: var(--glass-bg-strong); backdrop-filter: blur(var(--card-blur)) saturate(180%); -webkit-backdrop-filter: blur(var(--card-blur)) saturate(180%);
+    background: rgba(255,255,255,0.97); backdrop-filter: blur(24px) saturate(180%); -webkit-backdrop-filter: blur(24px) saturate(180%);
     border: 1px solid var(--border); border-radius: 14px;
-    box-shadow: 0 12px 32px rgba(0,0,0,0.16); min-width: 220px; z-index: 500;
+    box-shadow: 0 16px 40px rgba(0,0,0,0.2); min-width: 220px; z-index: 500;
     padding: 6px; overflow: hidden;
 }
 #header-menu-dropdown.hidden { display: none !important; }
@@ -1788,7 +1804,7 @@
          month of logs is recorded) -->
     <div id="sf2-generator-box" style="border:1.5px solid var(--primary); border-radius:12px; padding:1rem; margin-bottom:1.5rem; background:var(--primary-bg);">
       <label for="sf2-class-select" style="font-size:0.83rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.04em; display:block; margin-bottom:0.4rem;">Class / Section for SF2</label>
-      <select id="sf2-class-select" style="width:100%; padding:0.65rem 0.75rem; border:1px solid var(--border); border-radius:8px; font-size:0.95rem; background:var(--surface); color:var(--text);">
+      <select id="sf2-class-select">
         <option value="">— Select a class —</option>
       </select>
 
@@ -5620,7 +5636,7 @@ function generateAddLogBulkDays() {
     return `
       <div class="bulk-day-row" data-date="${dateStr}" style="display:flex; align-items:center; gap:0.4rem; padding:0.5rem 0.6rem; border-bottom:1px solid var(--border); flex-wrap:wrap;">
         <span style="flex:0 0 92px; font-size:0.8rem; font-weight:600;">${label}</span>
-        <select class="bulk-day-status" style="flex:0 0 92px; padding:0.3rem; border:1px solid var(--border); border-radius:6px; font-size:0.78rem;" onchange="onBulkDayStatusChange(this)">
+        <select class="bulk-day-status" style="flex:0 0 92px; padding:0.3rem 1.5rem 0.3rem 0.4rem; border:1px solid var(--border); border-radius:6px; font-size:0.78rem;" onchange="onBulkDayStatusChange(this)">
           <option value="present">Present</option>
           <option value="absent">Absent</option>
         </select>
