@@ -1389,6 +1389,10 @@
       <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
     </button>
     <div id="header-menu-dropdown" class="hidden">
+      <div id="menu-account-info" style="padding:0.6rem 0.9rem 0.5rem; border-bottom:1px solid var(--border,#e5e7eb);">
+        <div style="font-size:0.65rem; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); margin-bottom:2px;">Signed in as</div>
+        <div id="menu-account-email" style="font-size:0.82rem; font-weight:600; color:var(--text,#111827); word-break:break-all;">—</div>
+      </div>
       <button onclick="openSetupWizard(); closeHeaderMenu()">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><polygon points="5 3 19 12 5 21 5 3" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
         Sync Setup Guide
@@ -8340,7 +8344,9 @@ async function handleNewPassword(event) {
 // 5. LOGOUT
 function handleLogout() {
     if (!supabaseClient) return;
-    if (confirm('Are you sure you want to logout?')) {
+    const lastUser = getLastSessionUser();
+    const who = (lastUser && lastUser.email) ? lastUser.email : 'your account';
+    if (confirm(`Logout of ${who}?`)) {
         localStorage.removeItem(ACCESS_CACHE_KEY);
         supabaseClient.auth.signOut();
         // onAuthStateChange handles UI updates
@@ -8353,9 +8359,20 @@ function toggleHeaderMenu(e) {
     const dropdown = document.getElementById('header-menu-dropdown');
     dropdown.classList.toggle('hidden');
     if (!dropdown.classList.contains('hidden')) {
+        updateMenuAccountEmail();
         // Close when clicking anywhere else
         setTimeout(() => document.addEventListener('click', closeHeaderMenu, { once: true }), 0);
     }
+}
+
+// Shows which account is signed in inside the ⋮ menu. Uses the offline-safe
+// "last session user" record (see getLastSessionUser above) so it still
+// works when the device has no network / an expired token.
+function updateMenuAccountEmail() {
+    const el = document.getElementById('menu-account-email');
+    if (!el) return;
+    const lastUser = getLastSessionUser();
+    el.textContent = (lastUser && lastUser.email) ? lastUser.email : 'Unknown account';
 }
 
 function closeHeaderMenu() {
